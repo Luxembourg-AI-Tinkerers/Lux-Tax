@@ -20,7 +20,13 @@ export function DocumentsView({ workspaceId, onFactsChanged }: DocumentsViewProp
   const [extractedFacts, setExtractedFacts] = useState<ExtractedFactDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const showFeedback = (type: 'success' | 'error', message: string) => {
+    setFeedback({ type, message });
+    setTimeout(() => setFeedback(null), 4000);
+  };
 
   const refresh = async () => {
     setLoading(true);
@@ -43,8 +49,6 @@ export function DocumentsView({ workspaceId, onFactsChanged }: DocumentsViewProp
     if (!file) return;
 
     setUploading(true);
-    setUploadError(null);
-
     const reader = new FileReader();
     reader.onload = async () => {
       const base64 = (reader.result as string).split(',')[1];
@@ -56,8 +60,9 @@ export function DocumentsView({ workspaceId, onFactsChanged }: DocumentsViewProp
       });
 
       if (res.error) {
-        setUploadError(res.error);
+        showFeedback('error', res.error);
       } else {
+        showFeedback('success', `Document "${file.name}" uploaded & parsed successfully!`);
         await refresh();
         onFactsChanged();
       }
@@ -65,11 +70,43 @@ export function DocumentsView({ workspaceId, onFactsChanged }: DocumentsViewProp
     };
 
     reader.onerror = () => {
-      setUploadError('Failed to read file');
+      showFeedback('error', 'Failed to read file from disk');
       setUploading(false);
     };
 
     reader.readAsDataURL(file);
+  };
+
+  const handleUploadSampleSalarySlip = async () => {
+    setUploading(true);
+    const sampleSlip = `ADMINISTRATION DES CONTRIBUTIONS DIRECTES (ACD)
+CERTIFICAT DE REMUNERATION - ANNEE D'IMPOSITION 2025
+Employeur: Luxembourg Financial Services S.A.
+Matricule ACD: 20198877661
+Salarie: Resident Taxpayer (Matricule: 1985010199999)
+
+101. Remuneration brute (traitements, salaires): 76800.00 EUR
+103. Cotisations de securite sociale deductibles: 9600.00 EUR
+105. Retenue d'impot sur traitements et salaires: 13950.00 EUR
+141. Interets debiteurs habitation: 2800.00 EUR
+`;
+
+    const base64 = Buffer.from(sampleSlip, 'utf-8').toString('base64');
+    const res = await apiClient.uploadDocument(workspaceId, {
+      fileName: 'Certificat_Remuneration_2025_Sample.txt',
+      fileContentBase64: base64,
+      mimeType: 'text/plain',
+      visibility: DocumentVisibility.SHARED_FOR_DISCUSSION,
+    });
+
+    setUploading(false);
+    if (res.error) {
+      showFeedback('error', res.error);
+    } else {
+      showFeedback('success', 'Uploaded & extracted sample 2025 Salary Certificate!');
+      await refresh();
+      onFactsChanged();
+    }
   };
 
   const handleToggleVisibility = async (doc: DocumentDto) => {
@@ -78,28 +115,39 @@ export function DocumentsView({ workspaceId, onFactsChanged }: DocumentsViewProp
         ? DocumentVisibility.SHARED_FOR_DISCUSSION
         : DocumentVisibility.INCLUDED_IN_RETURN;
 
-    await apiClient.updateDocumentVisibility(workspaceId, doc.id, nextVis);
-    await refresh();
+    const res = await apiClient.updateDocumentVisibility(workspaceId, doc.id, nextVis);
+    if (res.error) {
+      showFeedback('error', res.error);
+    } else {
+      showFeedback('success', `Document visibility changed to ${nextVis}`);
+      await refresh();
+    }
   };
 
   const handleDelete = async (docId: string) => {
-    if (!confirm('Are you sure you want to delete this document?')) return;
-    await apiClient.deleteDocument(workspaceId, docId);
-    await refresh();
-    onFactsChanged();
+    if (!confirm('Are you sure you want to delete this document? Extracted figures will be unlinked.')) return;
+    const res = await apiClient.deleteDocument(workspaceId, docId);
+    if (res.error) {
+      showFeedback('error', res.error);
+    } else {
+      showFeedback('success', 'Document deleted successfully');
+      await refresh();
+      onFactsChanged();
+    }
   };
 
   const handleConfirmExtractedFact = async (fact: ExtractedFactDto) => {
+    setConfirmingId(fact.id);
     let category = FactCategory.EMPLOYMENT_INCOME;
-    if (fact.fieldName.toLowerCase().includes('mortgage')) {
+    if (fact.fieldName.toLowerCase().includes('mortgage') || fact.fieldName === 'code_141') {
       category = FactCategory.MORTGAGE_DEDUCTION;
-    } else if (fact.fieldName.toLowerCase().includes('insurance')) {
+    } else if (fact.fieldName.toLowerCase().includes('insurance') || fact.fieldName.toLowerCase().includes('pension')) {
       category = FactCategory.INSURANCE_DEDUCTION;
     } else if (fact.fieldName.toLowerCase().includes('donation')) {
       category = FactCategory.DONATION_DEDUCTION;
     }
 
-    await apiClient.confirmFact(workspaceId, {
+    const res = await apiClient.confirmFact(workspaceId, {
       extractedFactId: fact.id,
       category,
       fieldKey: fact.fieldName,
@@ -109,12 +157,36 @@ export function DocumentsView({ workspaceId, onFactsChanged }: DocumentsViewProp
       isSharedWithHousehold: true,
     });
 
-    await refresh();
-    onFactsChanged();
+    setConfirmingId(null);
+    if (res.error) {
+      showFeedback('error', res.error);
+    } else {
+      showFeedback('success', `Confirmed €${fact.fieldValue} (${fact.fieldName}) into return facts!`);
+      await refresh();
+      onFactsChanged();
+    }
   };
+
+  const unconfirmedFacts = extractedFacts.filter((f) => !f.isConfirmed);
 
   return (
     <div className="space-y-6">
+      {/* Toast Feedback */}
+      {feedback && (
+        <div
+          className={`p-4 rounded-xl text-sm font-semibold flex items-center justify-between border ${
+            feedback.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-rose-50 text-rose-800 border-rose-200'
+          }`}
+        >
+          <span>{feedback.message}</span>
+          <button onClick={() => setFeedback(null)} className="text-xs opacity-60 hover:opacity-100">
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Upload Box */}
       <div className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-6 text-center hover:border-sky-500 transition-colors">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-sky-50 text-sky-600 mb-3">
@@ -127,76 +199,87 @@ export function DocumentsView({ workspaceId, onFactsChanged }: DocumentsViewProp
           Upload your Certificat de rémunération, bank interest slips, or donation receipts (PDF, PNG, JPG, TXT).
         </p>
 
-        <label className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-sky-500">
-          <span>{uploading ? 'Processing & Extracting...' : 'Select File'}</span>
-          <input
-            type="file"
-            className="hidden"
-            onChange={handleFileUpload}
-            disabled={uploading}
-            accept=".pdf,.png,.jpg,.jpeg,.txt"
-          />
-        </label>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <label className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-sky-500 transition">
+            <span>{uploading ? 'Processing & Extracting...' : 'Select Local File'}</span>
+            <input
+              type="file"
+              className="hidden"
+              onChange={handleFileUpload}
+              disabled={uploading}
+              accept=".pdf,.png,.jpg,.jpeg,.txt"
+            />
+          </label>
 
-        {uploadError && (
-          <p className="mt-3 text-xs font-medium text-rose-600 bg-rose-50 p-2 rounded-lg inline-block">
-            {uploadError}
-          </p>
-        )}
+          <button
+            type="button"
+            onClick={handleUploadSampleSalarySlip}
+            disabled={uploading}
+            className="rounded-lg border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-bold text-sky-700 hover:bg-sky-100 transition disabled:opacity-50"
+          >
+            ⚡ Upload Sample 2025 Salary Slip
+          </button>
+        </div>
       </div>
 
       {/* Extracted Facts Awaiting Confirmation */}
-      {extractedFacts.filter((f) => !f.isConfirmed).length > 0 && (
+      {unconfirmedFacts.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-amber-800 text-xs font-bold">
-              !
-            </span>
-            <h4 className="text-sm font-bold text-amber-900">
-              Extracted Figures Awaiting Verification ({extractedFacts.filter((f) => !f.isConfirmed).length})
-            </h4>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h4 className="text-sm font-bold text-amber-900">
+                Extracted Figures Awaiting Your Confirmation ({unconfirmedFacts.length})
+              </h4>
+              <p className="text-xs text-amber-700 mt-0.5">
+                Our local parser extracted these numbers from your documents. Confirm them to include in your 2025 calculation.
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-amber-800 mb-4">
-            Our extraction engine detected these numbers in your uploaded certificates. Confirm each figure to include it in your official 2025 calculation.
-          </p>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {extractedFacts
-              .filter((f) => !f.isConfirmed)
-              .map((fact) => (
-                <div key={fact.id} className="rounded-lg border border-amber-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <div className="divide-y divide-amber-200/60 rounded-lg border border-amber-200 bg-white">
+            {unconfirmedFacts.map((fact) => (
+              <div
+                key={fact.id}
+                className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3"
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
                       {fact.fieldName}
                     </span>
-                    <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
-                      {Math.round(fact.confidence * 100)}% Match
+                    <span className="text-sm font-black text-slate-900">
+                      €{parseFloat(fact.fieldValue).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </span>
+                    <span className="rounded bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                      Confidence: {(fact.confidence * 100).toFixed(0)}%
                     </span>
                   </div>
-                  <div className="mt-2 text-xl font-black text-slate-900">
-                    €{Number(fact.fieldValue).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </div>
                   {fact.sourceSnippet && (
-                    <p className="mt-1 text-[11px] text-slate-500 italic truncate" title={fact.sourceSnippet}>
-                      "{fact.sourceSnippet}"
-                    </p>
+                    <span className="text-[11px] text-slate-400 mt-1 block font-mono">
+                      Source: &quot;{fact.sourceSnippet}&quot;
+                    </span>
                   )}
-                  <button
-                    onClick={() => handleConfirmExtractedFact(fact)}
-                    className="mt-3 w-full rounded-md bg-emerald-600 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 shadow-sm transition-colors"
-                  >
-                    Confirm Fact
-                  </button>
                 </div>
-              ))}
+
+                <button
+                  onClick={() => handleConfirmExtractedFact(fact)}
+                  disabled={confirmingId === fact.id}
+                  className="rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-500 transition disabled:opacity-50"
+                >
+                  {confirmingId === fact.id ? 'Confirming...' : '✓ Confirm Figure into Return'}
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Documents List */}
+      {/* Uploaded Documents Table */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-900">Document Vault ({documents.length})</h3>
+          <h3 className="text-sm font-bold text-slate-900">
+            Document Vault ({documents.length})
+          </h3>
           <button onClick={refresh} className="text-xs text-sky-600 hover:text-sky-700 font-semibold">
             Refresh
           </button>
@@ -205,52 +288,62 @@ export function DocumentsView({ workspaceId, onFactsChanged }: DocumentsViewProp
         {loading ? (
           <div className="p-8 text-center text-sm text-slate-500">Loading documents...</div>
         ) : documents.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">No documents uploaded yet.</div>
+          <div className="p-8 text-center text-sm text-slate-500">
+            No documents uploaded yet. Upload a tax certificate above or click Upload Sample.
+          </div>
         ) : (
-          <div className="divide-y divide-slate-100">
-            {documents.map((doc) => (
-              <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4 hover:bg-slate-50/50">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-semibold text-slate-900">{doc.originalName}</h4>
-                    <div className="flex flex-wrap items-center gap-2 mt-1">
-                      <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                        {doc.documentType}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-3">File Name</th>
+                  <th className="px-6 py-3">Document Type</th>
+                  <th className="px-6 py-3">Visibility</th>
+                  <th className="px-6 py-3">Uploaded</th>
+                  <th className="px-6 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {documents.map((doc) => (
+                  <tr key={doc.id} className="hover:bg-slate-50/50">
+                    <td className="px-6 py-4 font-medium text-slate-900">
+                      {doc.originalName}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                        {doc.documentType.replace(/_/g, ' ')}
                       </span>
-                      <span className="rounded bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
-                        {doc.visibility.replace(/_/g, ' ')}
-                      </span>
-                      <span className="text-[11px] text-slate-400">
-                        {(doc.fileSize / 1024).toFixed(1)} KB
-                      </span>
-                      <span className="text-[11px] text-slate-400">
-                        {new Date(doc.createdAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 self-end sm:self-center">
-                  <button
-                    onClick={() => handleToggleVisibility(doc)}
-                    className="rounded border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                  >
-                    Change Visibility
-                  </button>
-                  <button
-                    onClick={() => handleDelete(doc.id)}
-                    className="rounded border border-rose-200 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
+                    </td>
+                    <td className="px-6 py-4">
+                      <button
+                        onClick={() => handleToggleVisibility(doc)}
+                        className={`rounded px-2 py-0.5 text-xs font-semibold transition ${
+                          doc.visibility === DocumentVisibility.INCLUDED_IN_RETURN
+                            ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            : doc.visibility === DocumentVisibility.SHARED_FOR_DISCUSSION
+                            ? 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                        title="Click to toggle visibility"
+                      >
+                        {doc.visibility.replace(/_/g, ' ')} ↻
+                      </button>
+                    </td>
+                    <td className="px-6 py-4 text-xs text-slate-500">
+                      {new Date(doc.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => handleDelete(doc.id)}
+                        className="text-xs text-rose-600 hover:text-rose-700 font-semibold"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

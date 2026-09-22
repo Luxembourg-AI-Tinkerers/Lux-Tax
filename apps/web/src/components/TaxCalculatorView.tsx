@@ -6,13 +6,21 @@ import { TaxCalculationResultDto } from '@luxtax/contracts';
 
 interface TaxCalculatorViewProps {
   workspaceId: string;
+  onCalculated?: () => void;
+  onNavigateToFiling?: () => void;
 }
 
-export function TaxCalculatorView({ workspaceId }: TaxCalculatorViewProps) {
+export function TaxCalculatorView({ workspaceId, onCalculated, onNavigateToFiling }: TaxCalculatorViewProps) {
   const [calc, setCalc] = useState<TaxCalculationResultDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
   const [showProvenance, setShowProvenance] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const showFeedback = (type: 'success' | 'error', message: string) => {
+    setFeedback({ type, message });
+    setTimeout(() => setFeedback(null), 4000);
+  };
 
   const loadCalculation = async () => {
     setLoading(true);
@@ -30,10 +38,15 @@ export function TaxCalculatorView({ workspaceId }: TaxCalculatorViewProps) {
   const handleRunCalculation = async () => {
     setCalculating(true);
     const res = await apiClient.calculateTax(workspaceId);
-    if (res.data) {
-      setCalc(res.data);
-    }
     setCalculating(false);
+
+    if (res.error) {
+      showFeedback('error', res.error);
+    } else if (res.data) {
+      setCalc(res.data);
+      showFeedback('success', '2025 Tax calculation completed successfully!');
+      onCalculated?.();
+    }
   };
 
   if (loading) {
@@ -45,6 +58,22 @@ export function TaxCalculatorView({ workspaceId }: TaxCalculatorViewProps) {
 
   return (
     <div className="space-y-6">
+      {/* Toast Feedback */}
+      {feedback && (
+        <div
+          className={`p-4 rounded-xl text-sm font-semibold flex items-center justify-between border ${
+            feedback.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-rose-50 text-rose-800 border-rose-200'
+          }`}
+        >
+          <span>{feedback.message}</span>
+          <button onClick={() => setFeedback(null)} className="text-xs opacity-60 hover:opacity-100">
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Top Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div>
@@ -56,13 +85,23 @@ export function TaxCalculatorView({ workspaceId }: TaxCalculatorViewProps) {
           </p>
         </div>
 
-        <button
-          onClick={handleRunCalculation}
-          disabled={calculating}
-          className="rounded-lg bg-sky-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-sky-500 disabled:opacity-50 transition-colors"
-        >
-          {calculating ? 'Running Tax Formulas...' : '⚡ Calculate 2025 Tax'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRunCalculation}
+            disabled={calculating}
+            className="rounded-lg bg-sky-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-sky-500 disabled:opacity-50 transition-colors"
+          >
+            {calculating ? 'Running Tax Formulas...' : '⚡ Calculate 2025 Tax'}
+          </button>
+          {calc && onNavigateToFiling && (
+            <button
+              onClick={onNavigateToFiling}
+              className="rounded-lg bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-500 transition-colors"
+            >
+              Proceed to Approvals & Filing &rarr;
+            </button>
+          )}
+        </div>
       </div>
 
       {calc ? (
@@ -197,12 +236,16 @@ export function TaxCalculatorView({ workspaceId }: TaxCalculatorViewProps) {
         </>
       ) : (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center text-slate-500">
-          <p className="text-sm">No calculation has been generated for this workspace yet.</p>
+          <p className="text-sm font-semibold text-slate-800">No Calculation Generated Yet</p>
+          <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto mb-4">
+            Click below to calculate your estimated 2025 Luxembourg income tax according to the latest ACD progressive tax scale.
+          </p>
           <button
             onClick={handleRunCalculation}
-            className="mt-4 rounded-lg bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-500"
+            disabled={calculating}
+            className="rounded-lg bg-sky-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-sky-500 shadow-sm"
           >
-            Run First Tax Calculation
+            {calculating ? 'Running Calculations...' : '⚡ Run First Tax Calculation'}
           </button>
         </div>
       )}

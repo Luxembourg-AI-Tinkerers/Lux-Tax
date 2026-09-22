@@ -344,6 +344,24 @@ export class LuxTaxApiClient {
     );
   }
 
+  async getReturnVersion(workspaceId: string) {
+    return this.request<ReturnVersionDto | null>(`/api/workspaces/${workspaceId}/return-version`, {
+      method: 'GET',
+    });
+  }
+
+  async getFilingPackage(workspaceId: string) {
+    return this.request<FilingPackageDto | null>(`/api/workspaces/${workspaceId}/filing-package`, {
+      method: 'GET',
+    });
+  }
+
+  async getAssessment(workspaceId: string) {
+    return this.request<AssessmentDto | null>(`/api/workspaces/${workspaceId}/assessment`, {
+      method: 'GET',
+    });
+  }
+
   // Audit APIs
   async getAuditActivity(householdId: string, filter: AuditFilterDto = {}) {
     const params = new URLSearchParams();

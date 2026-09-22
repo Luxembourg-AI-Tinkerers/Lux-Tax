@@ -62,4 +62,25 @@ export class FilingController {
   ): Promise<{ nextWorkspaceId: string; nextTaxYear: number }> {
     return this.filingService.rollOverToNextYear(workspaceId, userId, req.ip);
   }
+
+  @Get('return-version')
+  async getReturnVersion(
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+  ): Promise<ReturnVersionDto | null> {
+    return this.filingService.getLatestReturnVersion(workspaceId);
+  }
+
+  @Get('filing-package')
+  async getFilingPackage(
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+  ): Promise<FilingPackageDto | null> {
+    return this.filingService.getLatestFilingPackage(workspaceId);
+  }
+
+  @Get('assessment')
+  async getAssessment(
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+  ): Promise<AssessmentDto | null> {
+    return this.filingService.getLatestAssessment(workspaceId);
+  }
 }

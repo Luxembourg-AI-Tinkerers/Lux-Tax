@@ -38,6 +38,8 @@ export default function DashboardPage() {
 
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [household, setHousehold] = useState<HouseholdDto | null>(null);
+  const [workspaces, setWorkspaces] = useState<readonly TaxYearWorkspaceDto[]>([]);
+  const [selectedYear, setSelectedYear] = useState<number>(2025);
   const [workspace, setWorkspace] = useState<TaxYearWorkspaceDto | null>(null);
   const [readiness, setReadiness] = useState<WorkspaceReadinessDto | null>(null);
   const [activity, setActivity] = useState<readonly AuditEventDto[]>([]);
@@ -47,20 +49,26 @@ export default function DashboardPage() {
   const loadData = useCallback(async () => {
     if (!householdId) return;
 
-    const [hhRes, actRes] = await Promise.all([
+    const [hhRes, actRes, wsListRes] = await Promise.all([
       apiClient.getHousehold(householdId),
       apiClient.getAuditActivity(householdId, { limit: 10 }),
+      apiClient.getWorkspaces(householdId),
     ]);
 
     if (hhRes.data) {
       setHousehold(hhRes.data);
-      const wsRes = await apiClient.getWorkspace(householdId, 2025);
-      if (wsRes.data) {
-        setWorkspace(wsRes.data);
-        const readRes = await apiClient.getWorkspaceReadiness(householdId, 2025);
-        if (readRes.data) {
-          setReadiness(readRes.data);
-        }
+    }
+
+    if (wsListRes.data) {
+      setWorkspaces(wsListRes.data);
+    }
+
+    const wsRes = await apiClient.getWorkspace(householdId, selectedYear);
+    if (wsRes.data) {
+      setWorkspace(wsRes.data);
+      const readRes = await apiClient.getWorkspaceReadiness(householdId, selectedYear);
+      if (readRes.data) {
+        setReadiness(readRes.data);
       }
     }
 
@@ -68,7 +76,7 @@ export default function DashboardPage() {
       setActivity(actRes.data);
     }
     setPageLoading(false);
-  }, [householdId]);
+  }, [householdId, selectedYear]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -107,10 +115,25 @@ export default function DashboardPage() {
               <h1 className="text-sm font-bold text-slate-900 leading-tight">
                 {household?.name || 'Tax Household'}
               </h1>
-              <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+              <div className="flex items-center gap-2 mt-0.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                Active Tax Year: <strong className="text-slate-700">2025</strong>
-              </span>
+                <span className="text-xs text-slate-500">Tax Year:</span>
+                {workspaces.length > 1 ? (
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    className="text-xs font-bold text-slate-800 bg-slate-100 rounded px-1.5 py-0.5 border border-slate-200 cursor-pointer"
+                  >
+                    {workspaces.map((w) => (
+                      <option key={w.id} value={w.taxYear}>
+                        {w.taxYear} ({w.status})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <strong className="text-xs text-slate-700">2025</strong>
+                )}
+              </div>
             </div>
           </div>
 
@@ -136,7 +159,7 @@ export default function DashboardPage() {
               { key: 'documents', label: 'Document Vault' },
               { key: 'facts', label: 'Confirmed Facts' },
               { key: 'questionnaire', label: 'Tax Profile & Checklist' },
-              { key: 'calculator', label: '2025 Tax Engine' },
+              { key: 'calculator', label: `${selectedYear} Tax Engine` },
               { key: 'filing', label: 'Approvals & Filing Package' },
               { key: 'assessment', label: 'Assessment & Rollover' },
               { key: 'admin', label: 'Admin & Models' },
@@ -366,11 +389,20 @@ export default function DashboardPage() {
         )}
 
         {activeTab === 'calculator' && workspace && (
-          <TaxCalculatorView workspaceId={workspace.id} />
+          <TaxCalculatorView
+            workspaceId={workspace.id}
+            onCalculated={loadData}
+            onNavigateToFiling={() => setActiveTab('filing')}
+          />
         )}
 
         {activeTab === 'filing' && workspace && household && (
-          <FilingPackageView workspace={workspace} household={household} onRefresh={loadData} />
+          <FilingPackageView
+            workspace={workspace}
+            household={household}
+            onRefresh={loadData}
+            onNavigateToCalculator={() => setActiveTab('calculator')}
+          />
         )}
 
         {activeTab === 'assessment' && workspace && (

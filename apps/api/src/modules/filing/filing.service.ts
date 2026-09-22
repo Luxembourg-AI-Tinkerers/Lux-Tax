@@ -539,4 +539,99 @@ export class FilingService {
       nextTaxYear,
     };
   }
+
+  async getLatestReturnVersion(workspaceId: string): Promise<ReturnVersionDto | null> {
+    const workspace = await this.prisma.taxYearWorkspace.findUnique({
+      where: { id: workspaceId },
+      include: {
+        household: {
+          include: { members: { where: { status: 'ACTIVE' } } },
+        },
+      },
+    });
+
+    if (!workspace) return null;
+
+    const returnVersion = await this.prisma.returnVersion.findFirst({
+      where: { workspaceId, versionNumber: workspace.activeReturnVersion },
+      include: { approvals: { include: { user: true } } },
+    });
+
+    if (!returnVersion) return null;
+
+    const activeApprovals = returnVersion.approvals.filter((a) => !a.isSuperseded);
+    const requiredApprovers = workspace.household.members;
+    const bothApproved =
+      requiredApprovers.length > 0 &&
+      requiredApprovers.every((m) => activeApprovals.some((a) => a.userId === m.userId));
+
+    return {
+      id: returnVersion.id,
+      workspaceId,
+      versionNumber: returnVersion.versionNumber,
+      isFrozen: returnVersion.isFrozen,
+      factsSnapshot: returnVersion.factsSnapshotJson as any,
+      calculationSnapshot: returnVersion.calculationSnapshotJson as any,
+      approvals: activeApprovals.map((a) => ({
+        id: a.id,
+        returnVersionId: a.returnVersionId,
+        userId: a.userId,
+        userEmail: a.user?.email,
+        approvedAt: a.approvedAt.toISOString(),
+        isSuperseded: a.isSuperseded,
+        supersededAt: a.supersededAt?.toISOString() || null,
+        supersedingReason: a.supersedingReason,
+      })),
+      bothSpousesApproved: bothApproved,
+      createdAt: returnVersion.createdAt.toISOString(),
+    };
+  }
+
+  async getLatestFilingPackage(workspaceId: string): Promise<FilingPackageDto | null> {
+    const workspace = await this.prisma.taxYearWorkspace.findUnique({
+      where: { id: workspaceId },
+    });
+
+    if (!workspace) return null;
+
+    const returnVersion = await this.prisma.returnVersion.findFirst({
+      where: { workspaceId, versionNumber: workspace.activeReturnVersion },
+      include: { filingPackage: true },
+    });
+
+    if (!returnVersion?.filingPackage) return null;
+    const fp = returnVersion.filingPackage;
+
+    return {
+      id: fp.id,
+      returnVersionId: fp.returnVersionId,
+      taxYear: fp.taxYear,
+      taxClass: fp.taxClass as TaxClass,
+      generatedAt: fp.generatedAt.toISOString(),
+      form100Boxes: (fp.form100BoxesJson as any) || [],
+      myGuichetGuide: (fp.myGuichetGuideJson as any) || [],
+      packageSha256: fp.packageSha256,
+    };
+  }
+
+  async getLatestAssessment(workspaceId: string): Promise<AssessmentDto | null> {
+    const assessment = await this.prisma.assessment.findFirst({
+      where: { workspaceId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!assessment) return null;
+
+    return {
+      id: assessment.id,
+      workspaceId: assessment.workspaceId,
+      taxYear: assessment.taxYear,
+      bulletinDate: assessment.bulletinDate.toISOString(),
+      assessedTaxableIncome: Number(assessment.assessedTaxableIncome),
+      assessedTaxDue: Number(assessment.assessedTaxDue),
+      differenceWithDeclared: Number(assessment.differenceWithDeclared),
+      discrepancies: (assessment.discrepanciesJson as any) || [],
+      createdAt: assessment.createdAt.toISOString(),
+    };
+  }
 }

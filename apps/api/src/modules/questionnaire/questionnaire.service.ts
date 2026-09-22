@@ -117,6 +117,13 @@ export class QuestionnaireService {
       throw new NotFoundException('Workspace not found');
     }
 
+    // Find tasks that were already explicitly resolved by the user
+    const previouslyResolved = await this.prisma.missingInformationItem.findMany({
+      where: { workspaceId, isResolved: true },
+      select: { taskType: true },
+    });
+    const resolvedTypes = new Set(previouslyResolved.map((t) => t.taskType));
+
     // Delete existing unresolved automated tasks
     await this.prisma.missingInformationItem.deleteMany({
       where: { workspaceId, isResolved: false },
@@ -135,7 +142,11 @@ export class QuestionnaireService {
       const hasSalary = workspace.confirmedFacts.some(
         (f) => f.category === 'EMPLOYMENT_INCOME',
       );
-      if (!hasSalary) {
+      if (hasSalary) {
+        await this.prisma.missingInformationItem.deleteMany({
+          where: { workspaceId, taskType: TaskType.MISSING_SALARY_CERTIFICATE },
+        });
+      } else if (!resolvedTypes.has(TaskType.MISSING_SALARY_CERTIFICATE)) {
         tasksToCreate.push({
           taskType: TaskType.MISSING_SALARY_CERTIFICATE,
           severity: TaskSeverity.BLOCKER,
@@ -152,7 +163,11 @@ export class QuestionnaireService {
       const hasMortgage = workspace.confirmedFacts.some(
         (f) => f.category === 'MORTGAGE_DEDUCTION',
       );
-      if (!hasMortgage) {
+      if (hasMortgage) {
+        await this.prisma.missingInformationItem.deleteMany({
+          where: { workspaceId, taskType: TaskType.MISSING_MORTGAGE_CERTIFICATE },
+        });
+      } else if (!resolvedTypes.has(TaskType.MISSING_MORTGAGE_CERTIFICATE)) {
         tasksToCreate.push({
           taskType: TaskType.MISSING_MORTGAGE_CERTIFICATE,
           severity: TaskSeverity.WARNING,
