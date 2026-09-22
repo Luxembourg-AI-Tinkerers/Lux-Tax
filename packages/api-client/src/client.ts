@@ -34,6 +34,11 @@ import {
   EvaluationRunDto,
   AdminOverviewDto,
   TaxDeadlineDto,
+  CreateModelDto,
+  UpdateModelDto,
+  TestModelConnectionDto,
+  TestModelConnectionResultDto,
+  UpdateModelRouteDto,
 } from '@luxtax/contracts';
 
 export interface ApiClientConfig {
@@ -410,9 +415,43 @@ export class LuxTaxApiClient {
     });
   }
 
+  async createAdminModel(body: CreateModelDto) {
+    return this.request<ModelDefinitionDto>('/api/admin/models', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async updateAdminModel(id: string, body: UpdateModelDto) {
+    return this.request<ModelDefinitionDto>(`/api/admin/models/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async deleteAdminModel(id: string) {
+    return this.request<{ success: boolean; message: string }>(`/api/admin/models/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async testAdminModel(body: TestModelConnectionDto) {
+    return this.request<TestModelConnectionResultDto>('/api/admin/models/test', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
   async getAdminModelRoutes() {
     return this.request<readonly ModelRouteDto[]>('/api/admin/model-routes', {
       method: 'GET',
+    });
+  }
+
+  async updateAdminModelRoute(routeId: string, body: UpdateModelRouteDto) {
+    return this.request<ModelRouteDto>(`/api/admin/model-routes/${routeId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
     });
   }
 

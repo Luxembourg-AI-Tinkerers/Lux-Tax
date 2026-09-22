@@ -173,4 +173,135 @@ describe('Admin Governance & Model Registry (e2e)', () => {
     expect(Array.isArray(body)).toBe(true);
     expect(body.length).toBeGreaterThan(0);
   });
+
+  describe('Custom Public AI Model Integration & Dynamic Routing', () => {
+    let createdModelId: string;
+
+    it('POST /api/admin/models registers a new custom public AI model', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/admin/models',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: {
+          displayName: 'Mistral Large EU Public',
+          providerType: 'CUSTOM_PUBLIC',
+          modelIdentifier: 'mistral-large-latest',
+          endpointUrl: 'https://api.mistral.ai/v1',
+          apiKey: 'sk-mistral-test-secret-key-12345',
+          capabilities: ['TEXT'],
+          permittedDataClass: 'CUSTOMER_DOCUMENT',
+          hostingRegion: 'EU_WEST_1',
+          status: 'ACTIVE',
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      const model = JSON.parse(res.payload);
+      expect(model.id).toBeDefined();
+      expect(model.displayName).toBe('Mistral Large EU Public');
+      expect(model.providerType).toBe('CUSTOM_PUBLIC');
+      expect(model.isCustom).toBe(true);
+      expect(model.apiKeyMasked).toBeDefined();
+      expect(model.apiKeyMasked).not.toContain('secret'); // Secret is masked
+      createdModelId = model.id;
+    });
+
+    it('GET /api/admin/models includes the newly created custom model', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/admin/models',
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const models = JSON.parse(res.payload);
+      const found = models.find((m: any) => m.id === createdModelId);
+      expect(found).toBeDefined();
+      expect(found.isCustom).toBe(true);
+      expect(found.modelIdentifier).toBe('mistral-large-latest');
+    });
+
+    it('POST /api/admin/models/test probes the endpoint and returns latency diagnostics', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/admin/models/test',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: {
+          modelId: createdModelId,
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      const probeResult = JSON.parse(res.payload);
+      expect(probeResult).toHaveProperty('latencyMs');
+      expect(probeResult).toHaveProperty('statusCode');
+      expect(probeResult).toHaveProperty('message');
+      expect(probeResult).toHaveProperty('timestamp');
+    });
+
+    it('PUT /api/admin/model-routes/:id dynamically reassigns a route to use custom model', async () => {
+      const res = await app.inject({
+        method: 'PUT',
+        url: '/api/admin/model-routes/route-salary-cert',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: {
+          primaryModelId: createdModelId,
+          fallbackModelIds: ['mdl-docling-v2'],
+          activeRolloutPercentage: 75,
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const updatedRoute = JSON.parse(res.payload);
+      expect(updatedRoute.primaryModelId).toBe(createdModelId);
+      expect(updatedRoute.fallbackModelIds).toContain('mdl-docling-v2');
+      expect(updatedRoute.activeRolloutPercentage).toBe(75);
+    });
+
+    it('DELETE /api/admin/models/:id prevents deleting a model actively used as primary route', async () => {
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/admin/models/${createdModelId}`,
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+
+      expect(res.statusCode).toBe(400);
+      const err = JSON.parse(res.payload);
+      expect(err.message).toContain('assigned as primary model');
+    });
+
+    it('DELETE /api/admin/models/:id successfully removes custom model after route is reassigned', async () => {
+      // Reassign route back to default built-in
+      await app.inject({
+        method: 'PUT',
+        url: '/api/admin/model-routes/route-salary-cert',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: {
+          primaryModelId: 'mdl-docling-v2',
+          fallbackModelIds: ['mdl-qwen35-4b'],
+          activeRolloutPercentage: 100,
+        },
+      });
+
+      // Delete custom model
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/admin/models/${createdModelId}`,
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload);
+      expect(body.success).toBe(true);
+
+      // Verify it no longer appears in GET /api/admin/models
+      const listRes = await app.inject({
+        method: 'GET',
+        url: '/api/admin/models',
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      const models = JSON.parse(listRes.payload);
+      expect(models.some((m: any) => m.id === createdModelId)).toBe(false);
+    });
+  });
 });

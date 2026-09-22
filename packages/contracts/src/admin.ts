@@ -28,13 +28,71 @@ export interface FormMappingDto {
 export interface ModelDefinitionDto {
   readonly id: string;
   readonly displayName: string;
-  readonly providerType: 'LOCAL' | 'PRIVATE_CLOUD' | 'HOSTED';
+  readonly providerType: 'LOCAL' | 'PRIVATE_CLOUD' | 'HOSTED' | 'CUSTOM_PUBLIC';
   readonly modelIdentifier: string;
   readonly capabilities: readonly ('TEXT' | 'VISION' | 'EMBEDDING' | 'RERANKING')[];
   readonly permittedDataClass: 'PUBLIC' | 'SYNTHETIC' | 'REDACTED_CUSTOMER' | 'CUSTOMER_DOCUMENT';
   readonly hostingRegion: string;
   readonly status: 'ACTIVE' | 'CANARY' | 'DISABLED';
   readonly healthy: boolean;
+  readonly endpointUrl?: string;
+  readonly apiKeyMasked?: string;
+  readonly isCustom?: boolean;
+  readonly latencyMs?: number;
+  readonly lastTestedAt?: string;
+}
+
+export interface CreateModelDto {
+  readonly displayName: string;
+  readonly providerType: 'LOCAL' | 'PRIVATE_CLOUD' | 'HOSTED' | 'CUSTOM_PUBLIC';
+  readonly modelIdentifier: string;
+  readonly capabilities: readonly ('TEXT' | 'VISION' | 'EMBEDDING' | 'RERANKING')[];
+  readonly permittedDataClass: 'PUBLIC' | 'SYNTHETIC' | 'REDACTED_CUSTOMER' | 'CUSTOMER_DOCUMENT';
+  readonly hostingRegion: string;
+  readonly endpointUrl?: string;
+  readonly apiKey?: string;
+  readonly status?: 'ACTIVE' | 'CANARY' | 'DISABLED';
+}
+
+export interface UpdateModelDto {
+  readonly displayName?: string;
+  readonly providerType?: 'LOCAL' | 'PRIVATE_CLOUD' | 'HOSTED' | 'CUSTOM_PUBLIC';
+  readonly modelIdentifier?: string;
+  readonly capabilities?: readonly ('TEXT' | 'VISION' | 'EMBEDDING' | 'RERANKING')[];
+  readonly permittedDataClass?: 'PUBLIC' | 'SYNTHETIC' | 'REDACTED_CUSTOMER' | 'CUSTOMER_DOCUMENT';
+  readonly hostingRegion?: string;
+  readonly endpointUrl?: string;
+  readonly apiKey?: string;
+  readonly status?: 'ACTIVE' | 'CANARY' | 'DISABLED';
+  readonly healthy?: boolean;
+}
+
+export interface TestModelConnectionDto {
+  readonly modelId?: string;
+  readonly endpointUrl?: string;
+  readonly modelIdentifier?: string;
+  readonly apiKey?: string;
+  readonly prompt?: string;
+}
+
+export interface TestModelConnectionResultDto {
+  readonly success: boolean;
+  readonly latencyMs: number;
+  readonly statusCode: number;
+  readonly message: string;
+  readonly sampleResponse?: string;
+  readonly resolvedModel?: string;
+  readonly timestamp: string;
+}
+
+export interface UpdateModelRouteDto {
+  readonly primaryModelId: string;
+  readonly fallbackModelIds: readonly string[];
+  readonly promptVersion?: string;
+  readonly outputSchemaVersion?: string;
+  readonly timeoutMs?: number;
+  readonly maxDataClass?: string;
+  readonly activeRolloutPercentage?: number;
 }
 
 export interface ModelRouteDto {
