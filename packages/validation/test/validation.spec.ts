@@ -6,8 +6,10 @@ import {
   createHouseholdSchema,
   inviteMemberSchema,
   initWorkspaceSchema,
+  uploadDocumentSchema,
+  confirmFactSchema,
 } from '../dist/index.js';
-import { HouseholdRole, TaxResidence } from '@luxtax/contracts';
+import { HouseholdRole, TaxResidence, FactCategory } from '@luxtax/contracts';
 
 describe('Validation Schemas', () => {
   describe('registerSchema', () => {
@@ -81,6 +83,47 @@ describe('Validation Schemas', () => {
     it('rejects out-of-range tax years', () => {
       assert.strictEqual(initWorkspaceSchema.safeParse({ taxYear: 1999 }).success, false);
       assert.strictEqual(initWorkspaceSchema.safeParse({ taxYear: 2040 }).success, false);
+    });
+  });
+
+  describe('uploadDocumentSchema', () => {
+    it('validates pdf document upload', () => {
+      const result = uploadDocumentSchema.safeParse({
+        fileName: 'certificat_remuneration_2025.pdf',
+        fileContentBase64: 'JVBERi0xLjQK...',
+        mimeType: 'application/pdf',
+      });
+      assert.strictEqual(result.success, true);
+    });
+
+    it('rejects unsupported executable mime types', () => {
+      const result = uploadDocumentSchema.safeParse({
+        fileName: 'malware.exe',
+        fileContentBase64: 'TVqQAAMAAAAEAAAA...',
+        mimeType: 'application/x-msdownload',
+      });
+      assert.strictEqual(result.success, false);
+    });
+  });
+
+  describe('confirmFactSchema', () => {
+    it('validates confirmed fact decimal currency format', () => {
+      const result = confirmFactSchema.safeParse({
+        category: FactCategory.EMPLOYMENT_INCOME,
+        fieldKey: 'grossSalary',
+        amount: '65432.10',
+        currency: 'EUR',
+      });
+      assert.strictEqual(result.success, true);
+    });
+
+    it('rejects invalid non-numeric amount', () => {
+      const result = confirmFactSchema.safeParse({
+        category: FactCategory.EMPLOYMENT_INCOME,
+        fieldKey: 'grossSalary',
+        amount: 'not-a-number',
+      });
+      assert.strictEqual(result.success, false);
     });
   });
 });

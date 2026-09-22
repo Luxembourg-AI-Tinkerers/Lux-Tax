@@ -41,11 +41,16 @@ enum AuditEventType {
   MEMBER_JOINED
   MEMBER_REMOVED
   WORKSPACE_INITIALIZED
+  DOCUMENT_UPLOADED
+  DOCUMENT_DELETED
   FACT_CREATED
   FACT_CONFIRMED
   FACT_UPDATED
+  TAX_CALCULATED
   RETURN_APPROVED
   APPROVAL_INVALIDATED
+  FILING_PACKAGE_GENERATED
+  ASSESSMENT_IMPORTED
 }
 
 enum TaxResidence {
@@ -57,6 +62,58 @@ enum TaxClass {
   CLASS_1
   CLASS_1A
   CLASS_2
+}
+
+enum DocumentVisibility {
+  PRIVATE_DRAFT
+  SHARED_FOR_DISCUSSION
+  PROPOSED_FOR_RETURN
+  INCLUDED_IN_RETURN
+  ARCHIVED
+}
+
+enum DocumentType {
+  SALARY_CERTIFICATE
+  PENSION_CERTIFICATE
+  MORTGAGE_CERTIFICATE
+  INSURANCE_CERTIFICATE
+  DONATION_CERTIFICATE
+  CHILDCARE_INVOICE
+  TAX_ASSESSMENT
+  UNKNOWN
+}
+
+enum DocumentStatus {
+  UPLOADED
+  PROCESSING
+  EXTRACTED
+  FAILED
+  CONFIRMED
+}
+
+enum FactCategory {
+  EMPLOYMENT_INCOME
+  PENSION_INCOME
+  MORTGAGE_DEDUCTION
+  INSURANCE_DEDUCTION
+  DONATION_DEDUCTION
+  CHILDCARE_EXPENSE
+  OTHER_DEDUCTION
+}
+
+enum TaskSeverity {
+  BLOCKER
+  WARNING
+  INFO
+}
+
+enum TaskType {
+  MISSING_SALARY_CERTIFICATE
+  MISSING_MORTGAGE_CERTIFICATE
+  UNCONFIRMED_FACT
+  MISSING_SPOUSE_INCOME
+  MISSING_RESIDENCE_INFO
+  RETURN_APPROVAL_REQUIRED
 }
 
 model User {
@@ -74,6 +131,10 @@ model User {
   sentInvitations  HouseholdInvitation[] @relation("Inviter")
   sessions         Session[]
   auditEvents      AuditEvent[]          @relation("UserAuditEvents")
+  documentsUploaded Document[]           @relation("DocumentUploader")
+  documentsOwned   Document[]           @relation("DocumentOwner")
+  confirmedFacts   ConfirmedFact[]       @relation("FactOwner")
+  returnApprovals  ReturnApproval[]      @relation("UserReturnApprovals")
 
   @@map("users")
 }
@@ -192,15 +253,222 @@ model TaxYearWorkspace {
   residenceStatus     TaxResidence    @default(RESIDENT)
   taxClass            TaxClass?
   estimatedTaxBalance Decimal?        @db.Decimal(12, 2)
+  calculationResult   Json?
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
 
   household           Household       @relation(fields: [householdId], references: [id], onDelete: Cascade)
   auditEvents         AuditEvent[]
+  documents           Document[]
+  extractedFacts      ExtractedFact[]
+  confirmedFacts      ConfirmedFact[]
+  taxProfile          TaxProfile?
+  tasks               MissingInformationItem[]
+  returnVersions      ReturnVersion[]
+  assessments         Assessment[]
 
   @@unique([householdId, taxYear])
   @@index([householdId])
   @@map("tax_year_workspaces")
+}
+
+model Document {
+  id           String             @id @default(uuid()) @db.Uuid
+  workspaceId  String             @db.Uuid
+  uploaderId   String             @db.Uuid
+  ownerId      String?            @db.Uuid
+  fileName     String
+  originalName String
+  mimeType     String
+  fileSize     Int
+  sha256Hash   String
+  storagePath  String
+  documentType DocumentType       @default(UNKNOWN)
+  status       DocumentStatus     @default(UPLOADED)
+  visibility   DocumentVisibility @default(PRIVATE_DRAFT)
+  pageCount    Int?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  workspace    TaxYearWorkspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  uploader     User               @relation("DocumentUploader", fields: [uploaderId], references: [id])
+  owner        User?              @relation("DocumentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  extractions  DocumentExtraction[]
+  extractedFacts ExtractedFact[]
+  confirmedFacts ConfirmedFact[]
+
+  @@index([workspaceId])
+  @@index([uploaderId])
+  @@index([sha256Hash])
+  @@map("documents")
+}
+
+model DocumentExtraction {
+  id            String    @id @default(uuid()) @db.Uuid
+  documentId    String    @db.Uuid
+  extractedText String    @db.Text
+  confidence    Float     @default(1.0)
+  rawJson       Json?
+  createdAt     DateTime  @default(now())
+
+  document      Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("document_extractions")
+}
+
+model ExtractedFact {
+  id            String    @id @default(uuid()) @db.Uuid
+  documentId    String    @db.Uuid
+  workspaceId   String    @db.Uuid
+  ownerId       String?   @db.Uuid
+  fieldName     String
+  fieldValue    String
+  currency      String    @default("EUR")
+  confidence    Float     @default(1.0)
+  sourcePage    Int?
+  sourceSnippet String?
+  isConfirmed   Boolean   @default(false)
+  confirmedAt   DateTime?
+  confirmedById String?   @db.Uuid
+  createdAt     DateTime  @default(now())
+
+  document      Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  workspace     TaxYearWorkspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  confirmedFact ConfirmedFact?
+
+  @@index([workspaceId])
+  @@index([documentId])
+  @@map("extracted_facts")
+}
+
+model ConfirmedFact {
+  id                    String        @id @default(uuid()) @db.Uuid
+  workspaceId           String        @db.Uuid
+  ownerId               String?       @db.Uuid
+  category              FactCategory
+  fieldKey              String
+  amount                Decimal       @db.Decimal(12, 2)
+  currency              String        @default("EUR")
+  taxYear               Int
+  sourceDocumentId      String?       @db.Uuid
+  extractedFactId       String?       @unique @db.Uuid
+  isSharedWithHousehold Boolean       @default(true)
+  isIncludedInReturn    Boolean       @default(true)
+  description           String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  workspace             TaxYearWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner                 User?             @relation("FactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  sourceDocument        Document?         @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+  extractedFact         ExtractedFact?    @relation(fields: [extractedFactId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([ownerId])
+  @@map("confirmed_facts")
+}
+
+model TaxProfile {
+  id            String           @id @default(uuid()) @db.Uuid
+  workspaceId   String           @unique @db.Uuid
+  maritalStatus String           @default("SINGLE")
+  answersJson   Json             @default("{}")
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  workspace     TaxYearWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("tax_profiles")
+}
+
+model MissingInformationItem {
+  id                  String           @id @default(uuid()) @db.Uuid
+  workspaceId         String           @db.Uuid
+  taskType            TaskType
+  severity            TaskSeverity     @default(WARNING)
+  title               String
+  description         String
+  isResolved          Boolean          @default(false)
+  assignedToUserId    String?          @db.Uuid
+  relatedDocumentType DocumentType?
+  relatedFactId       String?          @db.Uuid
+  createdAt           DateTime         @default(now())
+  resolvedAt          DateTime?
+
+  workspace           TaxYearWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("missing_information_items")
+}
+
+model ReturnVersion {
+  id                     String           @id @default(uuid()) @db.Uuid
+  workspaceId            String           @db.Uuid
+  versionNumber          Int              @default(1)
+  isFrozen               Boolean          @default(false)
+  factsSnapshotJson      Json             @default("[]")
+  calculationSnapshotJson Json            @default("{}")
+  generatedPackageHash   String?
+  createdAt              DateTime         @default(now())
+
+  workspace              TaxYearWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  approvals              ReturnApproval[]
+  filingPackage          FilingPackage?
+
+  @@unique([workspaceId, versionNumber])
+  @@index([workspaceId])
+  @@map("return_versions")
+}
+
+model ReturnApproval {
+  id                String        @id @default(uuid()) @db.Uuid
+  returnVersionId   String        @db.Uuid
+  userId            String        @db.Uuid
+  approvedAt        DateTime      @default(now())
+  isSuperseded      Boolean       @default(false)
+  supersededAt      DateTime?
+  supersedingReason String?
+
+  returnVersion     ReturnVersion @relation(fields: [returnVersionId], references: [id], onDelete: Cascade)
+  user              User          @relation("UserReturnApprovals", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([returnVersionId, userId])
+  @@index([returnVersionId])
+  @@index([userId])
+  @@map("return_approvals")
+}
+
+model FilingPackage {
+  id                 String        @id @default(uuid()) @db.Uuid
+  returnVersionId    String        @unique @db.Uuid
+  taxYear            Int
+  taxClass           TaxClass
+  form100BoxesJson   Json          @default("[]")
+  myGuichetGuideJson Json          @default("[]")
+  packageSha256      String
+  generatedAt        DateTime      @default(now())
+
+  returnVersion      ReturnVersion @relation(fields: [returnVersionId], references: [id], onDelete: Cascade)
+
+  @@map("filing_packages")
+}
+
+model Assessment {
+  id                    String           @id @default(uuid()) @db.Uuid
+  workspaceId           String           @db.Uuid
+  taxYear               Int
+  bulletinDate          DateTime
+  assessedTaxableIncome Decimal          @db.Decimal(12, 2)
+  assessedTaxDue        Decimal          @db.Decimal(12, 2)
+  differenceWithDeclared Decimal         @db.Decimal(12, 2)
+  discrepanciesJson     Json             @default("[]")
+  createdAt             DateTime         @default(now())
+
+  workspace             TaxYearWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("assessments")
 }
 
 model AuditEvent {

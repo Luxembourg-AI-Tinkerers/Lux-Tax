@@ -24,8 +24,20 @@ export class HouseholdGuard implements CanActivate {
       throw new ForbiddenException('User is not authenticated');
     }
 
-    const householdId =
+    let householdId =
       request.params.id || request.params.householdId || request.body?.householdId;
+
+    if (!householdId && (request.params.workspaceId || request.body?.workspaceId)) {
+      const wsId = request.params.workspaceId || request.body?.workspaceId;
+      const ws = await this.prisma.taxYearWorkspace.findUnique({
+        where: { id: wsId },
+        select: { householdId: true },
+      });
+      if (ws) {
+        householdId = ws.householdId;
+      }
+    }
+
     if (!householdId) {
       // If no household ID is in the route, skip check or fail safe
       return true;

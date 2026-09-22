@@ -12,6 +12,21 @@ import {
   HouseholdRole,
 } from '@luxtax/contracts';
 import { InviteModal } from '../../../../components/InviteModal';
+import { DocumentsView } from '../../../../components/DocumentsView';
+import { FactsView } from '../../../../components/FactsView';
+import { QuestionnaireView } from '../../../../components/QuestionnaireView';
+import { TaxCalculatorView } from '../../../../components/TaxCalculatorView';
+import { FilingPackageView } from '../../../../components/FilingPackageView';
+import { AssessmentView } from '../../../../components/AssessmentView';
+
+type TabKey =
+  | 'overview'
+  | 'documents'
+  | 'facts'
+  | 'questionnaire'
+  | 'calculator'
+  | 'filing'
+  | 'assessment';
 
 export default function DashboardPage() {
   const params = useParams();
@@ -19,6 +34,7 @@ export default function DashboardPage() {
   const { user, logout, isLoading } = useAuth();
   const householdId = params?.householdId as string;
 
+  const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [household, setHousehold] = useState<HouseholdDto | null>(null);
   const [workspace, setWorkspace] = useState<TaxYearWorkspaceDto | null>(null);
   const [readiness, setReadiness] = useState<WorkspaceReadinessDto | null>(null);
@@ -36,7 +52,6 @@ export default function DashboardPage() {
 
     if (hhRes.data) {
       setHousehold(hhRes.data);
-      // Fetch 2025 workspace
       const wsRes = await apiClient.getWorkspace(householdId, 2025);
       if (wsRes.data) {
         setWorkspace(wsRes.data);
@@ -80,7 +95,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Top Header */}
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur-md">
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-600 text-white font-bold text-sm">
@@ -98,222 +113,275 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
+            <div className="hidden sm:block text-right">
               <p className="text-xs font-semibold text-slate-800">{user?.email}</p>
-              <p className="text-[10px] text-slate-400">Authenticated Co-Filer</p>
+              <p className="text-[10px] text-slate-400">Resident Taxpayer</p>
             </div>
             <button
               onClick={() => logout()}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition"
+              className="text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 transition"
             >
               Sign Out
             </button>
           </div>
         </div>
+
+        {/* Navigation Tabs */}
+        <div className="border-t border-slate-200 bg-white px-4 sm:px-6">
+          <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto py-2">
+            {[
+              { key: 'overview', label: 'Overview & Readiness' },
+              { key: 'documents', label: 'Document Vault' },
+              { key: 'facts', label: 'Confirmed Facts' },
+              { key: 'questionnaire', label: 'Tax Profile & Checklist' },
+              { key: 'calculator', label: '2025 Tax Engine' },
+              { key: 'filing', label: 'Approvals & Filing Package' },
+              { key: 'assessment', label: 'Assessment & Rollover' },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key as TabKey)}
+                className={`whitespace-nowrap rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
+                  activeTab === tab.key
+                    ? 'bg-sky-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main Content Area */}
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 space-y-8">
-        {/* Status & Readiness Overview */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Readiness Card */}
-          <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
-              Return Readiness
-            </h2>
-            <div className="flex items-baseline gap-2 mb-3">
-              <span className="text-3xl font-extrabold text-slate-900">
-                {readiness?.overallPercentage ?? 10}%
-              </span>
-              <span className="text-xs text-slate-500 font-medium">overall completion</span>
-            </div>
-            <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden mb-4">
-              <div
-                className="bg-sky-600 h-2.5 rounded-full transition-all duration-500"
-                style={{ width: `${readiness?.overallPercentage ?? 10}%` }}
-              />
-            </div>
-            <p className="text-xs text-slate-500">
-              Workspace initialized for Luxembourg Personal Income Tax (Form 100 / Decompte).
-            </p>
-          </div>
-
-          {/* Tax Estimate Card */}
-          <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Estimated Outcome
-              </h2>
-              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200/60">
-                Draft Estimate
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2 mb-2">
-              <span className="text-3xl font-extrabold text-slate-900">
-                {workspace?.estimatedTaxBalance ? `€${workspace.estimatedTaxBalance}` : '€0.00'}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Based on confirmed evidence facts. Exact tax calculation will update as documents and salary certificates are processed.
-            </p>
-          </div>
-
-          {/* Household Co-Filer Card */}
-          <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Household Co-Filers
-              </h2>
-              {!coFiler && (
-                <button
-                  onClick={() => setIsInviteOpen(true)}
-                  className="text-xs text-sky-600 hover:text-sky-700 font-semibold"
-                >
-                  + Invite Spouse
-                </button>
-              )}
-            </div>
-
-            <div className="space-y-3">
-              {/* Primary Filer */}
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                <div className="flex items-center gap-2.5">
-                  <div className="h-7 w-7 rounded-lg bg-sky-100 text-sky-700 font-bold text-xs flex items-center justify-center">
-                    1
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-slate-800">
-                      {primaryFiler?.user?.email || 'Primary Filer'}
-                    </p>
-                    <p className="text-[10px] text-slate-400">Primary Taxpayer</p>
-                  </div>
+        {activeTab === 'overview' && (
+          <>
+            {/* Top Metrics Grid */}
+            <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Readiness Card */}
+              <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
+                  Return Readiness
+                </h2>
+                <div className="flex items-baseline gap-2 mb-3">
+                  <span className="text-3xl font-extrabold text-slate-900">
+                    {workspace?.completionScore ?? 0}%
+                  </span>
+                  <span className="text-xs text-slate-500 font-medium">overall completion</span>
                 </div>
-                <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-                  Active
-                </span>
+                <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden mb-4">
+                  <div
+                    className="bg-sky-600 h-2.5 rounded-full transition-all duration-500"
+                    style={{ width: `${workspace?.completionScore ?? 0}%` }}
+                  />
+                </div>
+                <p className="text-xs text-slate-500">
+                  Status:{' '}
+                  <strong className="text-slate-700 font-semibold uppercase">
+                    {workspace?.status || 'Draft'}
+                  </strong>
+                </p>
               </div>
 
-              {/* Co-Filer */}
-              {coFiler ? (
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="flex items-center gap-2.5">
-                    <div className="h-7 w-7 rounded-lg bg-purple-100 text-purple-700 font-bold text-xs flex items-center justify-center">
-                      2
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-800">
-                        {coFiler.user?.email}
-                      </p>
-                      <p className="text-[10px] text-slate-400">Spouse (Co-Filer)</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-                    Active
+              {/* Tax Estimate Card */}
+              <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Estimated Outcome
+                  </h2>
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                    Deterministic 2025
                   </span>
                 </div>
+                <div className="flex items-baseline gap-2 mb-2">
+                  <span className="text-3xl font-extrabold text-slate-900">
+                    {workspace?.estimatedTaxBalance
+                      ? Number(workspace.estimatedTaxBalance) < 0
+                        ? `Refund: €${Math.abs(Number(workspace.estimatedTaxBalance)).toFixed(2)}`
+                        : `Due: €${Number(workspace.estimatedTaxBalance).toFixed(2)}`
+                      : '€0.00'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setActiveTab('calculator')}
+                  className="mt-2 text-xs font-semibold text-sky-600 hover:text-sky-700"
+                >
+                  View full calculation breakdown &rarr;
+                </button>
+              </div>
+
+              {/* Household Co-Filer Card */}
+              <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Household Co-Filers
+                  </h2>
+                  {!coFiler && (
+                    <button
+                      onClick={() => setIsInviteOpen(true)}
+                      className="text-xs text-sky-600 hover:text-sky-700 font-semibold"
+                    >
+                      + Invite Spouse
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-7 w-7 rounded-lg bg-sky-100 text-sky-700 font-bold text-xs flex items-center justify-center">
+                        1
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-slate-800">
+                          {primaryFiler?.user?.email || 'Primary Filer'}
+                        </p>
+                        <p className="text-[10px] text-slate-400">Primary Taxpayer</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
+                      Active
+                    </span>
+                  </div>
+
+                  {coFiler ? (
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-7 w-7 rounded-lg bg-purple-100 text-purple-700 font-bold text-xs flex items-center justify-center">
+                          2
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-slate-800">{coFiler.user?.email}</p>
+                          <p className="text-[10px] text-slate-400">Spouse (Co-Filer)</p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
+                        Active
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl border border-dashed border-slate-200 text-center">
+                      <p className="text-xs text-slate-500 mb-2">No spouse linked yet</p>
+                      <button
+                        onClick={() => setIsInviteOpen(true)}
+                        className="py-1.5 px-3 rounded-lg bg-sky-50 text-sky-600 font-semibold text-xs hover:bg-sky-100 transition"
+                      >
+                        Send Spousal Invitation
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* Quick Feature Cards */}
+            <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div
+                onClick={() => setActiveTab('documents')}
+                className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-sky-300 transition cursor-pointer"
+              >
+                <div className="h-10 w-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center font-bold text-lg mb-4">
+                  📄
+                </div>
+                <h3 className="font-bold text-slate-900 text-sm mb-1">Document Vault</h3>
+                <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                  Upload salary certificates, mortgage interest slips, and verify extracted figures.
+                </p>
+                <span className="text-xs font-semibold text-sky-600">Open Vault &rarr;</span>
+              </div>
+
+              <div
+                onClick={() => setActiveTab('questionnaire')}
+                className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-sky-300 transition cursor-pointer"
+              >
+                <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-lg mb-4">
+                  📝
+                </div>
+                <h3 className="font-bold text-slate-900 text-sm mb-1">Tax Profile & Checklist</h3>
+                <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                  Answer residency and deduction questions, and resolve missing evidence tasks.
+                </p>
+                <span className="text-xs font-semibold text-purple-600">Open Checklist &rarr;</span>
+              </div>
+
+              <div
+                onClick={() => setActiveTab('filing')}
+                className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-sky-300 transition cursor-pointer"
+              >
+                <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg mb-4">
+                  📦
+                </div>
+                <h3 className="font-bold text-slate-900 text-sm mb-1">Approvals & Filing Package</h3>
+                <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                  Review dual spousal approvals, Form 100 boxes, and MyGuichet manual filing guide.
+                </p>
+                <span className="text-xs font-semibold text-emerald-600">View Filing Package &rarr;</span>
+              </div>
+            </section>
+
+            {/* Recent Activity Audit Trail */}
+            <section className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
+                Immutable Household Activity Trail
+              </h2>
+              {activity.length === 0 ? (
+                <p className="text-xs text-slate-400">No activity recorded yet.</p>
               ) : (
-                <div className="p-3 rounded-xl border border-dashed border-slate-200 text-center">
-                  <p className="text-xs text-slate-500 mb-2">No spouse linked yet</p>
-                  <button
-                    onClick={() => setIsInviteOpen(true)}
-                    className="py-1.5 px-3 rounded-lg bg-sky-50 text-sky-600 font-semibold text-xs hover:bg-sky-100 transition"
-                  >
-                    Send Spousal Invitation
-                  </button>
+                <div className="divide-y divide-slate-100">
+                  {activity.map((event) => (
+                    <div key={event.id} className="py-3 flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-semibold text-slate-800">{event.description}</p>
+                        <span className="text-[10px] text-slate-400">
+                          Actor: {event.actorEmail || event.actorId.substring(0, 8)} •{' '}
+                          {new Date(event.createdAt).toLocaleString()}
+                        </span>
+                      </div>
+                      <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 shrink-0">
+                        {event.eventType}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
-            </div>
-          </div>
-        </section>
+            </section>
+          </>
+        )}
 
-        {/* Action Modules */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-sky-300 transition cursor-pointer">
-            <div className="h-10 w-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center font-bold text-lg mb-4">
-              📄
-            </div>
-            <h3 className="font-bold text-slate-900 text-sm mb-1">Document Vault</h3>
-            <p className="text-xs text-slate-500 leading-relaxed mb-4">
-              Upload salary certificates (Certificat de salaire), mortgage interest attestations, and pension contributions.
-            </p>
-            <span className="text-xs font-semibold text-sky-600">Open Vault &rarr;</span>
-          </div>
+        {activeTab === 'documents' && workspace && (
+          <DocumentsView workspaceId={workspace.id} onFactsChanged={loadData} />
+        )}
 
-          <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-sky-300 transition cursor-pointer">
-            <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-lg mb-4">
-              📝
-            </div>
-            <h3 className="font-bold text-slate-900 text-sm mb-1">Tax Profile Questionnaire</h3>
-            <p className="text-xs text-slate-500 leading-relaxed mb-4">
-              Answer plain-language questions regarding tax residency, marital status, children, and eligible deductions.
-            </p>
-            <span className="text-xs font-semibold text-purple-600">Start Questionnaire &rarr;</span>
-          </div>
+        {activeTab === 'facts' && workspace && (
+          <FactsView workspaceId={workspace.id} onFactsChanged={loadData} />
+        )}
 
-          <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-sky-300 transition cursor-pointer">
-            <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg mb-4">
-              ⚖️
-            </div>
-            <h3 className="font-bold text-slate-900 text-sm mb-1">Review & Joint Approval</h3>
-            <p className="text-xs text-slate-500 leading-relaxed mb-4">
-              Inspect the evidence-linked Form 100 draft. Both spouses must approve before filing packages are produced.
-            </p>
-            <span className="text-xs font-semibold text-emerald-600">Review Draft &rarr;</span>
-          </div>
-        </section>
+        {activeTab === 'questionnaire' && workspace && (
+          <QuestionnaireView workspaceId={workspace.id} onProfileUpdated={loadData} />
+        )}
 
-        {/* Chronological Household Activity Audit Feed */}
-        <section className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="font-bold text-slate-900 text-sm">Household Audit & Activity Feed</h3>
-              <p className="text-xs text-slate-500">
-                Immutable record of all changes, uploads, invitations, and approvals with actor attribution.
-              </p>
-            </div>
-            <button
-              onClick={loadData}
-              className="text-xs font-medium text-slate-500 hover:text-slate-800"
-            >
-              Refresh
-            </button>
-          </div>
+        {activeTab === 'calculator' && workspace && (
+          <TaxCalculatorView workspaceId={workspace.id} />
+        )}
 
-          <div className="space-y-4">
-            {activity.length === 0 ? (
-              <p className="text-xs text-slate-400 py-4 text-center">No activity recorded yet.</p>
-            ) : (
-              activity.map((event) => (
-                <div
-                  key={event.id}
-                  className="flex items-start gap-3 p-3 rounded-xl bg-slate-50/70 border border-slate-100 text-xs"
-                >
-                  <div className="h-2 w-2 rounded-full bg-sky-500 mt-1.5 shrink-0" />
-                  <div className="flex-1">
-                    <p className="font-medium text-slate-800">{event.description}</p>
-                    <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-400">
-                      <span>Actor: {event.actorEmail || event.actorId}</span>
-                      <span>&bull;</span>
-                      <span>{new Date(event.createdAt).toLocaleString()}</span>
-                    </div>
-                  </div>
-                  <span className="font-mono text-[10px] text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-200 shrink-0">
-                    {event.eventType}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
+        {activeTab === 'filing' && workspace && household && (
+          <FilingPackageView workspace={workspace} household={household} onRefresh={loadData} />
+        )}
+
+        {activeTab === 'assessment' && workspace && (
+          <AssessmentView workspace={workspace} onRefresh={loadData} />
+        )}
       </main>
 
-      {/* Spousal Invitation Modal */}
+      {/* Invite Modal */}
       {household && (
         <InviteModal
-          householdId={household.id}
           isOpen={isInviteOpen}
           onClose={() => setIsInviteOpen(false)}
-          onSuccess={loadData}
+          householdId={household.id}
+          onSuccess={() => loadData()}
         />
       )}
     </div>

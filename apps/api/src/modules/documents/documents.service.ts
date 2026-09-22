@@ -1,0 +1,457 @@
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import {
+  DocumentVisibility,
+  DocumentType,
+  DocumentStatus,
+  AuditEventType,
+  DocumentDto,
+} from '@luxtax/contracts';
+import { UploadDocumentInput } from '@luxtax/validation';
+import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+
+@Injectable()
+export class DocumentsService {
+  private readonly uploadDir = path.resolve(process.cwd(), 'uploads');
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {
+    if (!fs.existsSync(this.uploadDir)) {
+      fs.mkdirSync(this.uploadDir, { recursive: true });
+    }
+  }
+
+  async uploadDocument(
+    workspaceId: string,
+    uploaderId: string,
+    input: UploadDocumentInput,
+    ipAddress?: string,
+  ): Promise<DocumentDto> {
+    const workspace = await this.prisma.taxYearWorkspace.findUnique({
+      where: { id: workspaceId },
+      include: { household: true },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException('Workspace not found');
+    }
+
+    // 1. Compute SHA-256 hash of file content
+    const fileBuffer = Buffer.from(input.fileContentBase64, 'base64');
+    const sha256Hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+
+    // 2. Check for duplicate document in this workspace
+    const existingDoc = await this.prisma.document.findFirst({
+      where: {
+        workspaceId,
+        sha256Hash,
+      },
+    });
+
+    if (existingDoc) {
+      throw new BadRequestException('Duplicate document: this file has already been uploaded to this workspace');
+    }
+
+    // 3. Save file locally
+    const workspaceUploadDir = path.join(this.uploadDir, workspaceId);
+    if (!fs.existsSync(workspaceUploadDir)) {
+      fs.mkdirSync(workspaceUploadDir, { recursive: true });
+    }
+    const safeFileName = `${sha256Hash.substring(0, 12)}_${path.basename(input.fileName)}`;
+    const storagePath = path.join(workspaceUploadDir, safeFileName);
+    fs.writeFileSync(storagePath, fileBuffer);
+
+    // 4. Text and heuristic extraction
+    const rawText = fileBuffer.toString('utf-8');
+    const extractionResult = this.extractFromText(rawText, input.fileName);
+
+    // 5. Create Document record
+    const document = await this.prisma.document.create({
+      data: {
+        workspaceId,
+        uploaderId,
+        ownerId: input.ownerId || uploaderId,
+        fileName: safeFileName,
+        originalName: input.fileName,
+        mimeType: input.mimeType,
+        fileSize: fileBuffer.length,
+        sha256Hash,
+        storagePath,
+        documentType: extractionResult.documentType,
+        status: DocumentStatus.EXTRACTED,
+        visibility: input.visibility || DocumentVisibility.PRIVATE_DRAFT,
+        pageCount: 1,
+      },
+    });
+
+    // 6. Create DocumentExtraction record
+    await this.prisma.documentExtraction.create({
+      data: {
+        documentId: document.id,
+        extractedText: extractionResult.extractedSnippet,
+        confidence: extractionResult.confidence,
+        rawJson: extractionResult.fields,
+      },
+    });
+
+    // 7. Create ExtractedFact records
+    for (const field of extractionResult.fields) {
+      await this.prisma.extractedFact.create({
+        data: {
+          documentId: document.id,
+          workspaceId,
+          ownerId: input.ownerId || uploaderId,
+          fieldName: field.name,
+          fieldValue: field.value,
+          currency: 'EUR',
+          confidence: field.confidence,
+          sourcePage: 1,
+          sourceSnippet: field.snippet,
+        },
+      });
+    }
+
+    // 8. Record audit event
+    await this.auditService.logEvent({
+      householdId: workspace.householdId,
+      workspaceId,
+      actorId: uploaderId,
+      eventType: AuditEventType.DOCUMENT_UPLOADED,
+      entityType: 'Document',
+      entityId: document.id,
+      newValue: {
+        fileName: document.originalName,
+        documentType: document.documentType,
+        visibility: document.visibility,
+        sha256Hash: document.sha256Hash,
+      },
+      description: `Uploaded document "${document.originalName}" classified as ${document.documentType}`,
+      ipAddress,
+    });
+
+    return {
+      id: document.id,
+      workspaceId: document.workspaceId,
+      uploaderId: document.uploaderId,
+      ownerId: document.ownerId,
+      fileName: document.fileName,
+      originalName: document.originalName,
+      mimeType: document.mimeType,
+      fileSize: document.fileSize,
+      sha256Hash: document.sha256Hash,
+      documentType: document.documentType as DocumentType,
+      status: document.status as DocumentStatus,
+      visibility: document.visibility as DocumentVisibility,
+      pageCount: document.pageCount,
+      taxYear: workspace.taxYear,
+      extractedFactsCount: extractionResult.fields.length,
+      createdAt: document.createdAt.toISOString(),
+      updatedAt: document.updatedAt.toISOString(),
+    };
+  }
+
+  async getDocumentsForWorkspace(
+    workspaceId: string,
+    currentUserId: string,
+  ): Promise<DocumentDto[]> {
+    const workspace = await this.prisma.taxYearWorkspace.findUnique({
+      where: { id: workspaceId },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException('Workspace not found');
+    }
+
+    const docs = await this.prisma.document.findMany({
+      where: {
+        workspaceId,
+        OR: [
+          { uploaderId: currentUserId },
+          { visibility: { in: [DocumentVisibility.SHARED_FOR_DISCUSSION, DocumentVisibility.INCLUDED_IN_RETURN] } },
+        ],
+      },
+      include: {
+        _count: {
+          select: { extractedFacts: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return docs.map((doc) => ({
+      id: doc.id,
+      workspaceId: doc.workspaceId,
+      uploaderId: doc.uploaderId,
+      ownerId: doc.ownerId,
+      fileName: doc.fileName,
+      originalName: doc.originalName,
+      mimeType: doc.mimeType,
+      fileSize: doc.fileSize,
+      sha256Hash: doc.sha256Hash,
+      documentType: doc.documentType as DocumentType,
+      status: doc.status as DocumentStatus,
+      visibility: doc.visibility as DocumentVisibility,
+      pageCount: doc.pageCount,
+      taxYear: workspace.taxYear,
+      extractedFactsCount: doc._count.extractedFacts,
+      createdAt: doc.createdAt.toISOString(),
+      updatedAt: doc.updatedAt.toISOString(),
+    }));
+  }
+
+  async updateVisibility(
+    workspaceId: string,
+    documentId: string,
+    userId: string,
+    visibility: DocumentVisibility,
+    ipAddress?: string,
+  ): Promise<DocumentDto> {
+    const doc = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      include: { workspace: true },
+    });
+
+    if (!doc || doc.workspaceId !== workspaceId) {
+      throw new NotFoundException('Document not found in workspace');
+    }
+
+    if (doc.uploaderId !== userId && doc.ownerId !== userId) {
+      throw new ForbiddenException('Only uploader or owner can change document visibility');
+    }
+
+    const updated = await this.prisma.document.update({
+      where: { id: documentId },
+      data: { visibility },
+    });
+
+    await this.auditService.logEvent({
+      householdId: doc.workspace.householdId,
+      workspaceId,
+      actorId: userId,
+      eventType: AuditEventType.FACT_UPDATED,
+      entityType: 'Document',
+      entityId: documentId,
+      previousValue: { visibility: doc.visibility },
+      newValue: { visibility },
+      description: `Changed visibility of "${doc.originalName}" to ${visibility}`,
+      ipAddress,
+    });
+
+    return {
+      id: updated.id,
+      workspaceId: updated.workspaceId,
+      uploaderId: updated.uploaderId,
+      ownerId: updated.ownerId,
+      fileName: updated.fileName,
+      originalName: updated.originalName,
+      mimeType: updated.mimeType,
+      fileSize: updated.fileSize,
+      sha256Hash: updated.sha256Hash,
+      documentType: updated.documentType as DocumentType,
+      status: updated.status as DocumentStatus,
+      visibility: updated.visibility as DocumentVisibility,
+      pageCount: updated.pageCount,
+      taxYear: doc.workspace.taxYear,
+      createdAt: updated.createdAt.toISOString(),
+      updatedAt: updated.updatedAt.toISOString(),
+    };
+  }
+
+  async deleteDocument(
+    workspaceId: string,
+    documentId: string,
+    userId: string,
+    ipAddress?: string,
+  ): Promise<void> {
+    const doc = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      include: { workspace: true },
+    });
+
+    if (!doc || doc.workspaceId !== workspaceId) {
+      throw new NotFoundException('Document not found');
+    }
+
+    if (doc.uploaderId !== userId && doc.ownerId !== userId) {
+      throw new ForbiddenException('Only uploader or owner can delete this document');
+    }
+
+    await this.prisma.document.delete({
+      where: { id: documentId },
+    });
+
+    try {
+      if (fs.existsSync(doc.storagePath)) {
+        fs.unlinkSync(doc.storagePath);
+      }
+    } catch {
+      // safe ignore disk cleanup error
+    }
+
+    await this.auditService.logEvent({
+      householdId: doc.workspace.householdId,
+      workspaceId,
+      actorId: userId,
+      eventType: AuditEventType.DOCUMENT_DELETED,
+      entityType: 'Document',
+      entityId: documentId,
+      description: `Deleted document "${doc.originalName}"`,
+      ipAddress,
+    });
+  }
+
+  /**
+   * Deterministic tax document parser for Luxembourg certificates.
+   */
+  private extractFromText(rawText: string, fileName: string): {
+    documentType: DocumentType;
+    confidence: number;
+    extractedSnippet: string;
+    fields: Array<{ name: string; value: string; confidence: number; snippet: string }>;
+  } {
+    const textLower = (rawText + ' ' + fileName).toLowerCase();
+    const fields: Array<{ name: string; value: string; confidence: number; snippet: string }> = [];
+
+    // Check for Certificat de Rémunération (Salary certificate)
+    if (
+      textLower.includes('certificat de rémunération') ||
+      textLower.includes('certificat de salaire') ||
+      textLower.includes('salary') ||
+      textLower.includes('rémunération') ||
+      textLower.includes('code 101') ||
+      textLower.includes('code 102')
+    ) {
+      // Extract gross salary (Code 101/102 or gross)
+      const grossMatch =
+        rawText.match(/(?:code\s*10[12]|brut|gross|rémunération\s*brute)[^\d]*([\d.,]+)/i) ||
+        rawText.match(/([\d]+[.,][\d]{2})/);
+      if (grossMatch) {
+        const val = this.normalizeAmount(grossMatch[1]);
+        fields.push({
+          name: 'grossSalary',
+          value: val,
+          confidence: 0.95,
+          snippet: grossMatch[0],
+        });
+      }
+
+      // Extract social security (Code 103)
+      const socialMatch = rawText.match(/(?:code\s*103|sécurité\s*sociale|cotisations)[^\d]*([\d.,]+)/i);
+      if (socialMatch) {
+        fields.push({
+          name: 'socialSecurity',
+          value: this.normalizeAmount(socialMatch[1]),
+          confidence: 0.95,
+          snippet: socialMatch[0],
+        });
+      }
+
+      // Extract withholding tax (Code 105)
+      const taxMatch = rawText.match(/(?:code\s*105|retenue\s*d['’]impôt|withholding)[^\d]*([\d.,]+)/i);
+      if (taxMatch) {
+        fields.push({
+          name: 'withholdingTax',
+          value: this.normalizeAmount(taxMatch[1]),
+          confidence: 0.95,
+          snippet: taxMatch[0],
+        });
+      }
+
+      return {
+        documentType: DocumentType.SALARY_CERTIFICATE,
+        confidence: 0.95,
+        extractedSnippet: rawText.substring(0, 300),
+        fields,
+      };
+    }
+
+    // Check for Mortgage certificate (Attestation d'intérêts débiteurs)
+    if (
+      textLower.includes('intérêts débiteurs') ||
+      textLower.includes('prêt immobilier') ||
+      textLower.includes('mortgage') ||
+      textLower.includes('emprunt')
+    ) {
+      const match = rawText.match(/(?:intérêts|total|montant)[^\d]*([\d.,]+)/i);
+      if (match) {
+        fields.push({
+          name: 'mortgageInterest',
+          value: this.normalizeAmount(match[1]),
+          confidence: 0.90,
+          snippet: match[0],
+        });
+      }
+
+      return {
+        documentType: DocumentType.MORTGAGE_CERTIFICATE,
+        confidence: 0.90,
+        extractedSnippet: rawText.substring(0, 300),
+        fields,
+      };
+    }
+
+    // Check for Insurance (Attestation d'assurance Art 111)
+    if (textLower.includes('assurance') || textLower.includes('prévoyance') || textLower.includes('art 111')) {
+      const match = rawText.match(/(?:prime|montant|cotisation)[^\d]*([\d.,]+)/i);
+      if (match) {
+        fields.push({
+          name: 'insurancePremium',
+          value: this.normalizeAmount(match[1]),
+          confidence: 0.90,
+          snippet: match[0],
+        });
+      }
+
+      return {
+        documentType: DocumentType.INSURANCE_CERTIFICATE,
+        confidence: 0.88,
+        extractedSnippet: rawText.substring(0, 300),
+        fields,
+      };
+    }
+
+    // Check for Donation (Certificat de don Art 112)
+    if (textLower.includes('don') || textLower.includes('libéralité') || textLower.includes('donation')) {
+      const match = rawText.match(/(?:montant|don|somme)[^\d]*([\d.,]+)/i);
+      if (match) {
+        fields.push({
+          name: 'donationAmount',
+          value: this.normalizeAmount(match[1]),
+          confidence: 0.92,
+          snippet: match[0],
+        });
+      }
+
+      return {
+        documentType: DocumentType.DONATION_CERTIFICATE,
+        confidence: 0.92,
+        extractedSnippet: rawText.substring(0, 300),
+        fields,
+      };
+    }
+
+    return {
+      documentType: DocumentType.UNKNOWN,
+      confidence: 0.5,
+      extractedSnippet: rawText.substring(0, 300),
+      fields: [],
+    };
+  }
+
+  private normalizeAmount(raw: string): string {
+    // Replaces thousand separators and standardizes comma/point
+    const clean = raw.replace(/\s/g, '').replace(/,/g, '.');
+    const num = parseFloat(clean);
+    return isNaN(num) ? '0.00' : num.toFixed(2);
+  }
+}

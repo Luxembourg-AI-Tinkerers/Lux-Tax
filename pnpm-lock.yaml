@@ -32,6 +32,9 @@ importers:
       '@luxtax/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@luxtax/tax-engine':
+        specifier: workspace:*
+        version: link:../../packages/tax-engine
       '@luxtax/validation':
         specifier: workspace:*
         version: link:../../packages/validation
@@ -217,6 +220,22 @@ importers:
       '@luxtax/config':
         specifier: workspace:*
         version: link:../config
+      typescript:
+        specifier: ^5.8.2
+        version: 5.9.3
+
+  packages/tax-engine:
+    dependencies:
+      '@luxtax/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@luxtax/config':
+        specifier: workspace:*
+        version: link:../config
+      '@types/node':
+        specifier: ^22.13.9
+        version: 22.20.4
       typescript:
         specifier: ^5.8.2
         version: 5.9.3

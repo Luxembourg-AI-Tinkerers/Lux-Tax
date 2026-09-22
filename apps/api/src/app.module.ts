@@ -5,6 +5,11 @@ import { UsersModule } from './modules/users/users.module';
 import { HouseholdsModule } from './modules/households/households.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { DocumentsModule } from './modules/documents/documents.module';
+import { FactsModule } from './modules/facts/facts.module';
+import { QuestionnaireModule } from './modules/questionnaire/questionnaire.module';
+import { CalculationsModule } from './modules/calculations/calculations.module';
+import { FilingModule } from './modules/filing/filing.module';
 
 @Module({
   imports: [
@@ -14,6 +19,11 @@ import { AuditModule } from './modules/audit/audit.module';
     UsersModule,
     HouseholdsModule,
     WorkspacesModule,
+    DocumentsModule,
+    FactsModule,
+    QuestionnaireModule,
+    CalculationsModule,
+    FilingModule,
   ],
 })
 export class AppModule {}

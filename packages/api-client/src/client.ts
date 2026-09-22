@@ -14,6 +14,19 @@ import {
   WorkspaceReadinessDto,
   AuditEventDto,
   AuditFilterDto,
+  DocumentDto,
+  UploadDocumentRequestDto,
+  DocumentVisibility,
+  ExtractedFactDto,
+  ConfirmedFactDto,
+  ConfirmFactRequestDto,
+  UpdateFactRequestDto,
+  QuestionnaireAnswersDto,
+  ReadinessDetailsDto,
+  TaxCalculationResultDto,
+  ReturnVersionDto,
+  FilingPackageDto,
+  AssessmentDto,
 } from '@luxtax/contracts';
 
 export interface ApiClientConfig {
@@ -182,6 +195,144 @@ export class LuxTaxApiClient {
       `/api/households/${householdId}/workspaces/${taxYear}/readiness`,
       {
         method: 'GET',
+      }
+    );
+  }
+
+  // Document APIs
+  async getDocuments(workspaceId: string) {
+    return this.request<DocumentDto[]>(`/api/workspaces/${workspaceId}/documents`, {
+      method: 'GET',
+    });
+  }
+
+  async uploadDocument(workspaceId: string, body: UploadDocumentRequestDto) {
+    return this.request<DocumentDto>(`/api/workspaces/${workspaceId}/documents`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async updateDocumentVisibility(
+    workspaceId: string,
+    documentId: string,
+    visibility: DocumentVisibility,
+  ) {
+    return this.request<DocumentDto>(
+      `/api/workspaces/${workspaceId}/documents/${documentId}/visibility`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ visibility }),
+      }
+    );
+  }
+
+  async deleteDocument(workspaceId: string, documentId: string) {
+    return this.request<{ success: boolean }>(
+      `/api/workspaces/${workspaceId}/documents/${documentId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+  }
+
+  // Facts APIs
+  async getFacts(workspaceId: string) {
+    return this.request<{
+      extractedFacts: ExtractedFactDto[];
+      confirmedFacts: ConfirmedFactDto[];
+    }>(`/api/workspaces/${workspaceId}/facts`, {
+      method: 'GET',
+    });
+  }
+
+  async confirmFact(workspaceId: string, body: ConfirmFactRequestDto) {
+    return this.request<ConfirmedFactDto>(`/api/workspaces/${workspaceId}/facts/confirm`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async updateFact(workspaceId: string, factId: string, body: UpdateFactRequestDto) {
+    return this.request<ConfirmedFactDto>(`/api/workspaces/${workspaceId}/facts/${factId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async deleteFact(workspaceId: string, factId: string) {
+    return this.request<{ success: boolean }>(`/api/workspaces/${workspaceId}/facts/${factId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Questionnaire & Missing Items APIs
+  async getQuestionnaire(workspaceId: string) {
+    return this.request<{
+      answers: QuestionnaireAnswersDto;
+      readiness: ReadinessDetailsDto;
+    }>(`/api/workspaces/${workspaceId}/questionnaire`, {
+      method: 'GET',
+    });
+  }
+
+  async saveQuestionnaire(workspaceId: string, body: QuestionnaireAnswersDto) {
+    return this.request<{
+      answers: QuestionnaireAnswersDto;
+      readiness: ReadinessDetailsDto;
+    }>(`/api/workspaces/${workspaceId}/questionnaire`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async resolveTask(workspaceId: string, taskId: string) {
+    return this.request<{ success: boolean }>(
+      `/api/workspaces/${workspaceId}/tasks/${taskId}/resolve`,
+      {
+        method: 'POST',
+      }
+    );
+  }
+
+  // Calculation APIs
+  async calculateTax(workspaceId: string) {
+    return this.request<TaxCalculationResultDto>(`/api/workspaces/${workspaceId}/calculate`, {
+      method: 'POST',
+    });
+  }
+
+  async getCalculation(workspaceId: string) {
+    return this.request<TaxCalculationResultDto | null>(`/api/workspaces/${workspaceId}/calculation`, {
+      method: 'GET',
+    });
+  }
+
+  // Filing Package, Approvals, and Assessment APIs
+  async approveReturn(workspaceId: string) {
+    return this.request<ReturnVersionDto>(`/api/workspaces/${workspaceId}/approve`, {
+      method: 'POST',
+    });
+  }
+
+  async generateFilingPackage(workspaceId: string) {
+    return this.request<FilingPackageDto>(`/api/workspaces/${workspaceId}/filing-package`, {
+      method: 'POST',
+    });
+  }
+
+  async importAssessment(workspaceId: string, body: any) {
+    return this.request<AssessmentDto>(`/api/workspaces/${workspaceId}/assessment`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async rolloverToNextYear(workspaceId: string) {
+    return this.request<{ nextWorkspaceId: string; nextTaxYear: number }>(
+      `/api/workspaces/${workspaceId}/rollover`,
+      {
+        method: 'POST',
       }
     );
   }

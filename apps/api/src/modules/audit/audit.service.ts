@@ -21,6 +21,10 @@ export interface CreateAuditLogParams {
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async logEvent(params: CreateAuditLogParams): Promise<AuditEventDto> {
+    return this.log(params);
+  }
+
   async log(params: CreateAuditLogParams): Promise<AuditEventDto> {
     const event = await this.prisma.auditEvent.create({
       data: {
