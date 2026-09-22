@@ -18,6 +18,7 @@ import { QuestionnaireView } from '../../../../components/QuestionnaireView';
 import { TaxCalculatorView } from '../../../../components/TaxCalculatorView';
 import { FilingPackageView } from '../../../../components/FilingPackageView';
 import { AssessmentView } from '../../../../components/AssessmentView';
+import { AdminConsoleView } from '../../../../components/AdminConsoleView';
 
 type TabKey =
   | 'overview'
@@ -26,7 +27,8 @@ type TabKey =
   | 'questionnaire'
   | 'calculator'
   | 'filing'
-  | 'assessment';
+  | 'assessment'
+  | 'admin';
 
 export default function DashboardPage() {
   const params = useParams();
@@ -137,6 +139,7 @@ export default function DashboardPage() {
               { key: 'calculator', label: '2025 Tax Engine' },
               { key: 'filing', label: 'Approvals & Filing Package' },
               { key: 'assessment', label: 'Assessment & Rollover' },
+              { key: 'admin', label: 'Admin & Models' },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -373,6 +376,8 @@ export default function DashboardPage() {
         {activeTab === 'assessment' && workspace && (
           <AssessmentView workspace={workspace} onRefresh={loadData} />
         )}
+
+        {activeTab === 'admin' && <AdminConsoleView />}
       </main>
 
       {/* Invite Modal */}

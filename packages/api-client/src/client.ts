@@ -27,6 +27,12 @@ import {
   ReturnVersionDto,
   FilingPackageDto,
   AssessmentDto,
+  TaxRulePackageDto,
+  FormMappingDto,
+  ModelDefinitionDto,
+  ModelRouteDto,
+  EvaluationRunDto,
+  AdminOverviewDto,
 } from '@luxtax/contracts';
 
 export interface ApiClientConfig {
@@ -353,4 +359,52 @@ export class LuxTaxApiClient {
       }
     );
   }
+
+  // Admin APIs (Platform & AI Governance)
+  async getAdminOverview() {
+    return this.request<AdminOverviewDto>('/api/admin/overview', {
+      method: 'GET',
+    });
+  }
+
+  async getAdminTaxRules() {
+    return this.request<readonly TaxRulePackageDto[]>('/api/admin/tax-rules', {
+      method: 'GET',
+    });
+  }
+
+  async getAdminForms() {
+    return this.request<readonly FormMappingDto[]>('/api/admin/forms', {
+      method: 'GET',
+    });
+  }
+
+  async getAdminModels() {
+    return this.request<readonly ModelDefinitionDto[]>('/api/admin/models', {
+      method: 'GET',
+    });
+  }
+
+  async getAdminModelRoutes() {
+    return this.request<readonly ModelRouteDto[]>('/api/admin/model-routes', {
+      method: 'GET',
+    });
+  }
+
+  async getAdminEvaluations() {
+    return this.request<readonly EvaluationRunDto[]>('/api/admin/evaluations', {
+      method: 'GET',
+    });
+  }
+
+  async getAdminAudit(filter: { limit?: number; offset?: number } = {}) {
+    const params = new URLSearchParams();
+    if (filter.limit) params.append('limit', String(filter.limit));
+    if (filter.offset) params.append('offset', String(filter.offset));
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request<readonly AuditEventDto[]>(`/api/admin/audit${query}`, {
+      method: 'GET',
+    });
+  }
 }
+

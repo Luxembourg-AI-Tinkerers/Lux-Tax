@@ -1,5 +1,4 @@
 import { Tabs } from 'expo-router';
-import { View, Text } from 'react-native';
 
 export default function TabsLayout() {
   return (
@@ -22,14 +21,42 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Workspace',
+          title: 'Home',
           headerTitle: 'Luxembourg Tax Workspace',
+        }}
+      />
+      <Tabs.Screen
+        name="documents"
+        options={{
+          title: 'Documents',
+          headerTitle: 'Document Vault & Evidence',
+        }}
+      />
+      <Tabs.Screen
+        name="tasks"
+        options={{
+          title: 'Tasks',
+          headerTitle: 'Readiness & Tasks',
+        }}
+      />
+      <Tabs.Screen
+        name="estimate"
+        options={{
+          title: 'Estimate',
+          headerTitle: '2025 Tax Estimate',
+        }}
+      />
+      <Tabs.Screen
+        name="account"
+        options={{
+          title: 'Account',
+          headerTitle: 'Account & Settings',
         }}
       />
       <Tabs.Screen
         name="activity"
         options={{
-          title: 'Activity',
+          href: null, // Accessible from Home contextual action
           headerTitle: 'Household Audit Log',
         }}
       />
