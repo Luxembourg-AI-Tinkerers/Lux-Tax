@@ -10,11 +10,14 @@ import {
   ModelRouteDto,
   EvaluationRunDto,
   AuditEventDto,
+  TaxDeadlineDto,
 } from '@luxtax/contracts';
+import { LUXEMBOURG_TAX_TERMS } from '@luxtax/design-tokens';
 
 export function AdminConsoleView() {
   const [overview, setOverview] = useState<AdminOverviewDto | null>(null);
   const [taxRules, setTaxRules] = useState<readonly TaxRulePackageDto[]>([]);
+  const [deadlines, setDeadlines] = useState<readonly TaxDeadlineDto[]>([]);
   const [forms, setForms] = useState<readonly FormMappingDto[]>([]);
   const [models, setModels] = useState<readonly ModelDefinitionDto[]>([]);
   const [routes, setRoutes] = useState<readonly ModelRouteDto[]>([]);
@@ -25,10 +28,11 @@ export function AdminConsoleView() {
 
   const loadAdminData = async () => {
     setLoading(true);
-    const [ovRes, rulesRes, formsRes, modelsRes, routesRes, evalsRes, auditRes] =
+    const [ovRes, rulesRes, deadlinesRes, formsRes, modelsRes, routesRes, evalsRes, auditRes] =
       await Promise.all([
         apiClient.getAdminOverview(),
         apiClient.getAdminTaxRules(),
+        apiClient.getAdminDeadlines(),
         apiClient.getAdminForms(),
         apiClient.getAdminModels(),
         apiClient.getAdminModelRoutes(),
@@ -38,6 +42,7 @@ export function AdminConsoleView() {
 
     if (ovRes.data) setOverview(ovRes.data);
     if (rulesRes.data) setTaxRules(rulesRes.data);
+    if (deadlinesRes.data) setDeadlines(deadlinesRes.data);
     if (formsRes.data) setForms(formsRes.data);
     if (modelsRes.data) setModels(modelsRes.data);
     if (routesRes.data) setRoutes(routesRes.data);
@@ -237,6 +242,65 @@ export function AdminConsoleView() {
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* Statutory Filing Deadlines */}
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-sm font-bold text-slate-900 mb-2">Statutory Filing Deadlines & Schedules (§ 19)</h3>
+            <p className="text-xs text-slate-500 mb-4">
+              All official filing windows and legal deadlines are versioned per tax year from official ACD sources.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {deadlines.map((dl) => (
+                <div key={dl.id} className="rounded-lg border border-slate-200 p-4 bg-slate-50">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-slate-900">{dl.name}</span>
+                    <span className="rounded bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-800">
+                      {dl.deadlineDate}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 mt-2">{dl.description}</p>
+                  <a
+                    href={dl.officialSourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block mt-3 text-[11px] font-semibold text-sky-600 hover:underline"
+                  >
+                    Official ACD Source &rarr;
+                  </a>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Multilingual Luxembourg Tax Terminology Reference */}
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-sm font-bold text-slate-900 mb-2">Multilingual Tax Dictionary (§ 18)</h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Curated official tax terminology across English, French, and German with legal statutory references.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="border-b border-slate-200 bg-slate-50 font-semibold text-slate-700">
+                  <tr>
+                    <th className="py-2 px-3">English (EN)</th>
+                    <th className="py-2 px-3">Français (FR)</th>
+                    <th className="py-2 px-3">Deutsch (DE)</th>
+                    <th className="py-2 px-3">Statutory Basis</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {LUXEMBOURG_TAX_TERMS.map((term) => (
+                    <tr key={term.key}>
+                      <td className="py-2 px-3 font-medium text-slate-900">{term.en}</td>
+                      <td className="py-2 px-3 text-slate-700">{term.fr}</td>
+                      <td className="py-2 px-3 text-slate-700">{term.de}</td>
+                      <td className="py-2 px-3 font-mono text-[11px] text-sky-700">{term.legalReference || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

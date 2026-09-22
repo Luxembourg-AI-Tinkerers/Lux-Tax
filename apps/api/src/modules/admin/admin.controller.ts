@@ -9,6 +9,7 @@ import {
   ModelRouteDto,
   EvaluationRunDto,
   AuditEventDto,
+  TaxDeadlineDto,
 } from '@luxtax/contracts';
 
 @Controller('api/admin')
@@ -24,6 +25,11 @@ export class AdminController {
   @Get('tax-rules')
   getTaxRules(): readonly TaxRulePackageDto[] {
     return this.adminService.getTaxRules();
+  }
+
+  @Get('deadlines')
+  getDeadlines(): readonly TaxDeadlineDto[] {
+    return this.adminService.getDeadlines();
   }
 
   @Get('forms')

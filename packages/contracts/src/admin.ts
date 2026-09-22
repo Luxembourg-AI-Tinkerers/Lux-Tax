@@ -70,3 +70,14 @@ export interface AdminOverviewDto {
   readonly totalWorkspaces: number;
   readonly totalAuditEvents: number;
 }
+
+export interface TaxDeadlineDto {
+  readonly id: string;
+  readonly taxYear: number;
+  readonly code: 'FILING_WINDOW_OPEN' | 'FILING_DEADLINE_LEGAL' | 'MYGUICHET_ELECTRONIC_DEADLINE' | 'ASSESSMENT_FOLLOWUP';
+  readonly name: string;
+  readonly deadlineDate: string;
+  readonly description: string;
+  readonly officialSourceUrl: string;
+}
+

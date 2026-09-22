@@ -33,6 +33,7 @@ import {
   ModelRouteDto,
   EvaluationRunDto,
   AdminOverviewDto,
+  TaxDeadlineDto,
 } from '@luxtax/contracts';
 
 export interface ApiClientConfig {
@@ -369,6 +370,12 @@ export class LuxTaxApiClient {
 
   async getAdminTaxRules() {
     return this.request<readonly TaxRulePackageDto[]>('/api/admin/tax-rules', {
+      method: 'GET',
+    });
+  }
+
+  async getAdminDeadlines() {
+    return this.request<readonly TaxDeadlineDto[]>('/api/admin/deadlines', {
       method: 'GET',
     });
   }

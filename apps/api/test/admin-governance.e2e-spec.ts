@@ -84,6 +84,21 @@ describe('Admin Governance & Model Registry (e2e)', () => {
     expect(rule2025.status).toBe('ACTIVE');
   });
 
+  it('GET /api/admin/deadlines returns official filing dates and statutory deadlines', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/deadlines',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.payload);
+    expect(Array.isArray(body)).toBe(true);
+    expect(body.length).toBeGreaterThan(0);
+    expect(body.some((d: any) => d.code === 'FILING_DEADLINE_LEGAL')).toBe(true);
+    expect(body.every((d: any) => d.officialSourceUrl.startsWith('https://'))).toBe(true);
+  });
+
   it('GET /api/admin/forms returns Form 100 mappings', async () => {
     const res = await app.inject({
       method: 'GET',

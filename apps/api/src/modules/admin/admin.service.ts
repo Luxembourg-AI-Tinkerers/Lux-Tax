@@ -9,6 +9,7 @@ import {
   EvaluationRunDto,
   AuditEventDto,
   AuditEventType,
+  TaxDeadlineDto,
 } from '@luxtax/contracts';
 import * as crypto from 'crypto';
 
@@ -78,6 +79,47 @@ export class AdminService {
           { boxNumber: '305', fieldName: 'LIFE_INSURANCE_PREMIUMS', description: 'Art. 111 Life & Disability Insurance' },
           { boxNumber: '310', fieldName: 'CHARITABLE_DONATIONS', description: 'Art. 112 Recognized Charitable Donations' },
         ],
+      },
+    ];
+  }
+
+  getDeadlines(): readonly TaxDeadlineDto[] {
+    return [
+      {
+        id: 'ddl-2025-open',
+        taxYear: 2025,
+        code: 'FILING_WINDOW_OPEN',
+        name: 'Official Filing Window Opens',
+        deadlineDate: '2026-02-01',
+        description: 'Administration des contributions directes (ACD) opens electronic and paper submission for 2025 returns.',
+        officialSourceUrl: 'https://guichet.public.lu/en/citoyens/fiscalite/declaration-impot-decompte/activite-professionnelle/declaration-revenus/declaration-impot.html',
+      },
+      {
+        id: 'ddl-2025-close',
+        taxYear: 2025,
+        code: 'FILING_DEADLINE_LEGAL',
+        name: 'Legal Filing Deadline (Form 100)',
+        deadlineDate: '2026-12-31',
+        description: 'Final statutory deadline for taxpayers resident in Luxembourg to submit personal income tax declaration Form 100 for tax year 2025.',
+        officialSourceUrl: 'https://impotsdirects.public.lu/fr/formulaires/pers_physiques.html',
+      },
+      {
+        id: 'ddl-2025-myguichet',
+        taxYear: 2025,
+        code: 'MYGUICHET_ELECTRONIC_DEADLINE',
+        name: 'MyGuichet.lu Electronic Filing Portal Window',
+        deadlineDate: '2026-12-31',
+        description: 'Electronic submission window with LuxTrust authentication on MyGuichet.lu.',
+        officialSourceUrl: 'https://guichet.public.lu/en/citoyens/fiscalite/declaration-impot-decompte/activite-professionnelle/declaration-revenus/declaration-impot-electronique.html',
+      },
+      {
+        id: 'ddl-2025-assessment',
+        taxYear: 2025,
+        code: 'ASSESSMENT_FOLLOWUP',
+        name: 'ACD Assessment Notice Follow-Up Window',
+        deadlineDate: '2027-03-31',
+        description: 'Period for receiving official Bulletin d\'imposition and filing any formal reclamation within 3 months of notification.',
+        officialSourceUrl: 'https://impotsdirects.public.lu/fr/legislation/recours.html',
       },
     ];
   }
