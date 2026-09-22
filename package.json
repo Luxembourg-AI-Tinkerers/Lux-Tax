@@ -1,0 +1,28 @@
+{
+  "name": "luxembourg-personal-tax-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Luxembourg Personal Tax Workspace - Monorepo",
+  "packageManager": "pnpm@11.18.0",
+  "workspaces": [
+    "packages/*",
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "build": "corepack pnpm -r run build",
+    "dev": "turbo run dev",
+    "lint": "corepack pnpm -r run lint",
+    "test": "corepack pnpm --filter @luxtax/validation test && corepack pnpm --filter @luxtax/api test:e2e",
+    "typecheck": "corepack pnpm tsc -b packages/contracts packages/validation packages/design-tokens packages/api-client",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.5.3",
+    "turbo": "^2.11.2",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@luxtax/validation",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'Linting validation...'",
+    "test": "node --test test/*.spec.ts"
+  },
+  "dependencies": {
+    "@luxtax/contracts": "workspace:*",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@luxtax/config": "workspace:*",
+    "@types/node": "^22.13.9",
+    "typescript": "^5.8.2"
+  }
+}

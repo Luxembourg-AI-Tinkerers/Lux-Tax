@@ -1,0 +1,20 @@
+{
+  "name": "@luxtax/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'Linting api-client...'"
+  },
+  "dependencies": {
+    "@luxtax/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@luxtax/config": "workspace:*",
+    "typescript": "^5.8.2"
+  }
+}

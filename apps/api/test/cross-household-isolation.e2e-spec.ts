@@ -1,0 +1,142 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import { AppModule } from '../src/app.module';
+import { PrismaService } from '../src/prisma/prisma.service';
+
+describe('Cross-Household Isolation & Security (e2e)', () => {
+  let app: NestFastifyApplication;
+  let prisma: PrismaService;
+
+  let victimToken: string;
+  let victimHouseholdId: string;
+  let attackerToken: string;
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    prisma = moduleFixture.get<PrismaService>(PrismaService);
+    await app.init();
+    await app.getHttpAdapter().getInstance().ready();
+
+    // 1. Register Victim (Alice)
+    const aliceRes = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        email: 'victim.isolation@example.lu',
+        password: 'Password123!',
+      },
+    });
+    victimToken = JSON.parse(aliceRes.body).tokens.accessToken;
+
+    // Create Victim Household
+    const hhRes = await app.inject({
+      method: 'POST',
+      url: '/api/households',
+      headers: { authorization: `Bearer ${victimToken}` },
+      payload: { name: 'Victim Household' },
+    });
+    victimHouseholdId = JSON.parse(hhRes.body).id;
+
+    // 2. Register Attacker (Charlie)
+    const charlieRes = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        email: 'attacker.isolation@example.lu',
+        password: 'Password123!',
+      },
+    });
+    attackerToken = JSON.parse(charlieRes.body).tokens.accessToken;
+  });
+
+  afterAll(async () => {
+    if (prisma) {
+      const testEmails = ['victim.isolation@example.lu', 'attacker.isolation@example.lu'];
+      const users = await prisma.user.findMany({
+        where: { email: { in: testEmails } },
+        select: { id: true },
+      });
+      const userIds = users.map((u) => u.id);
+
+      if (userIds.length > 0) {
+        await prisma.auditEvent.deleteMany({
+          where: {
+            OR: [
+              { actorId: { in: userIds } },
+              { actorEmail: { in: testEmails } },
+              { household: { createdById: { in: userIds } } },
+            ],
+          },
+        });
+        await prisma.taxYearWorkspace.deleteMany({
+          where: { household: { createdById: { in: userIds } } },
+        });
+        await prisma.householdInvitation.deleteMany({
+          where: { household: { createdById: { in: userIds } } },
+        });
+        await prisma.householdMembership.deleteMany({
+          where: { userId: { in: userIds } },
+        });
+        await prisma.household.deleteMany({
+          where: { createdById: { in: userIds } },
+        });
+        await prisma.session.deleteMany({
+          where: { userId: { in: userIds } },
+        });
+        await prisma.personProfile.deleteMany({
+          where: { userId: { in: userIds } },
+        });
+        await prisma.user.deleteMany({
+          where: { id: { in: userIds } },
+        });
+      }
+    }
+    if (app) {
+      await app.close();
+    }
+  });
+
+  it('Attacker cannot view victim household details', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/households/${victimHouseholdId}`,
+      headers: { authorization: `Bearer ${attackerToken}` },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('Attacker cannot view victim tax year workspace', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/households/${victimHouseholdId}/workspaces/2025`,
+      headers: { authorization: `Bearer ${attackerToken}` },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('Attacker cannot invite members to victim household', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/households/${victimHouseholdId}/invitations`,
+      headers: { authorization: `Bearer ${attackerToken}` },
+      payload: {
+        email: 'intruder@example.lu',
+        role: 'CO_FILER',
+      },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('Attacker cannot read victim household audit log', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/households/${victimHouseholdId}/activity`,
+      headers: { authorization: `Bearer ${attackerToken}` },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+});

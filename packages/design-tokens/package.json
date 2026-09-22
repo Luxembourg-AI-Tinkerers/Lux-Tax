@@ -1,0 +1,17 @@
+{
+  "name": "@luxtax/design-tokens",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'Linting design-tokens...'"
+  },
+  "devDependencies": {
+    "@luxtax/config": "workspace:*",
+    "typescript": "^5.8.2"
+  }
+}

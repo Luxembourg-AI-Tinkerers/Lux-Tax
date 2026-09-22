@@ -1,0 +1,8 @@
+packages:
+  - 'packages/*'
+  - 'apps/api'
+  - 'apps/web'
+allowBuilds:
+  '@prisma/engines': true
+  argon2: true
+  prisma: true
