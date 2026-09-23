@@ -80,6 +80,12 @@ enum DocumentType {
   DONATION_CERTIFICATE
   CHILDCARE_INVOICE
   TAX_ASSESSMENT
+  FREELANCE_INVOICE
+  BUSINESS_EXPENSE
+  PROFIT_AND_LOSS_STATEMENT
+  VAT_RETURN
+  BUSINESS_TAX_ADVANCE
+  FREELANCE_CONTRACT
   UNKNOWN
 }
 
@@ -93,6 +99,8 @@ enum DocumentStatus {
 
 enum FactCategory {
   EMPLOYMENT_INCOME
+  FREELANCE_INCOME
+  BUSINESS_EXPENSE
   PENSION_INCOME
   MORTGAGE_DEDUCTION
   INSURANCE_DEDUCTION
@@ -114,6 +122,7 @@ enum TaskType {
   MISSING_SPOUSE_INCOME
   MISSING_RESIDENCE_INFO
   RETURN_APPROVAL_REQUIRED
+  MISSING_FREELANCE_DOCUMENT
 }
 
 model User {
@@ -135,6 +144,7 @@ model User {
   documentsOwned   Document[]           @relation("DocumentOwner")
   confirmedFacts   ConfirmedFact[]       @relation("FactOwner")
   returnApprovals  ReturnApproval[]      @relation("UserReturnApprovals")
+  freelanceProfiles FreelanceBusinessProfile[]
 
   @@map("users")
 }
@@ -266,6 +276,7 @@ model TaxYearWorkspace {
   tasks               MissingInformationItem[]
   returnVersions      ReturnVersion[]
   assessments         Assessment[]
+  freelanceProfiles   FreelanceBusinessProfile[]
 
   @@unique([householdId, taxYear])
   @@index([householdId])
@@ -495,3 +506,61 @@ model AuditEvent {
   @@index([actorId])
   @@map("audit_events")
 }
+
+model FreelanceBusinessProfile {
+  id             String           @id @default(uuid()) @db.Uuid
+  workspaceId    String           @db.Uuid
+  ownerId        String           @db.Uuid
+  businessName   String
+  activityType   String
+  taxIdOrVat     String?
+  accountingType String           @default("CASH_BASIS")
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  workspace      TaxYearWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner          User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, ownerId])
+  @@index([workspaceId])
+  @@index([ownerId])
+  @@map("freelance_business_profiles")
+}
+
+model CustomAiModel {
+  id                 String    @id @db.VarChar(64)
+  displayName        String    @map("display_name") @db.VarChar(255)
+  providerType       String    @map("provider_type") @db.VarChar(64)
+  modelIdentifier    String    @map("model_identifier") @db.VarChar(255)
+  endpointUrl        String?   @map("endpoint_url")
+  apiKey             String?   @map("api_key")
+  capabilities       Json      @default("[]")
+  permittedDataClass String    @map("permitted_data_class") @db.VarChar(64)
+  hostingRegion      String    @map("hosting_region") @db.VarChar(64)
+  status             String    @default("ACTIVE") @db.VarChar(32)
+  healthy            Boolean   @default(true)
+  isCustom           Boolean   @default(true) @map("is_custom")
+  latencyMs          Int?      @default(0) @map("latency_ms")
+  lastTestedAt       DateTime? @map("last_tested_at") @db.Timestamptz
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("custom_ai_models")
+}
+
+model CustomAiRoute {
+  id                      String    @id @db.VarChar(64)
+  taskName                String    @unique @map("task_name") @db.VarChar(128)
+  primaryModelId          String    @map("primary_model_id") @db.VarChar(64)
+  fallbackModelIds        Json      @default("[]") @map("fallback_model_ids")
+  promptVersion           String    @map("prompt_version") @db.VarChar(64)
+  outputSchemaVersion     String    @map("output_schema_version") @db.VarChar(64)
+  timeoutMs               Int       @default(8000) @map("timeout_ms")
+  maxDataClass            String    @default("CUSTOMER_DOCUMENT") @map("max_data_class") @db.VarChar(64)
+  activeRolloutPercentage Int       @default(100) @map("active_rollout_percentage")
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("custom_ai_routes")
+}
+

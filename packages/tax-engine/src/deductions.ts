@@ -43,7 +43,7 @@ export function calculateDeductions(params: {
   } = params;
 
   // 1. Frais d'obtention (Employment expenses minimum = €540 per working person)
-  const minimumFrais = Math.max(1, employedSpousesCount) * 540;
+  const minimumFrais = employedSpousesCount > 0 ? employedSpousesCount * 540 : 0;
   const employmentExpensesDeduction = Math.max(minimumFrais, actualEmploymentExpenses);
 
   // 2. Primary residence mortgage interest cap (Art 102 LIR)

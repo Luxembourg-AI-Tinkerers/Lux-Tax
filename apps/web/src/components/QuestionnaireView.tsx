@@ -18,6 +18,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
   const [answers, setAnswers] = useState<QuestionnaireAnswersDto>({
     maritalStatus: 'SINGLE',
     hasEmploymentIncome: true,
+    hasFreelanceIncome: false,
     hasPensionIncome: false,
     hasPrimaryResidenceMortgage: false,
     mortgageOccupancyYear: 2020,
@@ -317,6 +318,27 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                       className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
                     />
                   </div>
+                </div>
+              )}
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={answers.hasFreelanceIncome ?? false}
+                  onChange={(e) => setAnswers({ ...answers, hasFreelanceIncome: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                <span className="text-xs font-medium text-slate-800">
+                  Freelance & Independent Business Income (Art. 14 / Art. 91 LIR)
+                </span>
+              </label>
+
+              {answers.hasFreelanceIncome && (
+                <div className="ml-7 p-3 bg-indigo-50/70 rounded-xl border border-indigo-200 text-xs text-indigo-900">
+                  <p className="font-semibold mb-1">Freelance & Business Hub Active</p>
+                  <p className="text-[11px] text-indigo-700">
+                    Use the dedicated <strong>Freelance & Business</strong> tab to track client invoices, deductible operating expenses, and VAT returns for each spouse.
+                  </p>
                 </div>
               )}
 

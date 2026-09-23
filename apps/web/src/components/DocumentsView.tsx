@@ -8,19 +8,25 @@ import {
   DocumentType,
   ExtractedFactDto,
   FactCategory,
+  HouseholdMemberDto,
 } from '@luxtax/contracts';
+import { CameraScanModal } from './CameraScanModal';
 
 interface DocumentsViewProps {
   workspaceId: string;
+  members?: readonly HouseholdMemberDto[];
   onFactsChanged: () => void;
 }
 
-export function DocumentsView({ workspaceId, onFactsChanged }: DocumentsViewProps) {
+export function DocumentsView({ workspaceId, members = [], onFactsChanged }: DocumentsViewProps) {
   const [documents, setDocuments] = useState<DocumentDto[]>([]);
   const [extractedFacts, setExtractedFacts] = useState<ExtractedFactDto[]>([]);
+  const [selectedOwnerFilter, setSelectedOwnerFilter] = useState<string>('ALL');
+  const [uploadOwnerId, setUploadOwnerId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const showFeedback = (type: 'success' | 'error', message: string) => {
@@ -57,6 +63,7 @@ export function DocumentsView({ workspaceId, onFactsChanged }: DocumentsViewProp
         fileContentBase64: base64,
         mimeType: file.type || 'text/plain',
         visibility: DocumentVisibility.SHARED_FOR_DISCUSSION,
+        ownerId: uploadOwnerId || undefined,
       });
 
       if (res.error) {
@@ -97,6 +104,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
       fileContentBase64: base64,
       mimeType: 'text/plain',
       visibility: DocumentVisibility.SHARED_FOR_DISCUSSION,
+      ownerId: uploadOwnerId || undefined,
     });
 
     setUploading(false);
@@ -138,14 +146,43 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
 
   const handleConfirmExtractedFact = async (fact: ExtractedFactDto) => {
     setConfirmingId(fact.id);
-    let category = FactCategory.EMPLOYMENT_INCOME;
-    if (fact.fieldName.toLowerCase().includes('mortgage') || fact.fieldName === 'code_141') {
-      category = FactCategory.MORTGAGE_DEDUCTION;
-    } else if (fact.fieldName.toLowerCase().includes('insurance') || fact.fieldName.toLowerCase().includes('pension')) {
-      category = FactCategory.INSURANCE_DEDUCTION;
-    } else if (fact.fieldName.toLowerCase().includes('donation')) {
+    let category = FactCategory.OTHER_DEDUCTION;
+    const nameLower = fact.fieldName.toLowerCase();
+    const doc = documents.find((d) => d.id === fact.documentId);
+
+    if (
+      doc?.documentType === DocumentType.FREELANCE_INVOICE ||
+      nameLower.includes('freelance') ||
+      nameLower.includes('client_revenue')
+    ) {
+      category = FactCategory.FREELANCE_INCOME;
+    } else if (
+      doc?.documentType === DocumentType.BUSINESS_EXPENSE ||
+      nameLower.includes('business_expense') ||
+      nameLower.includes('operating_expense')
+    ) {
+      category = FactCategory.BUSINESS_EXPENSE;
+    } else if (nameLower.includes('childcare') || nameLower.includes('creche')) {
+      category = FactCategory.CHILDCARE_EXPENSE;
+    } else if (nameLower.includes('donation')) {
       category = FactCategory.DONATION_DEDUCTION;
+    } else if (nameLower.includes('gross') || nameLower.includes('salary') || nameLower.includes('remuneration')) {
+      category = FactCategory.EMPLOYMENT_INCOME;
+    } else if (nameLower.includes('mortgage') || nameLower === 'code_141') {
+      category = FactCategory.MORTGAGE_DEDUCTION;
+    } else if (nameLower.includes('insurance') || nameLower.includes('pension')) {
+      category = FactCategory.INSURANCE_DEDUCTION;
+    } else if (
+      nameLower.includes('work') ||
+      nameLower.includes('training') ||
+      nameLower.includes('course') ||
+      nameLower.includes('medical') ||
+      nameLower.includes('domestic') ||
+      nameLower.includes('invoice')
+    ) {
+      category = FactCategory.OTHER_DEDUCTION;
     }
+
 
     const res = await apiClient.confirmFact(workspaceId, {
       extractedFactId: fact.id,
@@ -194,12 +231,40 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
         </div>
-        <h3 className="text-sm font-semibold text-slate-900">Upload Tax Document</h3>
+        <h3 className="text-sm font-semibold text-slate-900">Upload or Scan Tax Evidence</h3>
         <p className="text-xs text-slate-500 mt-1 mb-4">
-          Upload your Certificat de rémunération, bank interest slips, or donation receipts (PDF, PNG, JPG, TXT).
+          Scan receipts (crèche, domestic help, donations) or upload official certificates (PDF, JPG, PNG).
         </p>
 
+        {members.length > 0 && (
+          <div className="mb-4 inline-flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
+            <span className="font-semibold text-slate-600">Attribute to Spouse:</span>
+            <select
+              value={uploadOwnerId}
+              onChange={(e) => setUploadOwnerId(e.target.value)}
+              className="bg-white border border-slate-300 rounded px-2 py-0.5 font-medium text-slate-800"
+            >
+              <option value="">Household / Primary</option>
+              {members.map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.user?.email || m.userId.substring(0, 8)} ({m.role.replace(/_/g, ' ')})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => setIsCameraModalOpen(true)}
+            disabled={uploading}
+            className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-500 transition space-x-1.5"
+          >
+            <span>📷</span>
+            <span>Scan with Camera</span>
+          </button>
+
           <label className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-sky-500 transition">
             <span>{uploading ? 'Processing & Extracting...' : 'Select Local File'}</span>
             <input
@@ -221,6 +286,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
           </button>
         </div>
       </div>
+
 
       {/* Extracted Facts Awaiting Confirmation */}
       {unconfirmedFacts.length > 0 && (
@@ -276,13 +342,29 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
 
       {/* Uploaded Documents Table */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+        <div className="border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h3 className="text-sm font-bold text-slate-900">
             Document Vault ({documents.length})
           </h3>
-          <button onClick={refresh} className="text-xs text-sky-600 hover:text-sky-700 font-semibold">
-            Refresh
-          </button>
+          <div className="flex items-center gap-3">
+            {members.length > 1 && (
+              <select
+                value={selectedOwnerFilter}
+                onChange={(e) => setSelectedOwnerFilter(e.target.value)}
+                className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-slate-700 font-medium"
+              >
+                <option value="ALL">All Spouses</option>
+                {members.map((m) => (
+                  <option key={m.userId} value={m.userId}>
+                    {m.user?.email || m.userId.substring(0, 8)}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button onClick={refresh} className="text-xs text-sky-600 hover:text-sky-700 font-semibold">
+              Refresh
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -297,6 +379,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
               <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 border-b border-slate-200">
                 <tr>
                   <th className="px-6 py-3">File Name</th>
+                  <th className="px-6 py-3">Spouse</th>
                   <th className="px-6 py-3">Document Type</th>
                   <th className="px-6 py-3">Visibility</th>
                   <th className="px-6 py-3">Uploaded</th>
@@ -304,49 +387,73 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {documents.map((doc) => (
-                  <tr key={doc.id} className="hover:bg-slate-50/50">
-                    <td className="px-6 py-4 font-medium text-slate-900">
-                      {doc.originalName}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                        {doc.documentType.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button
-                        onClick={() => handleToggleVisibility(doc)}
-                        className={`rounded px-2 py-0.5 text-xs font-semibold transition ${
-                          doc.visibility === DocumentVisibility.INCLUDED_IN_RETURN
-                            ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                            : doc.visibility === DocumentVisibility.SHARED_FOR_DISCUSSION
-                            ? 'bg-purple-50 text-purple-700 hover:bg-purple-100'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                        title="Click to toggle visibility"
-                      >
-                        {doc.visibility.replace(/_/g, ' ')} ↻
-                      </button>
-                    </td>
-                    <td className="px-6 py-4 text-xs text-slate-500">
-                      {new Date(doc.createdAt).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => handleDelete(doc.id)}
-                        className="text-xs text-rose-600 hover:text-rose-700 font-semibold"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {documents
+                  .filter((d) => selectedOwnerFilter === 'ALL' || d.ownerId === selectedOwnerFilter)
+                  .map((doc) => {
+                    const owner = members.find((m) => m.userId === doc.ownerId);
+                    return (
+                      <tr key={doc.id} className="hover:bg-slate-50/50">
+                        <td className="px-6 py-4 font-medium text-slate-900">
+                          {doc.originalName}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700 font-medium">
+                            {doc.ownerEmail || (owner?.user?.email || 'Household')}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                            {doc.documentType.replace(/_/g, ' ')}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <button
+                            onClick={() => handleToggleVisibility(doc)}
+                            className={`rounded px-2 py-0.5 text-xs font-semibold transition ${
+                              doc.visibility === DocumentVisibility.INCLUDED_IN_RETURN
+                                ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                : doc.visibility === DocumentVisibility.SHARED_FOR_DISCUSSION
+                                ? 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                            title="Click to toggle visibility"
+                          >
+                            {doc.visibility.replace(/_/g, ' ')} ↻
+                          </button>
+                        </td>
+                        <td className="px-6 py-4 text-xs text-slate-500">
+                          {new Date(doc.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            onClick={() => handleDelete(doc.id)}
+                            className="text-xs text-rose-600 hover:text-rose-700 font-semibold"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {/* Camera Scanning Modal */}
+      <CameraScanModal
+        isOpen={isCameraModalOpen}
+        workspaceId={workspaceId}
+        onClose={() => setIsCameraModalOpen(false)}
+        onSuccess={(msg) => {
+          showFeedback('success', msg);
+          refresh();
+          onFactsChanged();
+        }}
+        onError={(err) => showFeedback('error', err)}
+      />
     </div>
   );
 }
+

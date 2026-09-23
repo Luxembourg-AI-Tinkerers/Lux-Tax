@@ -5,6 +5,7 @@ export interface DocumentDto {
   workspaceId: string;
   uploaderId: string;
   ownerId?: string | null;
+  ownerEmail?: string | null;
   fileName: string;
   originalName: string;
   mimeType: string;
@@ -25,6 +26,7 @@ export interface UploadDocumentRequestDto {
   fileContentBase64: string;
   mimeType: string;
   ownerId?: string;
+  documentType?: DocumentType;
   visibility?: DocumentVisibility;
 }
 

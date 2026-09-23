@@ -194,6 +194,87 @@ export function TaxCalculatorView({ workspaceId, onCalculated, onNavigateToFilin
             </div>
           </div>
 
+          {/* Freelance & Business Income Breakdown (if any) */}
+          {calc.freelanceIncomeBreakdown &&
+            (calc.freelanceIncomeBreakdown.primaryGrossRevenue > 0 ||
+              calc.freelanceIncomeBreakdown.spouseGrossRevenue > 0 ||
+              calc.freelanceIncomeBreakdown.totalFreelanceNetProfit !== 0) && (
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-5 shadow-xs">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded">
+                      Articles 14 & 91 L.I.R.
+                    </span>
+                    <h4 className="text-sm font-bold text-indigo-950 mt-1">
+                      Freelance & Business Net Profit Breakdown
+                    </h4>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs text-indigo-600 font-semibold block">Total Net Profit</span>
+                    <span className="text-lg font-black text-indigo-900">
+                      €{calc.freelanceIncomeBreakdown.totalFreelanceNetProfit.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                  {/* Primary Spouse Freelance */}
+                  <div className="rounded-lg bg-white p-3.5 border border-indigo-100 shadow-xs">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-800 mb-1.5">
+                      <span>Primary Filer (Case 21/23)</span>
+                      <span className="text-emerald-600 font-extrabold">
+                        €{calc.freelanceIncomeBreakdown.primaryNetProfit.toLocaleString('en-US', {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 space-y-0.5">
+                      <div className="flex justify-between">
+                        <span>Gross Invoiced:</span>
+                        <span className="font-semibold text-slate-700">
+                          €{calc.freelanceIncomeBreakdown.primaryGrossRevenue.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Operating Expenses:</span>
+                        <span className="font-semibold text-rose-600">
+                          -€{calc.freelanceIncomeBreakdown.primaryBusinessExpenses.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Co-Filer Spouse Freelance */}
+                  <div className="rounded-lg bg-white p-3.5 border border-indigo-100 shadow-xs">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-800 mb-1.5">
+                      <span>Co-Filer Spouse (Case 22/24)</span>
+                      <span className="text-emerald-600 font-extrabold">
+                        €{calc.freelanceIncomeBreakdown.spouseNetProfit.toLocaleString('en-US', {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 space-y-0.5">
+                      <div className="flex justify-between">
+                        <span>Gross Invoiced:</span>
+                        <span className="font-semibold text-slate-700">
+                          €{calc.freelanceIncomeBreakdown.spouseGrossRevenue.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Operating Expenses:</span>
+                        <span className="font-semibold text-rose-600">
+                          -€{calc.freelanceIncomeBreakdown.spouseBusinessExpenses.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
           {/* Provenance Trace Accordion */}
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <button

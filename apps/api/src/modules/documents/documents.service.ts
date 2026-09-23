@@ -18,6 +18,8 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { ReceiptAiVisionService } from './receipt-ai-vision.service';
+
 @Injectable()
 export class DocumentsService {
   private readonly uploadDir = path.resolve(process.cwd(), 'uploads');
@@ -25,6 +27,7 @@ export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly receiptAiVisionService: ReceiptAiVisionService,
   ) {
     if (!fs.existsSync(this.uploadDir)) {
       fs.mkdirSync(this.uploadDir, { recursive: true });
@@ -71,9 +74,16 @@ export class DocumentsService {
     const storagePath = path.join(workspaceUploadDir, safeFileName);
     fs.writeFileSync(storagePath, fileBuffer);
 
-    // 4. Text and heuristic extraction
-    const rawText = fileBuffer.toString('utf-8');
-    const extractionResult = this.extractFromText(rawText, input.fileName);
+    // 4. AI Model & Vision Receipt Extraction
+    const extractionResult = await this.receiptAiVisionService.processReceiptOrDocument(
+      fileBuffer,
+      input.fileName,
+      input.mimeType,
+    );
+
+    const finalDocType = (input.documentType && input.documentType !== DocumentType.UNKNOWN)
+      ? input.documentType
+      : extractionResult.documentType;
 
     // 5. Create Document record
     const document = await this.prisma.document.create({
@@ -87,10 +97,13 @@ export class DocumentsService {
         fileSize: fileBuffer.length,
         sha256Hash,
         storagePath,
-        documentType: extractionResult.documentType,
+        documentType: finalDocType,
         status: DocumentStatus.EXTRACTED,
         visibility: input.visibility || DocumentVisibility.PRIVATE_DRAFT,
         pageCount: 1,
+      },
+      include: {
+        owner: { select: { email: true } },
       },
     });
 
@@ -100,7 +113,7 @@ export class DocumentsService {
         documentId: document.id,
         extractedText: extractionResult.extractedSnippet,
         confidence: extractionResult.confidence,
-        rawJson: extractionResult.fields,
+        rawJson: extractionResult.fields as any,
       },
     });
 
@@ -144,6 +157,7 @@ export class DocumentsService {
       workspaceId: document.workspaceId,
       uploaderId: document.uploaderId,
       ownerId: document.ownerId,
+      ownerEmail: document.owner?.email || null,
       fileName: document.fileName,
       originalName: document.originalName,
       mimeType: document.mimeType,
@@ -181,6 +195,7 @@ export class DocumentsService {
         ],
       },
       include: {
+        owner: { select: { email: true } },
         _count: {
           select: { extractedFacts: true },
         },
@@ -193,6 +208,7 @@ export class DocumentsService {
       workspaceId: doc.workspaceId,
       uploaderId: doc.uploaderId,
       ownerId: doc.ownerId,
+      ownerEmail: doc.owner?.email || null,
       fileName: doc.fileName,
       originalName: doc.originalName,
       mimeType: doc.mimeType,

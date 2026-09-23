@@ -70,6 +70,22 @@ export default function MobileWorkspaceScreen() {
         </View>
       </View>
 
+      {/* Quick Action: Scan Receipt with Camera */}
+      <TouchableOpacity
+        style={styles.scanBanner}
+        onPress={() => router.push('/(tabs)/documents')}
+        activeOpacity={0.85}
+      >
+        <View style={styles.scanIconWrap}>
+          <Text style={styles.scanIcon}>📸</Text>
+        </View>
+        <View style={styles.scanTextWrap}>
+          <Text style={styles.scanTitle}>Scan Receipt with Camera</Text>
+          <Text style={styles.scanSub}>Snap crèche invoices, donations, or certificates</Text>
+        </View>
+        <Text style={styles.scanArrow}>→</Text>
+      </TouchableOpacity>
+
       {/* Readiness Overview */}
       <View style={styles.card}>
         <Text style={styles.cardLabel}>Return Readiness</Text>
@@ -156,6 +172,33 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 12,
   },
+  scanBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0284c7',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    shadowColor: '#0284c7',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  scanIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  scanIcon: { fontSize: 20 },
+  scanTextWrap: { flex: 1 },
+  scanTitle: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
+  scanSub: { color: '#e0f2fe', fontSize: 11, marginTop: 2 },
+  scanArrow: { color: '#ffffff', fontSize: 18, fontWeight: '700', marginLeft: 8 },
   card: {
     backgroundColor: '#ffffff',
     borderRadius: 16,

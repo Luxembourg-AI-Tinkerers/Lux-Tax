@@ -240,12 +240,27 @@ export class FilingService {
           amount: fact.amount.toString(),
           sourceFactId: fact.id,
         });
-      } else if (fact.category === 'DONATION_DEDUCTION') {
+      } else if (fact.category === 'FREELANCE_INCOME') {
+        const isSpouseB = workspace.household.members.length > 1 && fact.ownerId === workspace.household.members[1]?.userId;
         form100Boxes.push({
-          pageNumber: 3,
-          boxNumber: '320',
-          labelFr: 'Libéralités et dons (Art 112)',
-          labelDe: 'Spenden (Art. 112 L.I.R.)',
+          pageNumber: 1,
+          boxNumber: isSpouseB ? '22' : '21',
+          labelFr: isSpouseB
+            ? 'Bénéfice profession libérale / freelance (Conjoint / Partenaire)'
+            : 'Bénéfice profession libérale / freelance (Contribuable principal)',
+          labelDe: isSpouseB ? 'Einkünfte aus freiberuflicher Arbeit (Ehegatte)' : 'Einkünfte aus freiberuflicher Arbeit',
+          amount: fact.amount.toString(),
+          sourceFactId: fact.id,
+        });
+      } else if (fact.category === 'BUSINESS_EXPENSE') {
+        const isSpouseB = workspace.household.members.length > 1 && fact.ownerId === workspace.household.members[1]?.userId;
+        form100Boxes.push({
+          pageNumber: 1,
+          boxNumber: isSpouseB ? '24' : '23',
+          labelFr: isSpouseB
+            ? 'Frais d\'exploitation déductibles freelance (Conjoint / Partenaire)'
+            : 'Frais d\'exploitation déductibles freelance (Contribuable principal)',
+          labelDe: 'Betriebsausgaben',
           amount: fact.amount.toString(),
           sourceFactId: fact.id,
         });

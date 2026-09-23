@@ -16,6 +16,7 @@ export const uploadDocumentSchema = z.object({
     { message: 'Unsupported file type. Only PDF and JPEG/PNG images are allowed.' },
   ),
   ownerId: z.string().uuid().optional(),
+  documentType: z.nativeEnum(DocumentType).optional(),
   visibility: z.nativeEnum(DocumentVisibility).default(DocumentVisibility.PRIVATE_DRAFT),
 });
 

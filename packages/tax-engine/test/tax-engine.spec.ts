@@ -152,4 +152,118 @@ describe('Luxembourg Tax Engine (2025)', () => {
     assert.strictEqual(result.provenance.some((p) => p.ruleCode === 'LIR-ART-102'), true);
     assert.strictEqual(result.provenance.some((p) => p.ruleCode === 'LIR-ART-118-121'), true);
   });
+
+  test('Single freelancer scenario (Class 1) with client invoices and business expenses (Art 14 & 91 LIR)', () => {
+    const result = LuxembourgTaxEngine.calculate({
+      taxYear: 2025,
+      taxClass: TaxClass.CLASS_1,
+      residence: TaxResidence.RESIDENT,
+      primaryUserId: 'user-freelance-single',
+      facts: [
+        {
+          id: 'fact-inv-1',
+          ownerId: 'user-freelance-single',
+          category: 'FREELANCE_INCOME',
+          fieldKey: 'freelanceRevenue',
+          amount: 45000,
+        },
+        {
+          id: 'fact-inv-2',
+          ownerId: 'user-freelance-single',
+          category: 'FREELANCE_INCOME',
+          fieldKey: 'freelanceRevenue',
+          amount: 15000,
+        },
+        {
+          id: 'fact-exp-1',
+          ownerId: 'user-freelance-single',
+          category: 'BUSINESS_EXPENSE',
+          fieldKey: 'softwareSubscription',
+          amount: 2500,
+        },
+        {
+          id: 'fact-exp-2',
+          ownerId: 'user-freelance-single',
+          category: 'BUSINESS_EXPENSE',
+          fieldKey: 'coworkingOfficeRent',
+          amount: 3500,
+        },
+      ],
+    });
+
+    // Gross freelance revenue = 45000 + 15000 = 60000
+    // Business expenses = 2500 + 3500 = 6000
+    // Net profit = 60000 - 6000 = 54000
+    assert.strictEqual(result.grossIncome, 60000);
+    assert.ok(result.freelanceIncomeBreakdown);
+    assert.strictEqual(result.freelanceIncomeBreakdown.primaryGrossRevenue, 60000);
+    assert.strictEqual(result.freelanceIncomeBreakdown.primaryBusinessExpenses, 6000);
+    assert.strictEqual(result.freelanceIncomeBreakdown.primaryNetProfit, 54000);
+    assert.strictEqual(result.freelanceIncomeBreakdown.totalFreelanceNetProfit, 54000);
+    // Taxable income = 54000 - flat special expenses minimum (480) = 53520
+    assert.strictEqual(result.taxableIncome, 53520);
+    assert.ok(result.provenance.some((p) => p.ruleCode === 'LIR-ART-14-91'));
+  });
+
+  test('Married household where both spouses have freelance work (Class 2)', () => {
+    const result = LuxembourgTaxEngine.calculate({
+      taxYear: 2025,
+      taxClass: TaxClass.CLASS_2,
+      residence: TaxResidence.RESIDENT,
+      primaryUserId: 'user-spouse-a',
+      spouseUserId: 'user-spouse-b',
+      dependantsCount: 0,
+      facts: [
+        // Spouse A: IT Consulting
+        {
+          id: 'fact-a-inv',
+          ownerId: 'user-spouse-a',
+          category: 'FREELANCE_INCOME',
+          fieldKey: 'freelanceRevenue',
+          amount: 80000,
+        },
+        {
+          id: 'fact-a-exp',
+          ownerId: 'user-spouse-a',
+          category: 'BUSINESS_EXPENSE',
+          fieldKey: 'hardwareEquipment',
+          amount: 5000,
+        },
+        // Spouse B: Design Studio
+        {
+          id: 'fact-b-inv',
+          ownerId: 'user-spouse-b',
+          category: 'FREELANCE_INCOME',
+          fieldKey: 'freelanceRevenue',
+          amount: 50000,
+        },
+        {
+          id: 'fact-b-exp',
+          ownerId: 'user-spouse-b',
+          category: 'BUSINESS_EXPENSE',
+          fieldKey: 'creativeSoftware',
+          amount: 4000,
+        },
+      ],
+    });
+
+    // Spouse A: 80,000 rev - 5,000 exp = 75,000 net profit
+    // Spouse B: 50,000 rev - 4,000 exp = 46,000 net profit
+    // Total gross = 130,000
+    // Total freelance net profit = 75,000 + 46,000 = 121,000
+    assert.strictEqual(result.grossIncome, 130000);
+    assert.ok(result.freelanceIncomeBreakdown);
+    assert.strictEqual(result.freelanceIncomeBreakdown.primaryGrossRevenue, 80000);
+    assert.strictEqual(result.freelanceIncomeBreakdown.primaryBusinessExpenses, 5000);
+    assert.strictEqual(result.freelanceIncomeBreakdown.primaryNetProfit, 75000);
+    assert.strictEqual(result.freelanceIncomeBreakdown.spouseGrossRevenue, 50000);
+    assert.strictEqual(result.freelanceIncomeBreakdown.spouseBusinessExpenses, 4000);
+    assert.strictEqual(result.freelanceIncomeBreakdown.spouseNetProfit, 46000);
+    assert.strictEqual(result.freelanceIncomeBreakdown.totalFreelanceNetProfit, 121000);
+
+    // Class 2 splitting applies on 121,000 - flat special expenses minimum (960) = 120,040
+    assert.strictEqual(result.taxableIncome, 120040);
+    assert.ok(result.baseTax > 0);
+    assert.ok(result.provenance.some((p) => p.ruleCode === 'LIR-ART-14-91'));
+  });
 });

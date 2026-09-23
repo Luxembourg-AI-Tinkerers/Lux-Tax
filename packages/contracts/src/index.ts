@@ -9,3 +9,4 @@ export * from './tax';
 export * from './filing';
 export * from './questionnaire';
 export * from './admin';
+export * from './freelance';

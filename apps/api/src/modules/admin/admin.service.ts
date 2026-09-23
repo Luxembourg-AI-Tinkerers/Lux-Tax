@@ -131,6 +131,28 @@ const DEFAULT_ROUTES: readonly ModelRouteDto[] = [
     maxDataClass: 'CUSTOMER_DOCUMENT',
     activeRolloutPercentage: 100,
   },
+  {
+    id: 'route-freelance-invoice',
+    taskName: 'document.extract.freelance_invoice',
+    primaryModelId: 'mdl-docling-v2',
+    fallbackModelIds: ['mdl-qwen3-vl-4b'],
+    promptVersion: 'freelance-inv-v1.0',
+    outputSchemaVersion: 'schema-freelance-v1',
+    timeoutMs: 12000,
+    maxDataClass: 'CUSTOMER_DOCUMENT',
+    activeRolloutPercentage: 100,
+  },
+  {
+    id: 'route-business-expense',
+    taskName: 'document.extract.business_expense',
+    primaryModelId: 'mdl-paddle-v3',
+    fallbackModelIds: ['mdl-qwen3-vl-4b'],
+    promptVersion: 'expense-v1.0',
+    outputSchemaVersion: 'schema-expense-v1',
+    timeoutMs: 12000,
+    maxDataClass: 'CUSTOMER_DOCUMENT',
+    activeRolloutPercentage: 100,
+  },
 ];
 
 @Injectable()

@@ -14,19 +14,35 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "lu.luxtax.workspace"
+      "bundleIdentifier": "lu.luxtax.workspace",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Allow Luxembourg Tax Workspace to access your camera to scan receipts and tax certificates.",
+        "NSPhotoLibraryUsageDescription": "Allow Luxembourg Tax Workspace to select receipt photos from your library."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "lu.luxtax.workspace"
+      "package": "lu.luxtax.workspace",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES"
+      ]
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Luxembourg Tax Workspace to access your photo library to upload receipts.",
+          "cameraPermission": "Allow Luxembourg Tax Workspace to access your camera to scan receipts and tax documents."
+        }
+      ]
     ],
     "scheme": "luxtax"
+
   }
 }

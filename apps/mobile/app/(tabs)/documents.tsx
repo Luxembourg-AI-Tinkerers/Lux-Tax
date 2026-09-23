@@ -10,32 +10,46 @@ import {
   Alert,
 } from 'react-native';
 import { mobileApiClient } from '../../src/lib/api-client';
-import { DocumentDto, DocumentVisibility, DocumentType, ExtractedFactDto } from '@luxtax/contracts';
+import { DocumentDto, DocumentVisibility, DocumentType, ExtractedFactDto, FactCategory } from '@luxtax/contracts';
+import { DocumentCameraScanner } from '../../src/components/DocumentCameraScanner';
 
 export default function MobileDocumentsScreen() {
   const [documents, setDocuments] = useState<readonly DocumentDto[]>([]);
   const [facts, setFacts] = useState<readonly ExtractedFactDto[]>([]);
   const [householdId, setHouseholdId] = useState<string | null>(null);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [scannerVisible, setScannerVisible] = useState(false);
 
   const loadData = async () => {
-    const hhRes = await mobileApiClient.getHouseholds();
-    if (hhRes.data && hhRes.data.length > 0) {
-      const hId = hhRes.data[0].id;
-      setHouseholdId(hId);
+    try {
+      const hhRes = await mobileApiClient.getHouseholds();
+      if (hhRes.data && hhRes.data.length > 0) {
+        const hId = hhRes.data[0].id;
+        setHouseholdId(hId);
 
-      const [docsRes, factsRes] = await Promise.all([
-        mobileApiClient.getDocuments(hId, 2025),
-        mobileApiClient.getExtractedFacts(hId, 2025),
-      ]);
+        const wsRes = await mobileApiClient.getWorkspace(hId, 2025);
+        if (wsRes.data) {
+          const wId = wsRes.data.id;
+          setWorkspaceId(wId);
 
-      if (docsRes.data) setDocuments(docsRes.data);
-      if (factsRes.data) setFacts(factsRes.data);
+          const [docsRes, factsRes] = await Promise.all([
+            mobileApiClient.getDocuments(wId),
+            mobileApiClient.getFacts(wId),
+          ]);
+
+          if (docsRes.data) setDocuments(docsRes.data);
+          if (factsRes.data) setFacts(factsRes.data.extractedFacts);
+        }
+      }
+    } catch (err: any) {
+      console.warn('Error loading document data:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    setLoading(false);
-    setRefreshing(false);
   };
 
   useEffect(() => {
@@ -43,7 +57,7 @@ export default function MobileDocumentsScreen() {
   }, []);
 
   const handleToggleVisibility = async (docId: string, current: DocumentVisibility) => {
-    if (!householdId) return;
+    if (!workspaceId) return;
     const nextVis =
       current === DocumentVisibility.PRIVATE_DRAFT
         ? DocumentVisibility.SHARED_FOR_DISCUSSION
@@ -52,63 +66,55 @@ export default function MobileDocumentsScreen() {
         : DocumentVisibility.PRIVATE_DRAFT;
 
     setActionLoading(true);
-    await mobileApiClient.updateDocumentVisibility(householdId, 2025, docId, nextVis);
+    await mobileApiClient.updateDocumentVisibility(workspaceId, docId, nextVis);
     await loadData();
     setActionLoading(false);
   };
 
-  const handleConfirmFact = async (factId: string) => {
-    if (!householdId) return;
-    setActionLoading(true);
-    const res = await mobileApiClient.confirmFact(householdId, 2025, factId);
-    setActionLoading(false);
-    if (res.data) {
-      Alert.alert('Fact Confirmed', 'The candidate fact is now authoritative in your 2025 tax calculation.');
-      await loadData();
-    } else {
-      Alert.alert('Error', res.error?.message || 'Failed to confirm fact');
-    }
-  };
-
-  const handleUploadSample = async (type: DocumentType) => {
-    if (!householdId) return;
+  const handleConfirmFact = async (fact: ExtractedFactDto) => {
+    if (!workspaceId) return;
     setActionLoading(true);
 
-    let sampleContent = '';
-    let fileName = '';
-
-    if (type === DocumentType.CERTIFICAT_REMUNERATION) {
-      fileName = 'Certificat_Remuneration_2025.txt';
-      sampleContent = `CERTIFICAT DE REMUNERATION 2025
-Code 101 Rémunération brute: 68500.00 EUR
-Code 103 Cotisations sociales: 8400.00 EUR
-Code 105 Retenue d'impôt: 10250.00 EUR`;
-    } else if (type === DocumentType.INTERETS_DEBITEURS) {
-      fileName = 'Attestation_Pret_Immobilier_2025.txt';
-      sampleContent = `BANQUE INTERETS DEBITEURS 2025
-Prêt habitation principale occupation 2025
-Montant des intérêts payés: 4200.00 EUR`;
-    } else {
-      fileName = 'Attestation_Assurance_111_2025.txt';
-      sampleContent = `ASSURANCE ET PREVOYANCE VIE
-Article 111 L.I.R.
-Primes payées en 2025: 1200.00 EUR`;
+    // Map fact field name to FactCategory
+    let category = FactCategory.OTHER_DEDUCTION;
+    if (fact.fieldName.includes('childcare') || fact.fieldName.includes('creche')) {
+      category = FactCategory.CHILDCARE_EXPENSE;
+    } else if (fact.fieldName.includes('donation')) {
+      category = FactCategory.DONATION_DEDUCTION;
+    } else if (fact.fieldName.includes('gross') || fact.fieldName.includes('salary')) {
+      category = FactCategory.EMPLOYMENT_INCOME;
+    } else if (fact.fieldName.includes('mortgage') || fact.fieldName.includes('interest')) {
+      category = FactCategory.MORTGAGE_DEDUCTION;
+    } else if (fact.fieldName.includes('insurance')) {
+      category = FactCategory.INSURANCE_DEDUCTION;
+    } else if (
+      fact.fieldName.includes('work') ||
+      fact.fieldName.includes('training') ||
+      fact.fieldName.includes('course') ||
+      fact.fieldName.includes('medical') ||
+      fact.fieldName.includes('domestic') ||
+      fact.fieldName.includes('invoice')
+    ) {
+      category = FactCategory.OTHER_DEDUCTION;
     }
 
-    const base64 = btoa(sampleContent);
-    const res = await mobileApiClient.uploadDocument(householdId, 2025, {
-      fileName,
-      mimeType: 'text/plain',
-      fileContentBase64: base64,
-      visibility: DocumentVisibility.INCLUDED_IN_RETURN,
+
+    const res = await mobileApiClient.confirmFact(workspaceId, {
+      extractedFactId: fact.id,
+      fieldKey: fact.fieldName,
+      amount: Number(fact.fieldValue).toFixed(2),
+      category,
+      currency: fact.currency || 'EUR',
+      isIncludedInReturn: true,
+      isSharedWithHousehold: true,
     });
 
     setActionLoading(false);
     if (res.data) {
-      Alert.alert('Document Uploaded', `${fileName} uploaded and processed.`);
+      Alert.alert('Fact Confirmed', `Confirmed €${fact.fieldValue} as authoritative tax evidence.`);
       await loadData();
     } else {
-      Alert.alert('Upload Failed', res.error?.message || 'Could not upload document');
+      Alert.alert('Error', res.error?.message || 'Failed to confirm fact');
     }
   };
 
@@ -131,24 +137,30 @@ Primes payées en 2025: 1200.00 EUR`;
         Secure, deduplicated certificate store with line-by-line evidence linking
       </Text>
 
-      {/* Upload Quick Actions */}
-      <View style={styles.actionSection}>
-        <Text style={styles.sectionLabel}>Add Evidence (Camera / File)</Text>
-        <View style={styles.actionButtons}>
-          <TouchableOpacity
-            style={[styles.btn, styles.btnPrimary]}
-            disabled={actionLoading}
-            onPress={() => handleUploadSample(DocumentType.CERTIFICAT_REMUNERATION)}
-          >
-            <Text style={styles.btnText}>+ Salary Certificate</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.btn, styles.btnSecondary]}
-            disabled={actionLoading}
-            onPress={() => handleUploadSample(DocumentType.INTERETS_DEBITEURS)}
-          >
-            <Text style={styles.btnSecondaryText}>+ Mortgage Interest</Text>
-          </TouchableOpacity>
+      {/* Camera Scanning Quick Action */}
+      <View style={styles.scanHeroCard}>
+        <View style={styles.scanHeroContent}>
+          <Text style={styles.scanHeroTitle}>📷 Smart Receipt & Document Scanner</Text>
+          <Text style={styles.scanHeroDesc}>
+            Snap receipts, crèche invoices, donation slips, or employer certificates with your camera. AI automatically extracts deductible facts.
+          </Text>
+          <View style={styles.scanHeroActions}>
+            <TouchableOpacity
+              style={styles.scanHeroBtn}
+              onPress={() => setScannerVisible(true)}
+              disabled={actionLoading}
+            >
+              <Text style={styles.scanHeroBtnText}>⚡ Scan with Camera</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.scanHeroSecondaryBtn}
+              onPress={() => setScannerVisible(true)}
+              disabled={actionLoading}
+            >
+              <Text style={styles.scanHeroSecondaryBtnText}>Upload File / Photo</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -174,7 +186,7 @@ Primes payées en 2025: 1200.00 EUR`;
                 <TouchableOpacity
                   style={styles.confirmBtn}
                   disabled={actionLoading}
-                  onPress={() => handleConfirmFact(fact.id)}
+                  onPress={() => handleConfirmFact(fact)}
                 >
                   <Text style={styles.confirmBtnText}>Confirm</Text>
                 </TouchableOpacity>
@@ -184,20 +196,21 @@ Primes payées en 2025: 1200.00 EUR`;
       )}
 
       {/* Document List */}
-      <Text style={[styles.sectionLabel, { marginTop: 20 }]}>
-        Uploaded Certificates ({documents.length})
+      <Text style={[styles.sectionLabel, { marginTop: 12 }]}>
+        Uploaded Evidence & Receipts ({documents.length})
       </Text>
 
       {documents.length === 0 ? (
         <View style={styles.emptyCard}>
+          <Text style={styles.emptyIcon}>🧾</Text>
           <Text style={styles.emptyText}>No documents in vault yet.</Text>
-          <Text style={styles.emptySubtext}>Upload salary slips or mortgage certificates to begin.</Text>
+          <Text style={styles.emptySubtext}>Use the camera scanner above to upload receipts or salary certificates.</Text>
         </View>
       ) : (
         documents.map((doc) => (
           <View key={doc.id} style={styles.docCard}>
             <View style={styles.docHeader}>
-              <Text style={styles.docName}>{doc.originalName}</Text>
+              <Text style={styles.docName} numberOfLines={1}>{doc.originalName}</Text>
               <View style={[styles.badge, getVisibilityBadgeStyle(doc.visibility)]}>
                 <Text style={styles.badgeText}>{formatVisibility(doc.visibility)}</Text>
               </View>
@@ -219,6 +232,17 @@ Primes payées en 2025: 1200.00 EUR`;
             </View>
           </View>
         ))
+      )}
+
+      {/* Camera Scanner Modal */}
+      {householdId && (
+        <DocumentCameraScanner
+          visible={scannerVisible}
+          householdId={householdId}
+          taxYear={2025}
+          onClose={() => setScannerVisible(false)}
+          onUploadSuccess={() => loadData()}
+        />
       )}
     </ScrollView>
   );
@@ -252,14 +276,40 @@ const styles = StyleSheet.create({
   loadingText: { marginTop: 12, fontSize: 14, color: '#64748b' },
   headerTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a' },
   headerSubtitle: { fontSize: 13, color: '#64748b', marginTop: 4, marginBottom: 16 },
+  scanHeroCard: {
+    backgroundColor: '#0284c7',
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 16,
+    shadowColor: '#0284c7',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  scanHeroContent: {},
+  scanHeroTitle: { fontSize: 16, fontWeight: '800', color: '#ffffff' },
+  scanHeroDesc: { fontSize: 12, color: '#e0f2fe', marginTop: 6, lineHeight: 18 },
+  scanHeroActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  scanHeroBtn: {
+    flex: 1.2,
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  scanHeroBtnText: { color: '#0284c7', fontWeight: '800', fontSize: 13 },
+  scanHeroSecondaryBtn: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  scanHeroSecondaryBtnText: { color: '#ffffff', fontWeight: '700', fontSize: 12 },
   sectionLabel: { fontSize: 14, fontWeight: '600', color: '#334155', marginBottom: 8 },
-  actionSection: { backgroundColor: '#ffffff', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 16 },
-  actionButtons: { flexDirection: 'row', gap: 10 },
-  btn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
-  btnPrimary: { backgroundColor: '#0284c7' },
-  btnText: { color: '#ffffff', fontWeight: '600', fontSize: 13 },
-  btnSecondary: { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#cbd5e1' },
-  btnSecondaryText: { color: '#334155', fontWeight: '600', fontSize: 13 },
   reviewCard: { backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fef3c7', borderRadius: 12, padding: 14, marginBottom: 16 },
   reviewTitle: { fontSize: 15, fontWeight: '700', color: '#92400e', marginBottom: 4 },
   reviewDesc: { fontSize: 12, color: '#b45309', marginBottom: 12 },
@@ -270,9 +320,10 @@ const styles = StyleSheet.create({
   factConfidence: { fontSize: 11, color: '#64748b', marginTop: 2 },
   confirmBtn: { backgroundColor: '#059669', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 6 },
   confirmBtnText: { color: '#ffffff', fontWeight: '600', fontSize: 12 },
-  emptyCard: { backgroundColor: '#ffffff', padding: 24, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0' },
+  emptyCard: { backgroundColor: '#ffffff', padding: 28, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0', marginVertical: 8 },
+  emptyIcon: { fontSize: 32, marginBottom: 8 },
   emptyText: { fontSize: 14, fontWeight: '600', color: '#475569' },
-  emptySubtext: { fontSize: 12, color: '#94a3b8', marginTop: 4 },
+  emptySubtext: { fontSize: 12, color: '#94a3b8', marginTop: 4, textAlign: 'center' },
   docCard: { backgroundColor: '#ffffff', borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#e2e8f0' },
   docHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   docName: { fontSize: 14, fontWeight: '600', color: '#0f172a', flex: 1, marginRight: 8 },

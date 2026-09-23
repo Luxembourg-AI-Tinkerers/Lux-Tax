@@ -13,6 +13,7 @@ import {
 } from '@luxtax/contracts';
 import { InviteModal } from '../../../../components/InviteModal';
 import { DocumentsView } from '../../../../components/DocumentsView';
+import { FreelanceBusinessView } from '../../../../components/FreelanceBusinessView';
 import { FactsView } from '../../../../components/FactsView';
 import { QuestionnaireView } from '../../../../components/QuestionnaireView';
 import { TaxCalculatorView } from '../../../../components/TaxCalculatorView';
@@ -23,6 +24,7 @@ import { AdminConsoleView } from '../../../../components/AdminConsoleView';
 type TabKey =
   | 'overview'
   | 'documents'
+  | 'freelance'
   | 'facts'
   | 'questionnaire'
   | 'calculator'
@@ -157,6 +159,7 @@ export default function DashboardPage() {
             {[
               { key: 'overview', label: 'Overview & Readiness' },
               { key: 'documents', label: 'Document Vault' },
+              { key: 'freelance', label: 'Freelance & Business' },
               { key: 'facts', label: 'Confirmed Facts' },
               { key: 'questionnaire', label: 'Tax Profile & Checklist' },
               { key: 'calculator', label: `${selectedYear} Tax Engine` },
@@ -303,7 +306,7 @@ export default function DashboardPage() {
             </section>
 
             {/* Quick Feature Cards */}
-            <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div
                 onClick={() => setActiveTab('documents')}
                 className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-sky-300 transition cursor-pointer"
@@ -319,8 +322,22 @@ export default function DashboardPage() {
               </div>
 
               <div
+                onClick={() => setActiveTab('freelance')}
+                className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-indigo-300 transition cursor-pointer"
+              >
+                <div className="h-10 w-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-lg mb-4">
+                  💼
+                </div>
+                <h3 className="font-bold text-slate-900 text-sm mb-1">Freelance & Business</h3>
+                <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                  Track client invoices, deductible operating expenses, and VAT per spouse.
+                </p>
+                <span className="text-xs font-semibold text-indigo-600">Open Business Hub &rarr;</span>
+              </div>
+
+              <div
                 onClick={() => setActiveTab('questionnaire')}
-                className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-sky-300 transition cursor-pointer"
+                className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-purple-300 transition cursor-pointer"
               >
                 <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-lg mb-4">
                   📝
@@ -334,12 +351,12 @@ export default function DashboardPage() {
 
               <div
                 onClick={() => setActiveTab('filing')}
-                className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-sky-300 transition cursor-pointer"
+                className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-emerald-300 transition cursor-pointer"
               >
                 <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg mb-4">
                   📦
                 </div>
-                <h3 className="font-bold text-slate-900 text-sm mb-1">Approvals & Filing Package</h3>
+                <h3 className="font-bold text-slate-900 text-sm mb-1">Approvals & Filing</h3>
                 <p className="text-xs text-slate-500 leading-relaxed mb-4">
                   Review dual spousal approvals, Form 100 boxes, and MyGuichet manual filing guide.
                 </p>
@@ -377,7 +394,20 @@ export default function DashboardPage() {
         )}
 
         {activeTab === 'documents' && workspace && (
-          <DocumentsView workspaceId={workspace.id} onFactsChanged={loadData} />
+          <DocumentsView
+            workspaceId={workspace.id}
+            members={household?.members || []}
+            onFactsChanged={loadData}
+          />
+        )}
+
+        {activeTab === 'freelance' && workspace && (
+          <FreelanceBusinessView
+            workspaceId={workspace.id}
+            members={household?.members || []}
+            currentUserId={user?.id || ''}
+            onDataChanged={loadData}
+          />
         )}
 
         {activeTab === 'facts' && workspace && (

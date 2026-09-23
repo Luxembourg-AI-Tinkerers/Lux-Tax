@@ -29,6 +29,16 @@ export interface CalculationLineItemProvenance {
   outputAmount: number;
 }
 
+export interface FreelanceIncomeBreakdownDto {
+  primaryGrossRevenue: number;
+  primaryBusinessExpenses: number;
+  primaryNetProfit: number;
+  spouseGrossRevenue: number;
+  spouseBusinessExpenses: number;
+  spouseNetProfit: number;
+  totalFreelanceNetProfit: number;
+}
+
 export interface TaxCalculationResultDto {
   taxYear: number;
   taxClass: TaxClass;
@@ -43,6 +53,7 @@ export interface TaxCalculationResultDto {
   finalTaxLiability: number;
   taxWithheldAtSource: number;
   balancePayableOrRefund: number; // Positive = Due, Negative = Refund
+  freelanceIncomeBreakdown?: FreelanceIncomeBreakdownDto;
   provenance: CalculationLineItemProvenance[];
   warnings: string[];
   calculatedAt: string;

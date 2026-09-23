@@ -1,1 +1,1 @@
-{"root":["./src/auth.schema.ts","./src/household.schema.ts","./src/index.ts","./src/workspace.schema.ts"],"version":"5.9.3"}
+{"root":["./src/admin.schema.ts","./src/auth.schema.ts","./src/document.schema.ts","./src/fact.schema.ts","./src/filing.schema.ts","./src/household.schema.ts","./src/index.ts","./src/questionnaire.schema.ts","./src/workspace.schema.ts"],"version":"5.9.3"}

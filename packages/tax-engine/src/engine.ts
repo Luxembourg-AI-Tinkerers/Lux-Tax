@@ -34,6 +34,12 @@ export class LuxembourgTaxEngine {
     let totalDonations = 0;
     let totalActualFrais = 0;
 
+    let primaryFreelanceGross = 0;
+    let primaryBusinessExpenses = 0;
+    let spouseFreelanceGross = 0;
+    let spouseBusinessExpenses = 0;
+    const freelanceFactIds: string[] = [];
+
     const grossSalaries: number[] = [];
     const salaryFactIds: string[] = [];
     const mortgageFactIds: string[] = [];
@@ -59,6 +65,22 @@ export class LuxembourgTaxEngine {
             totalActualFrais += amt;
           }
           break;
+        case 'FREELANCE_INCOME':
+          freelanceFactIds.push(fact.id);
+          if (spouseUserId && fact.ownerId === spouseUserId) {
+            spouseFreelanceGross += amt;
+          } else {
+            primaryFreelanceGross += amt;
+          }
+          break;
+        case 'BUSINESS_EXPENSE':
+          freelanceFactIds.push(fact.id);
+          if (spouseUserId && fact.ownerId === spouseUserId) {
+            spouseBusinessExpenses += amt;
+          } else {
+            primaryBusinessExpenses += amt;
+          }
+          break;
         case 'MORTGAGE_DEDUCTION':
           totalMortgageInterest += amt;
           mortgageFactIds.push(fact.id);
@@ -76,24 +98,53 @@ export class LuxembourgTaxEngine {
       }
     }
 
-    // Determine count of employed spouses
-    let employedSpousesCount = grossSalaries.length > 0 ? (grossSalaries.length >= 2 || (primaryUserId && spouseUserId) ? 2 : 1) : 1;
+    // Determine count of employed or freelance working spouses
+    const primaryNetProfit = Math.max(0, primaryFreelanceGross - primaryBusinessExpenses);
+    const spouseNetProfit = Math.max(0, spouseFreelanceGross - spouseBusinessExpenses);
+    const totalFreelanceNetProfit = primaryNetProfit + spouseNetProfit;
+    const totalFreelanceGrossRevenue = primaryFreelanceGross + spouseFreelanceGross;
+    const totalBusinessExpenses = primaryBusinessExpenses + spouseBusinessExpenses;
+
+    let employedSpousesCount = grossSalaries.length > 0 ? (grossSalaries.length >= 2 || (primaryUserId && spouseUserId && facts.some((f) => f.ownerId === spouseUserId && f.category === 'EMPLOYMENT_INCOME')) ? 2 : 1) : 0;
     const householdMembersCount = (spouseUserId ? 2 : 1) + dependantsCount;
 
     // Gross employment income after social security
     const netEmploymentIncome = Math.max(0, totalGrossSalary - totalSocialContributions);
 
-    provenance.push({
-      ruleCode: 'LIR-ART-95',
-      description: 'Gross employment income after mandatory social security contributions (Cotisations sociales)',
-      sourceFactIds: salaryFactIds,
-      formula: 'grossSalary - socialSecurityContributions',
-      inputs: {
-        grossSalary: totalGrossSalary,
-        socialSecurityContributions: totalSocialContributions,
-      },
-      outputAmount: netEmploymentIncome,
-    });
+    if (totalGrossSalary > 0) {
+      provenance.push({
+        ruleCode: 'LIR-ART-95',
+        description: 'Gross employment income after mandatory social security contributions (Cotisations sociales)',
+        sourceFactIds: salaryFactIds,
+        formula: 'grossSalary - socialSecurityContributions',
+        inputs: {
+          grossSalary: totalGrossSalary,
+          socialSecurityContributions: totalSocialContributions,
+        },
+        outputAmount: netEmploymentIncome,
+      });
+    }
+
+    if (totalFreelanceGrossRevenue > 0 || totalBusinessExpenses > 0) {
+      provenance.push({
+        ruleCode: 'LIR-ART-14-91',
+        description: 'Net freelance and independent business profit (Articles 14 & 91 L.I.R. - Bénéfice commercial et profession libérale)',
+        sourceFactIds: freelanceFactIds,
+        formula: 'freelanceGrossRevenue - deductibleBusinessExpenses',
+        inputs: {
+          primaryGrossRevenue: primaryFreelanceGross,
+          primaryBusinessExpenses,
+          primaryNetProfit,
+          spouseGrossRevenue: spouseFreelanceGross,
+          spouseBusinessExpenses,
+          spouseNetProfit,
+          totalFreelanceNetProfit,
+        },
+        outputAmount: totalFreelanceNetProfit,
+      });
+    }
+
+    const totalNetIncome = netEmploymentIncome + totalFreelanceNetProfit;
 
     // 2. Compute deductions
     const deductions = calculateDeductions({
@@ -105,20 +156,22 @@ export class LuxembourgTaxEngine {
       declaredInsurance: totalInsurance,
       householdMembersCount,
       declaredDonations: totalDonations,
-      netIncomeBeforeSpecialExpenses: netEmploymentIncome,
+      netIncomeBeforeSpecialExpenses: totalNetIncome,
     });
 
-    provenance.push({
-      ruleCode: 'LIR-ART-107',
-      description: 'Minimum employment expenses deduction (Frais d\'obtention forfaitaires: €540 per working person)',
-      sourceFactIds: [],
-      formula: 'max(employedCount * 540, actualFrais)',
-      inputs: {
-        employedCount: employedSpousesCount,
-        actualFrais: totalActualFrais,
-      },
-      outputAmount: deductions.employmentExpensesDeduction,
-    });
+    if (totalGrossSalary > 0) {
+      provenance.push({
+        ruleCode: 'LIR-ART-107',
+        description: 'Minimum employment expenses deduction (Frais d\'obtention forfaitaires: €540 per working person)',
+        sourceFactIds: [],
+        formula: 'max(employedCount * 540, actualFrais)',
+        inputs: {
+          employedCount: employedSpousesCount,
+          actualFrais: totalActualFrais,
+        },
+        outputAmount: deductions.employmentExpensesDeduction,
+      });
+    }
 
     if (totalMortgageInterest > 0) {
       provenance.push({
@@ -147,15 +200,17 @@ export class LuxembourgTaxEngine {
     });
 
     // 3. Taxable income (Revenu imposable ajusté)
-    const taxableIncome = Math.max(0, netEmploymentIncome - deductions.totalDeductions);
+    const taxableIncome = Math.max(0, totalNetIncome - deductions.totalDeductions);
 
     provenance.push({
       ruleCode: 'LIR-ART-119',
       description: 'Adjusted taxable income (Revenu imposable ajusté)',
       sourceFactIds: [],
-      formula: 'max(0, netEmploymentIncome - totalDeductions)',
+      formula: 'max(0, totalNetIncome - totalDeductions)',
       inputs: {
+        totalNetIncome,
         netEmploymentIncome,
+        totalFreelanceNetProfit,
         totalDeductions: deductions.totalDeductions,
       },
       outputAmount: taxableIncome,
@@ -250,8 +305,8 @@ export class LuxembourgTaxEngine {
       outputAmount: balancePayableOrRefund,
     });
 
-    if (totalGrossSalary === 0) {
-      warnings.push('No gross salary facts confirmed for this workspace. Tax liability is 0.');
+    if (totalGrossSalary === 0 && totalFreelanceGrossRevenue === 0) {
+      warnings.push('No gross salary or freelance revenue facts confirmed for this workspace. Tax liability is 0.');
     }
     if (taxClass === TaxClass.CLASS_2 && !spouseUserId) {
       warnings.push('Class 2 selected but no spouse is registered in the workspace.');
@@ -260,7 +315,7 @@ export class LuxembourgTaxEngine {
     return {
       taxYear,
       taxClass,
-      grossIncome: totalGrossSalary,
+      grossIncome: totalGrossSalary + totalFreelanceGrossRevenue,
       totalDeductions: deductions.totalDeductions,
       taxableIncome,
       baseTax,
@@ -271,6 +326,15 @@ export class LuxembourgTaxEngine {
       finalTaxLiability,
       taxWithheldAtSource: totalWithholdingTax,
       balancePayableOrRefund,
+      freelanceIncomeBreakdown: {
+        primaryGrossRevenue: primaryFreelanceGross,
+        primaryBusinessExpenses,
+        primaryNetProfit,
+        spouseGrossRevenue: spouseFreelanceGross,
+        spouseBusinessExpenses,
+        spouseNetProfit,
+        totalFreelanceNetProfit,
+      },
       provenance,
       warnings,
       calculatedAt: new Date().toISOString(),

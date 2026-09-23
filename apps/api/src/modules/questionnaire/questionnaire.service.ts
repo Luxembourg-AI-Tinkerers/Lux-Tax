@@ -44,6 +44,7 @@ export class QuestionnaireService {
           hasPrimaryResidenceMortgage: false,
           hasLifeInsuranceOrPensionPlan: false,
           hasDonations: false,
+          hasFreelanceIncome: false,
           childrenCount: 0,
         };
 

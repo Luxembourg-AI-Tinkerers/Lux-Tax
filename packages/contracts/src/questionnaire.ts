@@ -8,6 +8,7 @@ export interface QuestionnaireAnswersDto {
   mortgageOccupancyYear?: number;
   hasLifeInsuranceOrPensionPlan: boolean;
   hasDonations: boolean;
+  hasFreelanceIncome?: boolean;
   childrenCount: number;
   notes?: string;
 }

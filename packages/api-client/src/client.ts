@@ -39,6 +39,9 @@ import {
   TestModelConnectionDto,
   TestModelConnectionResultDto,
   UpdateModelRouteDto,
+  FreelanceBusinessProfileDto,
+  UpdateFreelanceProfileDto,
+  FreelanceMetricsDto,
 } from '@luxtax/contracts';
 
 export interface ApiClientConfig {
@@ -245,6 +248,43 @@ export class LuxTaxApiClient {
       {
         method: 'DELETE',
       }
+    );
+  }
+
+  // Freelance APIs
+  async getFreelanceProfiles(workspaceId: string) {
+    return this.request<FreelanceBusinessProfileDto[]>(
+      `/api/workspaces/${workspaceId}/freelance/profiles`,
+      { method: 'GET' }
+    );
+  }
+
+  async updateFreelanceProfile(
+    workspaceId: string,
+    ownerId: string,
+    body: UpdateFreelanceProfileDto,
+  ) {
+    return this.request<FreelanceBusinessProfileDto>(
+      `/api/workspaces/${workspaceId}/freelance/profiles/${ownerId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async getFreelanceMetrics(workspaceId: string, ownerId?: string) {
+    const query = ownerId ? `?ownerId=${encodeURIComponent(ownerId)}` : '';
+    return this.request<FreelanceMetricsDto>(
+      `/api/workspaces/${workspaceId}/freelance/metrics${query}`,
+      { method: 'GET' }
+    );
+  }
+
+  async loadFreelanceDemo(workspaceId: string) {
+    return this.request<{ success: boolean; count: number }>(
+      `/api/workspaces/${workspaceId}/freelance/demo`,
+      { method: 'POST' }
     );
   }
 

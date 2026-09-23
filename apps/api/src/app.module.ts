@@ -11,6 +11,7 @@ import { QuestionnaireModule } from './modules/questionnaire/questionnaire.modul
 import { CalculationsModule } from './modules/calculations/calculations.module';
 import { FilingModule } from './modules/filing/filing.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { FreelanceModule } from './modules/freelance/freelance.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { AdminModule } from './modules/admin/admin.module';
     CalculationsModule,
     FilingModule,
     AdminModule,
+    FreelanceModule,
   ],
 })
 export class AppModule {}

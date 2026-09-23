@@ -8,6 +8,7 @@ export const questionnaireSchema = z.object({
   mortgageOccupancyYear: z.number().int().min(1950).max(2030).optional(),
   hasLifeInsuranceOrPensionPlan: z.boolean(),
   hasDonations: z.boolean(),
+  hasFreelanceIncome: z.boolean().default(false),
   childrenCount: z.number().int().min(0).max(20).default(0),
   notes: z.string().max(1000).optional(),
 });

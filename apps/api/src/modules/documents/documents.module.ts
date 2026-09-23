@@ -2,11 +2,14 @@ import { Module } from '@nestjs/common';
 import { DocumentsService } from './documents.service';
 import { DocumentsController } from './documents.controller';
 import { AuditModule } from '../audit/audit.module';
+import { AdminModule } from '../admin/admin.module';
+import { ReceiptAiVisionService } from './receipt-ai-vision.service';
 
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, AdminModule],
   controllers: [DocumentsController],
-  providers: [DocumentsService],
-  exports: [DocumentsService],
+  providers: [DocumentsService, ReceiptAiVisionService],
+  exports: [DocumentsService, ReceiptAiVisionService],
 })
 export class DocumentsModule {}
+
