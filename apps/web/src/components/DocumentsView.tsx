@@ -11,6 +11,7 @@ import {
   HouseholdMemberDto,
 } from '@luxtax/contracts';
 import { CameraScanModal } from './CameraScanModal';
+import { factInclusionWarning } from '../lib/fact-inclusion';
 
 interface DocumentsViewProps {
   workspaceId: string;
@@ -33,6 +34,27 @@ export function DocumentsView({ workspaceId, members = [], onFactsChanged }: Doc
     setFeedback({ type, message });
     setTimeout(() => setFeedback(null), 4000);
   };
+
+  // Documents are always uploaded as private drafts. The state the user asked
+  // for is applied through a second, audited call so a failed promotion is
+  // reported instead of the document silently staying private (or, worse, being
+  // uploaded straight into the return).
+  const UPLOAD_VISIBILITY = DocumentVisibility.SHARED_FOR_DISCUSSION;
+
+  const applyVisibilityAfterUpload = async (
+    documentId: string,
+    visibility: DocumentVisibility,
+  ): Promise<string | null> => {
+    if (visibility === DocumentVisibility.PRIVATE_DRAFT) return null;
+    const patch = await apiClient.updateDocumentVisibility(workspaceId, documentId, visibility);
+    return patch.error ?? null;
+  };
+
+  // The owner selector lists household members only; anything else is ignored
+  // (the API also rejects a non-member owner).
+  const resolvedUploadOwnerId = members.some((m) => m.userId === uploadOwnerId)
+    ? uploadOwnerId
+    : undefined;
 
   const refresh = async () => {
     setLoading(true);
@@ -62,14 +84,26 @@ export function DocumentsView({ workspaceId, members = [], onFactsChanged }: Doc
         fileName: file.name,
         fileContentBase64: base64,
         mimeType: file.type || 'text/plain',
-        visibility: DocumentVisibility.SHARED_FOR_DISCUSSION,
-        ownerId: uploadOwnerId || undefined,
+        ownerId: resolvedUploadOwnerId,
       });
 
       if (res.error) {
         showFeedback('error', res.error);
+      } else if (!res.data) {
+        showFeedback(
+          'error',
+          `Document "${file.name}" was saved as a private draft, but the upload response had no document id; share it from the vault.`,
+        );
       } else {
-        showFeedback('success', `Document "${file.name}" uploaded & parsed successfully!`);
+        const patchError = await applyVisibilityAfterUpload(res.data.id, UPLOAD_VISIBILITY);
+        if (patchError) {
+          showFeedback(
+            'error',
+            `Document "${file.name}" is saved as a private draft, but sharing it failed: ${patchError}`,
+          );
+        } else {
+          showFeedback('success', `Document "${file.name}" uploaded & parsed successfully!`);
+        }
         await refresh();
         onFactsChanged();
       }
@@ -103,15 +137,27 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
       fileName: 'Certificat_Remuneration_2025_Sample.txt',
       fileContentBase64: base64,
       mimeType: 'text/plain',
-      visibility: DocumentVisibility.SHARED_FOR_DISCUSSION,
-      ownerId: uploadOwnerId || undefined,
+      ownerId: resolvedUploadOwnerId,
     });
 
     setUploading(false);
     if (res.error) {
       showFeedback('error', res.error);
+    } else if (!res.data) {
+      showFeedback(
+        'error',
+        'The sample salary certificate was saved as a private draft, but the upload response had no document id; share it from the vault.',
+      );
     } else {
-      showFeedback('success', 'Uploaded & extracted sample 2025 Salary Certificate!');
+      const patchError = await applyVisibilityAfterUpload(res.data.id, UPLOAD_VISIBILITY);
+      if (patchError) {
+        showFeedback(
+          'error',
+          `The sample salary certificate is saved as a private draft, but sharing it failed: ${patchError}`,
+        );
+      } else {
+        showFeedback('success', 'Uploaded & extracted sample 2025 Salary Certificate!');
+      }
       await refresh();
       onFactsChanged();
     }
@@ -197,11 +243,20 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
     setConfirmingId(null);
     if (res.error) {
       showFeedback('error', res.error);
+      return;
+    }
+
+    // A shared-for-discussion document is saved but excluded from the return.
+    // Never report that as included.
+    const inclusionWarning = factInclusionWarning(true, res.data?.isIncludedInReturn);
+    if (inclusionWarning) {
+      showFeedback('error', `Confirmed €${fact.fieldValue} (${fact.fieldName}). ${inclusionWarning}`);
     } else {
       showFeedback('success', `Confirmed €${fact.fieldValue} (${fact.fieldName}) into return facts!`);
-      await refresh();
-      onFactsChanged();
     }
+
+    await refresh();
+    onFactsChanged();
   };
 
   const unconfirmedFacts = extractedFacts.filter((f) => !f.isConfirmed);

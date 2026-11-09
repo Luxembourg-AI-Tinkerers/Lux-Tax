@@ -15,8 +15,9 @@ import { DocumentsService } from './documents.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { HouseholdGuard } from '../../common/guards/household.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { uploadDocumentSchema } from '@luxtax/validation';
-import { DocumentDto, DocumentVisibility } from '@luxtax/contracts';
+import { DocumentDto, DocumentVisibility, HouseholdRole } from '@luxtax/contracts';
 import { FastifyRequest } from 'fastify';
 
 @Controller('api/workspaces/:workspaceId/documents')
@@ -24,6 +25,7 @@ import { FastifyRequest } from 'fastify';
 export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
+  @Roles(HouseholdRole.PRIMARY_FILER, HouseholdRole.CO_FILER)
   @Post()
   async upload(
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
@@ -51,6 +53,7 @@ export class DocumentsController {
     return this.documentsService.getDocumentsForWorkspace(workspaceId, userId);
   }
 
+  @Roles(HouseholdRole.PRIMARY_FILER, HouseholdRole.CO_FILER)
   @Patch(':documentId/visibility')
   async updateVisibility(
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
@@ -71,6 +74,7 @@ export class DocumentsController {
     );
   }
 
+  @Roles(HouseholdRole.PRIMARY_FILER, HouseholdRole.CO_FILER)
   @Delete(':documentId')
   async delete(
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,

@@ -7,3 +7,4 @@ export * from './questionnaire.schema';
 export * from './filing.schema';
 export * from './admin.schema';
 export * from './freelance.schema';
+export * from './notification.schema';

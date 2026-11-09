@@ -10,11 +10,13 @@ import {
   Alert,
 } from 'react-native';
 import { mobileApiClient } from '../../src/lib/api-client';
+import { resolveWorkspace } from '../../src/lib/workspace';
 import { WorkspaceReadinessDto, TaskSeverity } from '@luxtax/contracts';
 
 export default function MobileTasksScreen() {
   const [readiness, setReadiness] = useState<WorkspaceReadinessDto | null>(null);
   const [householdId, setHouseholdId] = useState<string | null>(null);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -23,6 +25,11 @@ export default function MobileTasksScreen() {
     if (hhRes.data && hhRes.data.length > 0) {
       const hId = hhRes.data[0].id;
       setHouseholdId(hId);
+
+      // Readiness is household-scoped, the questionnaire is workspace-scoped
+      // (MOB-1/MOB-2): resolve both so no id crosses over.
+      const resolved = await resolveWorkspace(mobileApiClient, 2025, hId);
+      if (resolved.ok) setWorkspaceId(resolved.workspaceId);
 
       const readRes = await mobileApiClient.getWorkspaceReadiness(hId, 2025);
       if (readRes.data) setReadiness(readRes.data);
@@ -36,20 +43,31 @@ export default function MobileTasksScreen() {
   }, []);
 
   const handleResolveQuestionnaire = async () => {
-    if (!householdId) return;
+    if (!workspaceId) {
+      Alert.alert('No workspace', 'Open or create a tax workspace for 2025 first.');
+      return;
+    }
+
     setLoading(true);
-    await mobileApiClient.submitTaxProfile(householdId, 2025, {
-      taxResidence: 'RESIDENT',
+    // `submitTaxProfile` never existed on the client; the questionnaire endpoint is
+    // workspace-scoped and expects the current QuestionnaireAnswersDto shape.
+    const res = await mobileApiClient.saveQuestionnaire(workspaceId, {
       maritalStatus: 'MARRIED',
-      hasChildren: false,
-      dependantsCount: 0,
       hasEmploymentIncome: true,
       hasPensionIncome: false,
-      hasRentalIncome: false,
       hasPrimaryResidenceMortgage: true,
-      mortgageOccupancyYear: 2025,
-      hasInsuranceDeductions: true,
+      hasLifeInsuranceOrPensionPlan: false,
+      hasDonations: false,
+      childrenCount: 0,
+      hasFreelanceIncome: false,
     });
+    setLoading(false);
+
+    if (res.error) {
+      Alert.alert('Save Failed', res.error.message || 'Could not save the questionnaire.');
+      return;
+    }
+
     await loadData();
     Alert.alert('Profile Saved', 'Household questionnaire has been updated.');
   };

@@ -18,3 +18,29 @@ export const apiClient = new LuxTaxApiClient({
     }
   },
 });
+
+/**
+ * Download the ACD annex PDF produced by the API for a filing package.
+ * Uses a blob download because the endpoint is JWT-protected.
+ */
+export async function downloadAnnexPdf(workspaceId: string): Promise<void> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('luxtax_access_token') : null;
+  const response = await fetch(
+    `${API_BASE_URL}/api/workspaces/${workspaceId}/filing-package/annexes.pdf`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Annex PDF could not be generated (HTTP ${response.status}).`);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `luxtax-annexes-${workspaceId.slice(0, 8)}.pdf`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}

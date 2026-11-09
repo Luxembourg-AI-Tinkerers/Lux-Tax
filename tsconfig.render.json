@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.test.json",
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  },
+  "include": [
+    ".tools/types/react-native.d.ts",
+    "packages/tax-engine/src/**/*.ts",
+    "apps/mobile/src/lib/push-and-status.ts",
+    "apps/mobile/src/lib/app-lock.ts",
+    "apps/mobile/src/components/OfflineBanner.tsx",
+    "apps/mobile/src/components/AppLockScreen.tsx",
+    "apps/mobile/test/render.spec.ts"
+  ]
+}

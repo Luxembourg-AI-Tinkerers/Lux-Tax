@@ -1,13 +1,25 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { apiClient } from '../lib/api';
+import { apiClient, downloadAnnexPdf } from '../lib/api';
 import {
   ReturnVersionDto,
+  ReturnVersionHistoryDto,
+  ReturnVersionHistoryItemDto,
   FilingPackageDto,
   TaxYearWorkspaceDto,
   HouseholdDto,
+  WorkspaceStatus,
 } from '@luxtax/contracts';
+
+const VERSION_STATUS_STYLES: Record<
+  ReturnVersionHistoryItemDto['status'],
+  { label: string; badge: string }
+> = {
+  DRAFT: { label: 'Current draft', badge: 'bg-amber-100 text-amber-800' },
+  APPROVED: { label: 'Approved', badge: 'bg-emerald-100 text-emerald-800' },
+  SUPERSEDED: { label: 'Superseded', badge: 'bg-slate-100 text-slate-600' },
+};
 
 interface FilingPackageViewProps {
   workspace: TaxYearWorkspaceDto;
@@ -24,6 +36,8 @@ export function FilingPackageView({
 }: FilingPackageViewProps) {
   const [returnVersion, setReturnVersion] = useState<ReturnVersionDto | null>(null);
   const [filingPackage, setFilingPackage] = useState<FilingPackageDto | null>(null);
+  const [history, setHistory] = useState<ReturnVersionHistoryDto | null>(null);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [approving, setApproving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [copiedBox, setCopiedBox] = useState<string | null>(null);
@@ -36,16 +50,29 @@ export function FilingPackageView({
   };
 
   const loadFilingData = async () => {
-    const [verRes, pkgRes] = await Promise.all([
+    const [verRes, pkgRes, historyRes] = await Promise.all([
       apiClient.getReturnVersion(workspace.id),
       apiClient.getFilingPackage(workspace.id),
+      apiClient.getReturnVersionHistory(workspace.id),
     ]);
-    if (verRes.data) setReturnVersion(verRes.data);
-    if (pkgRes.data) setFilingPackage(pkgRes.data);
+    // A successful `null` is authoritative: after an invalidation the workspace
+    // legitimately has no current version row and no package, so the previous
+    // tax year's rows must not stand in for them. Only a failed request keeps
+    // the previous state (the history card shows its unavailable copy).
+    if (!verRes.error) setReturnVersion(verRes.data ?? null);
+    if (!pkgRes.error) setFilingPackage(pkgRes.data ?? null);
+    if (!historyRes.error) setHistory(historyRes.data ?? null);
+    setHistoryLoaded(true);
   };
 
   useEffect(() => {
-    loadFilingData();
+    // Reset first: another workspace/tax year must never render the previous
+    // year's version, package or history while the new requests are in flight.
+    setReturnVersion(null);
+    setFilingPackage(null);
+    setHistory(null);
+    setHistoryLoaded(false);
+    void loadFilingData();
   }, [workspace.id]);
 
   const handleApprove = async () => {
@@ -59,6 +86,7 @@ export function FilingPackageView({
       setReturnVersion(res.data);
       showFeedback('success', 'Return version approved successfully! Both spouses can now review.');
       onRefresh();
+      await loadFilingData();
     }
   };
 
@@ -73,6 +101,7 @@ export function FilingPackageView({
       setFilingPackage(res.data);
       showFeedback('success', 'Official Form 100 package and MyGuichet transfer guide generated!');
       onRefresh();
+      await loadFilingData();
     }
   };
 
@@ -149,7 +178,9 @@ export function FilingPackageView({
         <div className="grid gap-4 sm:grid-cols-2 mt-5">
           {members.map((member) => {
             const hasApproved = approvals.some((a) => a.userId === member.userId && !a.isSuperseded);
-            const approvalRecord = approvals.find((a) => a.userId === member.userId);
+            const approvalRecord = approvals.find(
+              (a) => a.userId === member.userId && !a.isSuperseded,
+            );
 
             return (
               <div
@@ -193,16 +224,148 @@ export function FilingPackageView({
                     Approved on: {new Date(approvalRecord.approvedAt).toLocaleString()}
                   </p>
                 )}
-
-                {approvalRecord?.isSuperseded && (
-                  <p className="mt-2 text-[11px] font-medium text-amber-700 bg-amber-50 p-1.5 rounded border border-amber-200">
-                    ⚠ Approval superseded: {approvalRecord.supersedingReason || 'Fact modified'}
-                  </p>
-                )}
               </div>
             );
           })}
         </div>
+      </div>
+
+      {/* Version History Section */}
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="border-b border-slate-100 pb-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-bold text-slate-900">Version history</h3>
+            {workspace.status === WorkspaceStatus.FILED && (
+              <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-bold text-indigo-800">
+                🔒 Filed &amp; frozen
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">
+            A change to a material fact, questionnaire answer, document or calculation supersedes existing
+            approvals and opens a new draft version.
+          </p>
+          {workspace.status === WorkspaceStatus.FILED && (
+            <p className="mt-2 rounded-lg border border-indigo-200 bg-indigo-50/60 px-3 py-1.5 text-[11px] font-medium text-indigo-900">
+              The filed version snapshot is immutable. Material changes after filing require an
+              amendment rather than an edit of the filed version.
+            </p>
+          )}
+        </div>
+
+        {history === null ? (
+          <div className="mt-4 p-8 text-center text-slate-500 rounded-lg border border-dashed border-slate-200">
+            <p className="text-xs">
+              {historyLoaded ? 'Version history is not available right now.' : 'Loading version history…'}
+            </p>
+          </div>
+        ) : history.versions.length === 0 ? (
+          <div className="mt-4 p-8 text-center text-slate-500 rounded-lg border border-dashed border-slate-200">
+            <p className="text-xs">No return versions recorded for this workspace yet.</p>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {history.versions.map((item) => {
+              const status = VERSION_STATUS_STYLES[item.status];
+
+              return (
+                <div
+                  key={item.id ?? `version-${item.versionNumber}`}
+                  className={`rounded-xl border p-4 ${
+                    item.isCurrent
+                      ? 'border-sky-300 bg-sky-50/30 ring-2 ring-sky-100'
+                      : 'border-slate-200 bg-white'
+                  }`}
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-sm font-bold text-slate-900">Version {item.versionNumber}</h4>
+                        <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${status.badge}`}>
+                          {status.label}
+                        </span>
+                        {item.isCurrent && (
+                          <span className="rounded-full bg-sky-600 px-2.5 py-0.5 text-[10px] font-bold text-white">
+                            Current version
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {item.createdAt
+                          ? `Created ${new Date(item.createdAt).toLocaleDateString()}`
+                          : 'Draft not yet approved — no version snapshot exists.'}
+                      </p>
+                    </div>
+
+                    <div className="text-[11px] text-slate-600 sm:text-right">
+                      <p>
+                        Final tax liability:{' '}
+                        <span className="font-bold text-slate-900">
+                          {typeof item.finalTaxLiability === 'number'
+                            ? `€${item.finalTaxLiability.toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}`
+                            : 'Not available until approved'}
+                        </span>
+                      </p>
+                      <p className="mt-0.5">
+                        Filing package:{' '}
+                        <span
+                          className={`font-bold ${
+                            item.packageGenerated ? 'text-emerald-700' : 'text-slate-500'
+                          }`}
+                        >
+                          {item.packageGenerated ? 'Generated' : 'Not generated'}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-1.5">
+                    {item.approvals.length === 0 ? (
+                      <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 p-2.5 text-[11px] text-slate-500">
+                        {item.status === 'DRAFT'
+                          ? 'No approvals yet — this draft still needs approval from all required approvers.'
+                          : 'No approvals were recorded for this version.'}
+                      </p>
+                    ) : (
+                      item.approvals.map((approval) => (
+                        <div
+                          key={approval.id}
+                          className={`rounded-lg border p-2.5 text-[11px] ${
+                            approval.isSuperseded
+                              ? 'border-amber-200 bg-amber-50/60'
+                              : 'border-emerald-200 bg-emerald-50/40'
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-1">
+                            <span className="font-semibold text-slate-800">
+                              {approval.userEmail || approval.userId.substring(0, 8)}
+                            </span>
+                            <span className="text-slate-500">
+                              Approved {new Date(approval.approvedAt).toLocaleString()}
+                            </span>
+                          </div>
+                          {approval.isSuperseded && (
+                            <p className="mt-1 font-medium text-amber-800">
+                              Approval superseded
+                              {approval.supersededAt
+                                ? ` on ${new Date(approval.supersededAt).toLocaleDateString()}`
+                                : ''}
+                              :{' '}
+                              {approval.supersedingReason || 'The return changed after this approval.'}
+                            </p>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Package Generation Section */}
@@ -241,11 +404,25 @@ export function FilingPackageView({
               <h4 className="text-sm font-bold text-slate-900 mb-3">
                 Official Form 100 Box Values ({filingPackage.form100Boxes.length} fields mapped)
               </h4>
+              {(filingPackage.unsupportedCertificateCodes ?? []).length > 0 && (
+                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  <div className="font-bold">
+                    {(filingPackage.unsupportedCertificateCodes ?? []).length} certificate 160 code(s) could not be mapped
+                  </div>
+                  <ul className="mt-1 space-y-1">
+                    {(filingPackage.unsupportedCertificateCodes ?? []).map((item) => (
+                      <li key={`${item.factId}-${item.code}`}>
+                        <span className="font-mono font-bold">{item.code}</span> — {item.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 uppercase text-slate-500 border-b border-slate-200">
                     <tr>
-                      <th className="px-4 py-2.5">Box</th>
+                      <th className="px-4 py-2.5">Sheet / Case</th>
                       <th className="px-4 py-2.5">Page</th>
                       <th className="px-4 py-2.5">French Description</th>
                       <th className="px-4 py-2.5">German Description</th>
@@ -257,7 +434,17 @@ export function FilingPackageView({
                     {filingPackage.form100Boxes.map((box, i) => (
                       <tr key={i} className="hover:bg-slate-50/50">
                         <td className="px-4 py-2 font-mono font-bold text-sky-700">
-                          Case {box.boxNumber}
+                          {box.sheet ?? (box as any).boxNumber ?? ''} · case {box.caseNumber ?? 'n/a'}
+                          {box.kind && box.kind !== 'FORM_100' && (
+                            <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 font-sans text-[10px] font-bold text-amber-700">
+                              {box.kind}
+                            </span>
+                          )}
+                          {box.personName && (
+                            <span className="mt-0.5 block font-sans text-[10px] font-normal text-slate-400">
+                              {box.personName}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-2 text-slate-500">Page {box.pageNumber}</td>
                         <td className="px-4 py-2 font-medium text-slate-800">{box.labelFr}</td>
@@ -266,12 +453,18 @@ export function FilingPackageView({
                           €{Number(box.amount).toFixed(2)}
                         </td>
                         <td className="px-4 py-2 text-center">
-                          <button
-                            onClick={() => handleCopy(box.boxNumber, box.amount)}
-                            className="rounded bg-slate-100 hover:bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700"
-                          >
-                            {copiedBox === box.boxNumber ? 'Copied!' : 'Copy'}
-                          </button>
+                          {box.kind === 'FORM_100' || !box.kind ? (
+                            <button
+                              onClick={() => handleCopy(String(i), box.amount)}
+                              className="rounded bg-slate-100 hover:bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700"
+                            >
+                              {copiedBox === String(i) ? 'Copied!' : 'Copy'}
+                            </button>
+                          ) : (
+                            <span className="text-[10px] font-semibold uppercase text-slate-400">
+                              {box.kind === 'COMPUTED' ? 'auto' : 'instructions'}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -286,6 +479,65 @@ export function FilingPackageView({
                 MyGuichet.lu Step-by-Step Filing Walkthrough
               </h4>
               <div className="space-y-3">
+                {filingPackage.annexes.length > 0 && (
+                  <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="text-sm font-bold text-indigo-950 mb-1">
+                        Required ACD annexes ({filingPackage.annexes.length})
+                      </h3>
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await downloadAnnexPdf(workspace.id);
+                            } catch (error) {
+                              console.error(error);
+                            }
+                          }}
+                          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-500"
+                        >
+                          Download annex PDF
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => window.print()}
+                          className="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-[11px] font-bold text-indigo-800 hover:bg-indigo-50"
+                        >
+                          Print
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-indigo-800 mb-3">
+                      The app supplies the values; the official annex PDF is not generated. Carry them into the
+                      corresponding ACD annex.
+                    </p>
+                    <div className="space-y-3">
+                      {filingPackage.annexes.map((annex) => (
+                        <div key={annex.code} className="rounded-lg bg-white border border-indigo-100 p-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-900">
+                              {annex.code} — {annex.title}
+                            </span>
+                            <span className="text-[10px] font-bold uppercase text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+                              preparation sheet
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 mt-1">{annex.reason}</p>
+                          <div className="mt-2 grid gap-1 text-[11px] sm:grid-cols-2">
+                            {annex.fields.map((f) => (
+                              <div key={f.label} className="flex justify-between border-b border-slate-100 py-0.5">
+                                <span className="text-slate-500">{f.label}</span>
+                                <span className="font-semibold">{f.value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {filingPackage.myGuichetGuide.map((step) => (
                   <div key={step.sectionIndex} className="rounded-lg border border-slate-200 bg-white p-4 text-xs">
                     <div className="flex items-center justify-between mb-2">

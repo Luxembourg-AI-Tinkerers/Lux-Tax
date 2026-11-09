@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditEventType, AuditFilterDto, AuditEventDto } from '@luxtax/contracts';
+import * as crypto from 'node:crypto';
+import { hashAuditEvent } from './audit-chain';
 
 export interface CreateAuditLogParams {
   readonly householdId?: string;
@@ -26,8 +28,39 @@ export class AuditService {
   }
 
   async log(params: CreateAuditLogParams): Promise<AuditEventDto> {
+    // API-10: chain this event to the previous one for the same household, so a
+    // deleted or rewritten row breaks verification.
+    const previous = params.householdId
+      ? await this.prisma.auditEvent.findFirst({
+          where: { householdId: params.householdId, hash: { not: null } },
+          orderBy: { createdAt: 'desc' },
+          select: { hash: true },
+        })
+      : null;
+
+    const id = crypto.randomUUID();
+    const createdAt = new Date();
+    const prevHash = previous?.hash ?? null;
+    const hash = hashAuditEvent(prevHash, {
+      id,
+      householdId: params.householdId ?? null,
+      workspaceId: params.workspaceId ?? null,
+      actorId: params.actorId,
+      eventType: params.eventType,
+      entityType: params.entityType,
+      entityId: params.entityId,
+      description: params.description,
+      createdAt: createdAt.toISOString(),
+      previousValue: params.previousValue ?? null,
+      newValue: params.newValue ?? null,
+    });
+
     const event = await this.prisma.auditEvent.create({
       data: {
+        id,
+        createdAt,
+        prevHash,
+        hash,
         householdId: params.householdId,
         workspaceId: params.workspaceId,
         actorId: params.actorId,

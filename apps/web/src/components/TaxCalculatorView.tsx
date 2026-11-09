@@ -2,20 +2,24 @@
 
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '../lib/api';
-import { TaxCalculationResultDto } from '@luxtax/contracts';
+import { TaxCalculationResultDto, ScenarioComparisonDto } from '@luxtax/contracts';
 
 interface TaxCalculatorViewProps {
   workspaceId: string;
+  /** Tax year of the active workspace. 2025 stays fully supported (filing until 31 Dec 2026). */
+  taxYear?: number;
   onCalculated?: () => void;
   onNavigateToFiling?: () => void;
 }
 
-export function TaxCalculatorView({ workspaceId, onCalculated, onNavigateToFiling }: TaxCalculatorViewProps) {
+export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, onNavigateToFiling }: TaxCalculatorViewProps) {
   const [calc, setCalc] = useState<TaxCalculationResultDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
   const [showProvenance, setShowProvenance] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [comparison, setComparison] = useState<ScenarioComparisonDto | null>(null);
+  const [comparing, setComparing] = useState(false);
 
   const showFeedback = (type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
@@ -32,6 +36,7 @@ export function TaxCalculatorView({ workspaceId, onCalculated, onNavigateToFilin
   };
 
   useEffect(() => {
+    setComparison(null);
     loadCalculation();
   }, [workspaceId]);
 
@@ -44,8 +49,23 @@ export function TaxCalculatorView({ workspaceId, onCalculated, onNavigateToFilin
       showFeedback('error', res.error);
     } else if (res.data) {
       setCalc(res.data);
-      showFeedback('success', '2025 Tax calculation completed successfully!');
+      showFeedback('success', `${res.data.taxYear} tax calculation completed successfully!`);
       onCalculated?.();
+    }
+  };
+
+  // Reads the saved facts and questionnaire three times; never persists a run
+  // and never changes the active assessment election.
+  const handleCompareScenarios = async () => {
+    setComparing(true);
+    const res = await apiClient.compareScenarios(workspaceId);
+    setComparing(false);
+
+    if (res.error) {
+      setComparison(null);
+      showFeedback('error', res.error);
+    } else if (res.data) {
+      setComparison(res.data);
     }
   };
 
@@ -53,8 +73,40 @@ export function TaxCalculatorView({ workspaceId, onCalculated, onNavigateToFilin
     return <div className="p-8 text-center text-sm text-slate-500">Loading tax estimate...</div>;
   }
 
+  // A result stored before the deduction/credit breakdown existed cannot be
+  // rendered, and must not be shown as if it were current: every line below
+  // dereferences `credits` and `deductions`. Ask for a recalculation instead.
+  const staleStoredResult =
+    calc !== null && (!calc.credits || !calc.deductions || !calc.assessmentMode);
+
+  if (staleStoredResult) {
+    return (
+      <div className="p-8">
+        <div className="mx-auto max-w-xl rounded-2xl border border-amber-200 bg-amber-50 p-6">
+          <h3 className="text-sm font-bold text-amber-900">
+            This stored estimate predates the current model
+          </h3>
+          <p className="mt-2 text-xs text-amber-800">
+            It carries no deduction or credit breakdown, so its lines cannot be shown safely. Recalculate to rebuild
+            it from the saved facts and questionnaire. Nothing is filed until you approve the new result.
+          </p>
+          <button
+            onClick={handleRunCalculation}
+            disabled={calculating}
+            className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            {calculating ? 'Recalculating…' : 'Recalculate now'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const isRefund = calc ? calc.balancePayableOrRefund < 0 : false;
   const balanceAbs = calc ? Math.abs(calc.balancePayableOrRefund) : 0;
+  const eur = (value: number) =>
+    `€${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const signedEur = (value: number) => `${value >= 0 ? '+' : '−'}${eur(Math.abs(value))}`;
 
   return (
     <div className="space-y-6">
@@ -74,14 +126,34 @@ export function TaxCalculatorView({ workspaceId, onCalculated, onNavigateToFilin
         </div>
       )}
 
+      {/* Unsupported-scenario banner */}
+      {/* `unsupported` can be absent on a stored result that predates the field: the API
+          casts saved JSON straight to the DTO, so guard the array instead of trusting it. */}
+      {calc && Array.isArray(calc.unsupported) && calc.unsupported.length > 0 && (
+        <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-xs text-rose-900">
+          <p className="font-bold mb-1">This scenario is not fully supported</p>
+          <ul className="list-disc pl-4 space-y-1">
+            {calc.unsupported.map((u, i) => (
+              <li key={i}>{u}</li>
+            ))}
+          </ul>
+          <p className="mt-2 opacity-80">
+            The figures below use resident rules only. Do not file from this estimate.
+          </p>
+        </div>
+      )}
+
       {/* Top Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div>
           <h3 className="text-base font-bold text-slate-900">
-            Deterministic Tax Engine (Tax Year 2025)
+            Deterministic Tax Engine (Tax Year {calc?.taxYear ?? taxYear})
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Calculated strictly according to Article 118-121 LIR and published ACD scales.
+            Calculated with the versioned rule package {calc?.rulePackageVersion ?? ''} — Art. 118–121, 120bis, 124, 126 LIR.
+            <span className="block mt-1 text-[11px] text-slate-400">
+              Supported tax years: 2025 (returns due 31 December 2026) · 2026 · 2028 preview
+            </span>
           </p>
         </div>
 
@@ -91,7 +163,7 @@ export function TaxCalculatorView({ workspaceId, onCalculated, onNavigateToFilin
             disabled={calculating}
             className="rounded-lg bg-sky-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-sky-500 disabled:opacity-50 transition-colors"
           >
-            {calculating ? 'Running Tax Formulas...' : '⚡ Calculate 2025 Tax'}
+            {calculating ? 'Running Tax Formulas...' : `⚡ Calculate ${calc?.taxYear ?? taxYear} Tax`}
           </button>
           {calc && onNavigateToFiling && (
             <button
@@ -124,7 +196,11 @@ export function TaxCalculatorView({ workspaceId, onCalculated, onNavigateToFilin
                 </div>
                 <p className="mt-1 text-xs text-white/80">
                   {isRefund
-                    ? 'Excess tax deducted at source will be reimbursed by the Administration des contributions directes.'
+                    ? calc.taxWithheldAtSource > 0 && (calc.credits.cimRefund ?? 0) > 0
+                      ? 'Excess tax withheld and the refundable CIM will be paid out by the Administration des contributions directes.'
+                      : calc.taxWithheldAtSource > 0
+                        ? 'Excess tax deducted at source will be reimbursed by the Administration des contributions directes.'
+                        : 'A refundable credit (CIM) exceeds your tax; the Administration des contributions directes pays the excess out.'
                     : 'Balance due upon official notice of tax assessment.'}
                 </p>
               </div>
@@ -178,9 +254,17 @@ export function TaxCalculatorView({ workspaceId, onCalculated, onNavigateToFilin
                 Tax Credits (CIS/CIM)
               </span>
               <div className="mt-1 text-xl font-bold text-sky-600">
-                -€{calc.totalTaxCredits.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                -€
+                {Math.min(
+                  calc.totalTaxCredits - (calc.credits.cimRefund ?? 0),
+                  Math.max(0, calc.totalTaxBeforeCredits),
+                ).toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                })}
               </div>
-              <span className="text-[11px] text-slate-400">Credited against base tax</span>
+              <span className="text-[11px] text-slate-400">
+                Credited against base tax, capped at the tax due; the refundable CIM excess is paid out separately
+              </span>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -275,6 +359,169 @@ export function TaxCalculatorView({ workspaceId, onCalculated, onNavigateToFilin
               </div>
             )}
 
+          {/* Legal breakdown — every deduction and credit box */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-bold text-slate-900">Deduction and credit breakdown</h4>
+              <span className="text-[11px] font-semibold text-slate-500">
+                {calc.assessmentMode.replace('_', ' ')}
+                {calc.class2WithoutSpouse ? ' · Class 2 without spouse (Art. 119 n° 3)' : ''} ·{' '}
+                {calc.rulePackageVersion}
+              </span>
+            </div>
+
+            <div className="grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2">
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">Net income (all categories)</span>
+                <span className="font-semibold">€{calc.netIncome.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">Frais d'obtention (Art. 105/107)</span>
+                <span className="font-semibold">-€{calc.deductions.fraisObtention.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">Déplacement (Art. 105bis)</span>
+                <span className="font-semibold">-€{calc.deductions.travel.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">Owner-occupier interest (Art. 98 n°5 / 105)</span>
+                <span className="font-semibold">-€{calc.deductions.mortgageInterest.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">Art. 111 insurance envelope (€672)</span>
+                <span className="font-semibold">-€{calc.deductions.art111.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">ASRD single premium (Art. 111 al. 3/4)</span>
+                <span className="font-semibold">-€{calc.deductions.asrd.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">Art. 111bis third pillar</span>
+                <span className="font-semibold">-€{calc.deductions.art111bis.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">Épargne-logement</span>
+                <span className="font-semibold">-€{calc.deductions.savingsHousing.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">LRCP (Art. 110 n°3)</span>
+                <span className="font-semibold">-€{calc.deductions.lrcp.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">Dépenses spéciales (forfait {calc.deductions.specialExpensesForfait}€)</span>
+                <span className="font-semibold">-€{calc.deductions.specialExpensesTotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">Charges extraordinaires (Art. 127)</span>
+                <span className="font-semibold">-€{calc.deductions.extraordinaryCharges.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">AEP (Art. 129b)</span>
+                <span className="font-semibold">-€{calc.deductions.aep.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">Prior losses (Art. 114)</span>
+                <span className="font-semibold">-€{calc.deductions.priorLosses.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">CIS</span>
+                <span className="font-semibold">-€{calc.credits.cis.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">CI-CO2 salarié</span>
+                <span className="font-semibold">-€{calc.credits.ciCo2Salary.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">CII (independent)</span>
+                <span className="font-semibold">-€{calc.credits.cii.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">CIC (crédit d'impôt conjoncture)</span>
+                <span className="font-semibold">-€{calc.credits.cic.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">Prime jeune salarié (exempt, Art. 115 n°13d)</span>
+                <span className="font-semibold">€{(calc.youngEmployeePrimeExemption ?? 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">CISSM (salaire social minimum)</span>
+                <span className="font-semibold">-€{calc.credits.cissm.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">Foreign tax credit</span>
+                <span className="font-semibold">-€{calc.credits.foreignTaxCredit.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">CIM applied (single parent)</span>
+                <span className="font-semibold">-€{(calc.credits.cimApplied ?? 0).toFixed(2)}</span>
+              </div>
+              {calc.credits.cimRefund > 0 && (
+                <div className="flex justify-between border-b border-slate-100 py-1">
+                  <span className="text-slate-600">
+                    CIM refunded (Art. 154ter)
+                    <span className="mt-0.5 block text-[11px] text-slate-400">
+                      Refundable excess paid out — increases your refund
+                    </span>
+                  </span>
+                  <span className="font-semibold text-emerald-600">+€{calc.credits.cimRefund.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">Start-up credit (2026)</span>
+                <span className="font-semibold">-€{calc.credits.startup.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">Rental net (Art. 98)</span>
+                <span className="font-semibold">€{(calc.rental?.net ?? 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-600">Plus-values taxed at the demi-taux</span>
+                <span className="font-semibold">€{(calc.plusValues?.taxableExtraordinary ?? 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between py-1 font-bold text-slate-900">
+                <span>Taxable income</span>
+                <span>€{calc.taxableIncome.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between py-1 font-bold text-slate-900">
+                <span>Marginal / effective rate</span>
+                <span>{(calc.marginalRate * 100).toFixed(0)}% / {calc.effectiveTaxRate.toFixed(1)}%</span>
+              </div>
+            </div>
+
+            {calc.childRelief && calc.childRelief.total > 0 && (
+              <div className="mt-4 border-t border-slate-200 pt-3 text-xs">
+                <div className="mb-1">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Child relief
+                  </span>
+                </div>
+                <div className="flex justify-between border-b border-slate-100 py-1">
+                  <span className="text-slate-600">Dégrèvement (Art. 122)</span>
+                  <span className="font-semibold">-€{calc.childRelief.degrevement.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-100 py-1">
+                  <span className="text-slate-600">Bonification (Art. 123bis)</span>
+                  <span className="font-semibold">-€{calc.childRelief.bonification.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between py-1 font-bold text-slate-900">
+                  <span>Total child relief</span>
+                  <span>-€{calc.childRelief.total.toFixed(2)}</span>
+                </div>
+                {calc.childRelief.bonificationPhaseOut && (
+                  <p className="mt-1 text-[11px] text-amber-700">Bonification phased out at your RIA</p>
+                )}
+              </div>
+            )}
+
+            {calc.warnings.length > 0 && (
+              <ul className="mt-4 space-y-1 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                {calc.warnings.map((w, i) => (
+                  <li key={i}>• {w}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           {/* Provenance Trace Accordion */}
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <button
@@ -330,6 +577,96 @@ export function TaxCalculatorView({ workspaceId, onCalculated, onNavigateToFilin
           </button>
         </div>
       )}
+
+      {/* Class 2 vs 2× Class 1 / Art. 3ter comparison — never persisted */}
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h4 className="text-sm font-bold text-slate-900">Scenario comparison</h4>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Compare collective Class 2, 2× Class 1 and the Art. 3ter reallocation on the same facts.
+              The comparison is not saved and does not change the active election.
+            </p>
+          </div>
+          <button
+            onClick={handleCompareScenarios}
+            disabled={comparing}
+            className="rounded-lg bg-slate-800 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-slate-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+          >
+            {comparing ? 'Comparing scenarios...' : 'Compare Class 2 vs 2× Class 1'}
+          </button>
+        </div>
+
+        {comparison &&
+          (comparison.comparable ? (
+            <div className="mt-4 space-y-3">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wider text-slate-500">
+                    <th className="py-2 pr-2 font-semibold">Scenario</th>
+                    <th className="py-2 font-semibold text-right">Final tax liability</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-2 pr-2 text-slate-700">Collective Class 2 (Art. 3)</td>
+                    <td className="py-2 text-right font-semibold text-slate-900">
+                      {eur(comparison.collective.finalTaxLiability)}
+                    </td>
+                  </tr>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-2 pr-2 text-slate-700">2× Class 1 (Art. 3ter pure)</td>
+                    <td className="py-2 text-right font-semibold text-slate-900">
+                      {eur(comparison.individualPure.finalTaxLiability)}
+                    </td>
+                  </tr>
+                  <tr className="border-b border-slate-100">
+                    <td className="py-2 pr-2 text-slate-700">Art. 3ter reallocation</td>
+                    <td className="py-2 text-right font-semibold text-slate-900">
+                      {eur(comparison.individualReallocation.finalTaxLiability)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div className="grid gap-2 text-xs sm:grid-cols-2">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <span className="text-slate-500">Collective − 2× Class 1</span>
+                  <div className="mt-0.5 text-sm font-bold text-slate-900">
+                    {signedEur(comparison.deltaCollectiveVsIndividual)}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <span className="text-slate-500">Collective − Art. 3ter reallocation</span>
+                  <div className="mt-0.5 text-sm font-bold text-slate-900">
+                    {signedEur(comparison.deltaCollectiveVsReallocation)}
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-400">
+                A positive delta means the collective assessment costs more. Rule package{' '}
+                {comparison.rulePackageVersion} · tax year {comparison.taxYear}.
+              </p>
+
+              {comparison.warnings.length > 0 && (
+                <ul className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800">
+                  {comparison.warnings.map((warning, index) => (
+                    <li key={index}>• {warning}</li>
+                  ))}
+                </ul>
+              )}
+
+              <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600">
+                This is an estimate, not a filing election; Art. 3ter must be elected within the deadline.
+              </p>
+            </div>
+          ) : (
+            <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+              Only a Class 2 couple can compare these scenarios.
+            </p>
+          ))}
+      </div>
     </div>
   );
 }

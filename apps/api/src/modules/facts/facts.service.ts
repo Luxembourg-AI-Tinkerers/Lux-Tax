@@ -1,28 +1,97 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { ReturnApprovalsService } from '../filing/return-approvals.service';
 import {
   AuditEventType,
   ConfirmedFactDto,
+  DocumentVisibility,
   ExtractedFactDto,
   FactCategory,
-  WorkspaceStatus,
+  NotificationSeverity,
+  NotificationType,
 } from '@luxtax/contracts';
 import { ConfirmFactInput, UpdateFactInput } from '@luxtax/validation';
 import { Prisma } from '@prisma/client';
+import {
+  canIncludeInReturn,
+  canReadDocument,
+  shouldRedactFactAudit,
+  Visibility,
+} from './fact-visibility';
+
+/**
+ * Document states every active household member may read. Mirrors the shared
+ * branch of `canReadDocument` in ./fact-visibility.ts.
+ */
+const HOUSEHOLD_VISIBLE_DOCUMENT_STATES = [
+  DocumentVisibility.SHARED_FOR_DISCUSSION,
+  DocumentVisibility.PROPOSED_FOR_RETURN,
+  DocumentVisibility.INCLUDED_IN_RETURN,
+  DocumentVisibility.ARCHIVED,
+];
+
+/** Audit description used instead of a private fact's field key and amount. */
+function redactedFactAuditDescription(
+  action: 'Confirmed' | 'Updated' | 'Deleted',
+): string {
+  return `${action} a private fact (details hidden)`;
+}
+
+interface FactOwnershipScope {
+  readonly ownerId: string | null;
+  readonly isSharedWithHousehold: boolean;
+  readonly sourceDocument: {
+    readonly uploaderId: string | null;
+    readonly ownerId: string | null;
+    readonly visibility: string;
+  } | null;
+}
+
+/**
+ * A private draft (or a manual fact the owner kept to themselves) is not
+ * mutable by another household member, even with a guessed fact id. Shared by
+ * `updateFact` and `deleteFact` so the two paths cannot drift.
+ */
+function isPrivateFactOfAnotherUser(
+  fact: FactOwnershipScope,
+  userId: string,
+): boolean {
+  const visibility = (fact.sourceDocument?.visibility ?? null) as
+    | Visibility
+    | null;
+  const isPrivateDraft = visibility === 'PRIVATE_DRAFT';
+  const isPrivateManualFact = visibility === null && !fact.isSharedWithHousehold;
+  const ownedByAnotherUser =
+    fact.ownerId !== userId &&
+    fact.sourceDocument?.uploaderId !== userId &&
+    fact.sourceDocument?.ownerId !== userId;
+
+  return (isPrivateDraft || isPrivateManualFact) && ownedByAnotherUser;
+}
 
 @Injectable()
 export class FactsService {
+  private readonly logger = new Logger(FactsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly notifications: NotificationsService,
+    private readonly returnApprovals: ReturnApprovalsService,
   ) {}
 
-  async getFactsForWorkspace(workspaceId: string): Promise<{
+  async getFactsForWorkspace(
+    workspaceId: string,
+    userId: string,
+  ): Promise<{
     extractedFacts: ExtractedFactDto[];
     confirmedFacts: ConfirmedFactDto[];
   }> {
@@ -36,11 +105,44 @@ export class FactsService {
 
     const [extracted, confirmed] = await Promise.all([
       this.prisma.extractedFact.findMany({
-        where: { workspaceId },
+        where: {
+          workspaceId,
+          // Only facts from documents this user may read: their own uploads,
+          // documents they own, or documents shared with the household.
+          document: {
+            OR: [
+              { uploaderId: userId },
+              { ownerId: userId },
+              { visibility: { in: HOUSEHOLD_VISIBLE_DOCUMENT_STATES } },
+            ],
+          },
+        },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.confirmedFact.findMany({
-        where: { workspaceId },
+        where: {
+          workspaceId,
+          OR: [
+            // Manual facts: visible when shared with the household or owned by
+            // the reader.
+            {
+              sourceDocumentId: null,
+              OR: [{ ownerId: userId }, { isSharedWithHousehold: true }],
+            },
+            // Document-sourced facts follow the document visibility policy.
+            {
+              sourceDocument: {
+                is: {
+                  OR: [
+                    { uploaderId: userId },
+                    { ownerId: userId },
+                    { visibility: { in: HOUSEHOLD_VISIBLE_DOCUMENT_STATES } },
+                  ],
+                },
+              },
+            },
+          ],
+        },
         orderBy: { createdAt: 'desc' },
       }),
     ]);
@@ -98,27 +200,65 @@ export class FactsService {
     }
 
     let sourceDocumentId: string | null = null;
+    let sourceVisibility: Visibility | null = null;
+
     if (input.extractedFactId) {
       const extracted = await this.prisma.extractedFact.findUnique({
         where: { id: input.extractedFactId },
-      });
-      if (extracted) {
-        sourceDocumentId = extracted.documentId;
-        await this.prisma.extractedFact.update({
-          where: { id: input.extractedFactId },
-          data: {
-            isConfirmed: true,
-            confirmedAt: new Date(),
-            confirmedById: userId,
+        include: {
+          document: {
+            select: { uploaderId: true, ownerId: true, visibility: true },
           },
-        });
+        },
+      });
+
+      // A supplied extracted-fact id must belong to this workspace; otherwise
+      // the caller could pull a fact across households or spoof a source.
+      if (!extracted || extracted.workspaceId !== workspaceId) {
+        throw new NotFoundException('Extracted fact not found in workspace');
       }
+
+      if (
+        !canReadDocument(
+          extracted.document.visibility as Visibility,
+          extracted.document.uploaderId,
+          extracted.document.ownerId,
+          userId,
+        )
+      ) {
+        throw new ForbiddenException(
+          'This document is a private draft of another household member',
+        );
+      }
+
+      sourceDocumentId = extracted.documentId;
+      sourceVisibility = extracted.document.visibility as Visibility;
+
+      await this.prisma.extractedFact.update({
+        where: { id: input.extractedFactId },
+        data: {
+          isConfirmed: true,
+          confirmedAt: new Date(),
+          confirmedById: userId,
+        },
+      });
     }
+
+    // A fact may only enter the joint return when its source document has been
+    // proposed for, or included in, the return. The body cannot override this.
+    const isIncludedInReturn =
+      (input.isIncludedInReturn ?? true) && canIncludeInReturn(sourceVisibility);
+
+    // A fact confirmed from a private draft belongs to its author alone: it is
+    // never shared with the household and never re-attributed, so deleting the
+    // source document (sourceDocumentId becomes null) cannot turn it into a
+    // shared manual fact.
+    const isPrivateSource = sourceVisibility === 'PRIVATE_DRAFT';
 
     const confirmed = await this.prisma.confirmedFact.create({
       data: {
         workspaceId,
-        ownerId: input.ownerId || userId,
+        ownerId: isPrivateSource ? userId : input.ownerId || userId,
         category: input.category,
         fieldKey: input.fieldKey,
         amount: new Prisma.Decimal(input.amount),
@@ -126,18 +266,30 @@ export class FactsService {
         taxYear: workspace.taxYear,
         sourceDocumentId,
         extractedFactId: input.extractedFactId,
-        isSharedWithHousehold: input.isSharedWithHousehold ?? true,
-        isIncludedInReturn: input.isIncludedInReturn ?? true,
+        isSharedWithHousehold: isPrivateSource
+          ? false
+          : input.isSharedWithHousehold ?? true,
+        isIncludedInReturn,
         description: input.description,
       },
     });
 
+    // The household activity feed is readable by every active member, so a
+    // private fact is logged without its field key or amount — in its own audit
+    // row and in the invalidation reason it may produce.
+    const redactAudit = shouldRedactFactAudit(
+      sourceVisibility,
+      confirmed.isSharedWithHousehold,
+    );
+    const materialChangeReason = redactAudit
+      ? redactedFactAuditDescription('Confirmed')
+      : `New fact confirmed: ${input.fieldKey} = ${input.amount} EUR`;
+
     // Invalidate any previously approved returns
-    await this.invalidateApprovalsIfAny(
+    await this.returnApprovals.invalidateForChange(
       workspaceId,
-      workspace.householdId,
       userId,
-      `New fact confirmed: ${input.fieldKey} = ${input.amount} EUR`,
+      materialChangeReason,
       ipAddress,
     );
 
@@ -149,14 +301,40 @@ export class FactsService {
       eventType: AuditEventType.FACT_CONFIRMED,
       entityType: 'ConfirmedFact',
       entityId: confirmed.id,
-      newValue: {
-        category: confirmed.category,
-        fieldKey: confirmed.fieldKey,
-        amount: confirmed.amount.toString(),
-      },
-      description: `Confirmed fact "${confirmed.fieldKey}" for ${confirmed.amount} EUR`,
+      newValue: redactAudit
+        ? { category: confirmed.category }
+        : {
+            category: confirmed.category,
+            fieldKey: confirmed.fieldKey,
+            amount: confirmed.amount.toString(),
+          },
+      description: redactAudit
+        ? redactedFactAuditDescription('Confirmed')
+        : `Confirmed fact "${confirmed.fieldKey}" for ${confirmed.amount} EUR`,
       ipAddress,
     });
+
+    // The spouse learns that a shared material fact changed; the actor already
+    // knows. Private facts never reach this branch (redactAudit is true for
+    // them), and a notification failure must not undo the confirmed fact.
+    if (!redactAudit && confirmed.isSharedWithHousehold) {
+      await this.safeNotify('material fact confirmed', () =>
+        this.notifications.emitToHousehold({
+          householdId: workspace.householdId,
+          workspaceId,
+          actorId: userId,
+          excludeUserIds: [userId],
+          type: NotificationType.MATERIAL_FIELD_CHANGED,
+          severity: NotificationSeverity.INFO,
+          title: 'Material fact confirmed',
+          body: 'A household member confirmed a fact in the joint return.',
+          entityType: 'ConfirmedFact',
+          entityId: confirmed.id,
+          dedupeKey: `material-fact:${confirmed.id}`,
+          actionUrl: `/${workspace.householdId}/dashboard`,
+        }),
+      );
+    }
 
     return {
       id: confirmed.id,
@@ -186,11 +364,34 @@ export class FactsService {
   ): Promise<ConfirmedFactDto> {
     const fact = await this.prisma.confirmedFact.findUnique({
       where: { id: factId },
-      include: { workspace: true },
+      include: {
+        workspace: true,
+        sourceDocument: {
+          select: { uploaderId: true, ownerId: true, visibility: true },
+        },
+      },
     });
 
     if (!fact || fact.workspaceId !== workspaceId) {
       throw new NotFoundException('Confirmed fact not found in workspace');
+    }
+
+    const sourceVisibility = (fact.sourceDocument?.visibility ?? null) as
+      | Visibility
+      | null;
+
+    // A private draft (or a manual fact the owner kept to themselves) is not
+    // editable by another household member, even with a guessed fact id.
+    if (isPrivateFactOfAnotherUser(fact, userId)) {
+      throw new ForbiddenException(
+        'Private facts can only be edited by their uploader or owner',
+      );
+    }
+
+    if (input.isIncludedInReturn === true && !canIncludeInReturn(sourceVisibility)) {
+      throw new BadRequestException(
+        'Only facts from a document proposed for, or included in, the return can be included',
+      );
     }
 
     const previousAmount = fact.amount.toString();
@@ -206,12 +407,21 @@ export class FactsService {
       },
     });
 
+    // Redact when the fact was private before the edit or stays private after
+    // it: sharing a formerly private fact must not retroactively publish its
+    // amount in the activity feed.
+    const redactAudit =
+      shouldRedactFactAudit(sourceVisibility, fact.isSharedWithHousehold) ||
+      shouldRedactFactAudit(sourceVisibility, updated.isSharedWithHousehold);
+    const materialChangeReason = redactAudit
+      ? redactedFactAuditDescription('Updated')
+      : `Fact updated: ${fact.fieldKey} changed from ${previousAmount} to ${updated.amount.toString()} EUR`;
+
     // Invalidate approvals on change
-    await this.invalidateApprovalsIfAny(
+    await this.returnApprovals.invalidateForChange(
       workspaceId,
-      fact.workspace.householdId,
       userId,
-      `Fact updated: ${fact.fieldKey} changed from ${previousAmount} to ${updated.amount.toString()} EUR`,
+      materialChangeReason,
       ipAddress,
     );
 
@@ -223,9 +433,15 @@ export class FactsService {
       eventType: AuditEventType.FACT_UPDATED,
       entityType: 'ConfirmedFact',
       entityId: fact.id,
-      previousValue: { amount: previousAmount },
-      newValue: { amount: updated.amount.toString() },
-      description: `Updated fact "${fact.fieldKey}" from ${previousAmount} EUR to ${updated.amount.toString()} EUR`,
+      previousValue: redactAudit
+        ? { category: fact.category }
+        : { amount: previousAmount },
+      newValue: redactAudit
+        ? { category: updated.category }
+        : { amount: updated.amount.toString() },
+      description: redactAudit
+        ? redactedFactAuditDescription('Updated')
+        : `Updated fact "${fact.fieldKey}" from ${previousAmount} EUR to ${updated.amount.toString()} EUR`,
       ipAddress,
     });
 
@@ -256,22 +472,44 @@ export class FactsService {
   ): Promise<void> {
     const fact = await this.prisma.confirmedFact.findUnique({
       where: { id: factId },
-      include: { workspace: true },
+      include: {
+        workspace: true,
+        sourceDocument: {
+          select: { uploaderId: true, ownerId: true, visibility: true },
+        },
+      },
     });
 
     if (!fact || fact.workspaceId !== workspaceId) {
       throw new NotFoundException('Confirmed fact not found');
     }
 
+    // Same guard as updateFact: a private draft, or a manual fact its owner kept
+    // unshared, may only be deleted by that member.
+    if (isPrivateFactOfAnotherUser(fact, userId)) {
+      throw new ForbiddenException(
+        'Private facts can only be deleted by their uploader or owner',
+      );
+    }
+
+    const sourceVisibility = (fact.sourceDocument?.visibility ?? null) as
+      | Visibility
+      | null;
+    const redactAudit = shouldRedactFactAudit(
+      sourceVisibility,
+      fact.isSharedWithHousehold,
+    );
+
     await this.prisma.confirmedFact.delete({
       where: { id: factId },
     });
 
-    await this.invalidateApprovalsIfAny(
+    await this.returnApprovals.invalidateForChange(
       workspaceId,
-      fact.workspace.householdId,
       userId,
-      `Fact deleted: ${fact.fieldKey} (${fact.amount.toString()} EUR)`,
+      redactAudit
+        ? redactedFactAuditDescription('Deleted')
+        : `Fact deleted: ${fact.fieldKey} (${fact.amount.toString()} EUR)`,
       ipAddress,
     );
 
@@ -282,61 +520,29 @@ export class FactsService {
       eventType: AuditEventType.FACT_UPDATED,
       entityType: 'ConfirmedFact',
       entityId: factId,
-      previousValue: { fieldKey: fact.fieldKey, amount: fact.amount.toString() },
-      description: `Deleted confirmed fact "${fact.fieldKey}"`,
+      previousValue: redactAudit
+        ? { category: fact.category }
+        : { fieldKey: fact.fieldKey, amount: fact.amount.toString() },
+      description: redactAudit
+        ? redactedFactAuditDescription('Deleted')
+        : `Deleted confirmed fact "${fact.fieldKey}"`,
       ipAddress,
     });
   }
 
   /**
-   * Invalidates existing return approvals whenever a material fact change occurs.
+   * Notifications are a side effect: a delivery failure must never roll back or
+   * mask a fact write that already committed.
    */
-  private async invalidateApprovalsIfAny(
-    workspaceId: string,
-    householdId: string,
-    actorId: string,
-    reason: string,
-    ipAddress?: string,
+  private async safeNotify(
+    description: string,
+    emit: () => Promise<unknown>,
   ): Promise<void> {
-    const activeApprovals = await this.prisma.returnApproval.findMany({
-      where: {
-        returnVersion: { workspaceId },
-        isSuperseded: false,
-      },
-      include: { returnVersion: true },
-    });
-
-    if (activeApprovals.length > 0) {
-      await this.prisma.returnApproval.updateMany({
-        where: {
-          returnVersion: { workspaceId },
-          isSuperseded: false,
-        },
-        data: {
-          isSuperseded: true,
-          supersededAt: new Date(),
-          supersedingReason: reason,
-        },
-      });
-
-      await this.prisma.taxYearWorkspace.update({
-        where: { id: workspaceId },
-        data: {
-          status: WorkspaceStatus.NEEDS_REVIEW,
-          activeReturnVersion: { increment: 1 },
-        },
-      });
-
-      await this.auditService.logEvent({
-        householdId,
-        workspaceId,
-        actorId,
-        eventType: AuditEventType.APPROVAL_INVALIDATED,
-        entityType: 'ReturnApproval',
-        entityId: workspaceId,
-        description: `Approvals invalidated due to material change: ${reason}`,
-        ipAddress,
-      });
+    try {
+      await emit();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Notification skipped (${description}): ${message}`);
     }
   }
 }

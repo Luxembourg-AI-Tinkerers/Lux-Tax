@@ -12,33 +12,53 @@ import {
 import { mobileApiClient } from '../../src/lib/api-client';
 import { DocumentDto, DocumentVisibility, DocumentType, ExtractedFactDto, FactCategory } from '@luxtax/contracts';
 import { DocumentCameraScanner } from '../../src/components/DocumentCameraScanner';
+import { resolveWorkspace } from '../../src/lib/workspace';
+import { replayQueue } from '../../src/lib/queue-runtime';
+import { canSeeAmount, REDACTED_PLACEHOLDER } from '../../src/lib/privacy';
 
 export default function MobileDocumentsScreen() {
   const [documents, setDocuments] = useState<readonly DocumentDto[]>([]);
   const [facts, setFacts] = useState<readonly ExtractedFactDto[]>([]);
-  const [householdId, setHouseholdId] = useState<string | null>(null);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [viewerId, setViewerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [scannerVisible, setScannerVisible] = useState(false);
 
+  // MOB-5: a fact is readable only when its source document is shared with the
+  // household; another member's private draft shows a placeholder instead.
+  const canSeeFact = (fact: { documentId?: string | null }): boolean => {
+    const source = documents.find((doc) => doc.id === fact.documentId);
+    return canSeeAmount(
+      { ownerId: source?.ownerId ?? null, visibility: source?.visibility ?? null },
+      viewerId,
+    );
+  };
+
   const loadData = async () => {
     try {
-      const hhRes = await mobileApiClient.getHouseholds();
-      if (hhRes.data && hhRes.data.length > 0) {
-        const hId = hhRes.data[0].id;
-        setHouseholdId(hId);
+      const me = await mobileApiClient.getMe();
+      if (me.data) setViewerId(me.data.id);
 
-        const wsRes = await mobileApiClient.getWorkspace(hId, 2025);
-        if (wsRes.data) {
-          const wId = wsRes.data.id;
+      // MOB-1: every document call is workspace-scoped; resolve once here.
+      const resolved = await resolveWorkspace(mobileApiClient, 2025);
+      if (resolved.ok) {
+        {
+          const wId = resolved.workspaceId;
           setWorkspaceId(wId);
 
           const [docsRes, factsRes] = await Promise.all([
             mobileApiClient.getDocuments(wId),
             mobileApiClient.getFacts(wId),
           ]);
+
+          // MOB-4: replay queued uploads so a scan sent offline appears here.
+          try {
+            await replayQueue(mobileApiClient);
+          } catch {
+            // best effort; the queue retries on the next refresh
+          }
 
           if (docsRes.data) setDocuments(docsRes.data);
           if (factsRes.data) setFacts(factsRes.data.extractedFacts);
@@ -179,7 +199,9 @@ export default function MobileDocumentsScreen() {
                 <View style={styles.factInfo}>
                   <Text style={styles.factField}>{fact.fieldName}</Text>
                   <Text style={styles.factValue}>
-                    €{Number(fact.fieldValue).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    {canSeeFact(fact)
+                      ? `€${Number(fact.fieldValue).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                      : REDACTED_PLACEHOLDER}
                   </Text>
                   <Text style={styles.factConfidence}>Confidence: {Math.round(fact.confidence * 100)}%</Text>
                 </View>
@@ -235,10 +257,10 @@ export default function MobileDocumentsScreen() {
       )}
 
       {/* Camera Scanner Modal */}
-      {householdId && (
+      {workspaceId && (
         <DocumentCameraScanner
           visible={scannerVisible}
-          householdId={householdId}
+          workspaceId={workspaceId}
           taxYear={2025}
           onClose={() => setScannerVisible(false)}
           onUploadSuccess={() => loadData()}

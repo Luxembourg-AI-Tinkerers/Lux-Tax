@@ -50,7 +50,9 @@ enum AuditEventType {
   RETURN_APPROVED
   APPROVAL_INVALIDATED
   FILING_PACKAGE_GENERATED
+  RETURN_FILED
   ASSESSMENT_IMPORTED
+  ASSESSMENT_FOLLOW_UP_UPDATED
 }
 
 enum TaxResidence {
@@ -62,6 +64,12 @@ enum TaxClass {
   CLASS_1
   CLASS_1A
   CLASS_2
+}
+
+enum FilingRoute {
+  MYGUICHET_MANUAL
+  PAPER
+  OTHER
 }
 
 enum DocumentVisibility {
@@ -102,10 +110,18 @@ enum FactCategory {
   FREELANCE_INCOME
   BUSINESS_EXPENSE
   PENSION_INCOME
+  CAPITAL_INCOME
+  RENTAL_INCOME
+  FOREIGN_INCOME
   MORTGAGE_DEDUCTION
+  MORTGAGE_INTEREST
   INSURANCE_DEDUCTION
+  PENSION_SAVINGS_111BIS
+  SAVINGS_HOUSING
+  LRCP_CONTRIBUTION
   DONATION_DEDUCTION
   CHILDCARE_EXPENSE
+  HOUSEHOLD_HELP_EXPENSE
   OTHER_DEDUCTION
 }
 
@@ -123,6 +139,26 @@ enum TaskType {
   MISSING_RESIDENCE_INFO
   RETURN_APPROVAL_REQUIRED
   MISSING_FREELANCE_DOCUMENT
+}
+
+enum NotificationType {
+  HOUSEHOLD_INVITATION
+  DOCUMENT_CONFIRMATION_REQUIRED
+  MATERIAL_FIELD_CHANGED
+  MISSING_DOCUMENT
+  DEADLINE_REMINDER
+  RETURN_READY_FOR_REVIEW
+  APPROVAL_REQUESTED
+  APPROVAL_INVALIDATED
+  FILING_PACKAGE_GENERATED
+  ASSESSMENT_FOLLOW_UP
+  SECURITY_ALERT
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  CRITICAL
 }
 
 model User {
@@ -144,7 +180,11 @@ model User {
   documentsOwned   Document[]           @relation("DocumentOwner")
   confirmedFacts   ConfirmedFact[]       @relation("FactOwner")
   returnApprovals  ReturnApproval[]      @relation("UserReturnApprovals")
+  filingRecords    FilingRecord[]        @relation("FilingRecords")
   freelanceProfiles FreelanceBusinessProfile[]
+  notifications    Notification[]        @relation("NotificationRecipient")
+  notificationsActedOn Notification[]    @relation("NotificationActor")
+  notificationPreferences NotificationPreference[]
 
   @@map("users")
 }
@@ -195,6 +235,8 @@ model Household {
   dependants  Dependant[]
   workspaces  TaxYearWorkspace[]
   auditEvents AuditEvent[]
+  notifications Notification[]
+  notificationPreferences NotificationPreference[]
 
   @@map("households")
 }
@@ -253,6 +295,27 @@ model Dependant {
   @@map("dependants")
 }
 
+/// Append-only history of tax calculations (API-9). `TaxYearWorkspace.calculationResult`
+/// keeps the latest result for reads; every calculation also lands here so the
+/// trajectory of a return can be audited.
+model CalculationSnapshot {
+  id                 String       @id @default(uuid()) @db.Uuid
+  workspaceId        String       @db.Uuid
+  taxYear            Int
+  taxClass           TaxClass
+  rulePackageVersion String
+  /// SHA-256 of the canonical JSON of `resultJson`.
+  resultSha256       String
+  resultJson         Json
+  createdById        String?      @db.Uuid
+  createdAt          DateTime     @default(now())
+
+  workspace          TaxYearWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@map("calculation_snapshots")
+}
+
 model TaxYearWorkspace {
   id                  String          @id @default(uuid()) @db.Uuid
   householdId         String          @db.Uuid
@@ -275,8 +338,11 @@ model TaxYearWorkspace {
   taxProfile          TaxProfile?
   tasks               MissingInformationItem[]
   returnVersions      ReturnVersion[]
+  filingRecord        FilingRecord?
   assessments         Assessment[]
   freelanceProfiles   FreelanceBusinessProfile[]
+  notifications       Notification[]
+  calculationSnapshots CalculationSnapshot[]
 
   @@unique([householdId, taxYear])
   @@index([householdId])
@@ -426,6 +492,7 @@ model ReturnVersion {
   workspace              TaxYearWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   approvals              ReturnApproval[]
   filingPackage          FilingPackage?
+  filingRecord           FilingRecord?
 
   @@unique([workspaceId, versionNumber])
   @@index([workspaceId])
@@ -456,13 +523,43 @@ model FilingPackage {
   taxYear            Int
   taxClass           TaxClass
   form100BoxesJson   Json          @default("[]")
+  annexesJson        Json          @default("[]")
   myGuichetGuideJson Json          @default("[]")
+  /// Certificate-160 codes that could not be mapped; kept so the warning
+  /// survives a page reload instead of vanishing with the generated response.
+  unsupportedCodesJson Json        @default("[]")
   packageSha256      String
+  /// Append-only evidence index: { sha256, generatedAt, supersededAt? }[]. The last
+  /// entry without supersededAt is the package currently in force (API-7).
+  historyJson        Json          @default("[]")
   generatedAt        DateTime      @default(now())
 
   returnVersion      ReturnVersion @relation(fields: [returnVersionId], references: [id], onDelete: Cascade)
 
   @@map("filing_packages")
+}
+
+/// The user's declaration that the return was actually submitted. Exactly one
+/// per workspace: the first filing freezes the version; a correction needs an
+/// amendment (a new ReturnVersion), never a second record on the same one.
+model FilingRecord {
+  id                    String        @id @default(uuid()) @db.Uuid
+  workspaceId           String        @unique @db.Uuid
+  returnVersionId       String        @unique @db.Uuid
+  filedAt               DateTime
+  route                 FilingRoute   @default(MYGUICHET_MANUAL)
+  confirmationReference String?
+  notes                 String?
+  createdById           String        @db.Uuid
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  workspace             TaxYearWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  returnVersion         ReturnVersion    @relation(fields: [returnVersionId], references: [id], onDelete: Restrict)
+  createdBy             User             @relation("FilingRecords", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId])
+  @@map("filing_records")
 }
 
 model Assessment {
@@ -474,6 +571,14 @@ model Assessment {
   assessedTaxDue        Decimal          @db.Decimal(12, 2)
   differenceWithDeclared Decimal         @db.Decimal(12, 2)
   discrepanciesJson     Json             @default("[]")
+  /// Date the ACD notice was received (equal to the bulletin date on import).
+  receivedAt            DateTime?
+  /// Last day to lodge an objection against this assessment.
+  objectionDeadline     DateTime?
+  /// Internal reminder to check the file with the ACD.
+  followUpAt            DateTime?
+  /// True once the assessment is final (no objection lodged / window closed).
+  isFinal               Boolean          @default(false)
   createdAt             DateTime         @default(now())
 
   workspace             TaxYearWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -496,6 +601,10 @@ model AuditEvent {
   description   String
   ipAddress     String?
   userAgent     String?
+  /// API-10: hash chain. `prevHash` is the previous event's `hash` for the same
+  /// household; `hash` covers this event's canonical form plus `prevHash`.
+  prevHash      String?
+  hash          String?
   createdAt     DateTime        @default(now())
 
   actor         User            @relation("UserAuditEvents", fields: [actorId], references: [id])
@@ -503,6 +612,7 @@ model AuditEvent {
   workspace     TaxYearWorkspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
 
   @@index([householdId, createdAt])
+  @@index([householdId, hash])
   @@index([actorId])
   @@map("audit_events")
 }
@@ -562,5 +672,52 @@ model CustomAiRoute {
   updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("custom_ai_routes")
+}
+
+model Notification {
+  id          String               @id @default(uuid()) @db.Uuid
+  householdId String               @db.Uuid
+  workspaceId String?              @db.Uuid
+  userId      String               @db.Uuid
+  /** Idempotency key: a repeat emission for the same user is ignored. */
+  dedupeKey   String?              @db.VarChar(200)
+  actorId     String?              @db.Uuid
+  type        NotificationType
+  severity    NotificationSeverity @default(INFO)
+  title       String
+  body        String
+  entityType  String?
+  entityId    String?
+  actionUrl   String?
+  isRead      Boolean              @default(false)
+  readAt      DateTime?
+  createdAt   DateTime             @default(now())
+
+  user        User              @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actor       User?             @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  household   Household         @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  workspace   TaxYearWorkspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, isRead, createdAt])
+  @@index([workspaceId, createdAt])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id           String             @id @default(uuid()) @db.Uuid
+  userId       String             @db.Uuid
+  householdId  String             @db.Uuid
+  emailEnabled Boolean            @default(true)
+  pushEnabled  Boolean            @default(true)
+  mutedTypes   NotificationType[] @default([])
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  household    Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, householdId])
+  @@map("notification_preferences")
 }
 

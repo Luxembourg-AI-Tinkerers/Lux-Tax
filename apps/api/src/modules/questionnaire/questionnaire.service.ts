@@ -3,6 +3,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ReturnApprovalsService } from '../filing/return-approvals.service';
 import {
   QuestionnaireAnswersDto,
   MissingInformationTaskDto,
@@ -15,7 +16,10 @@ import { QuestionnaireInput } from '@luxtax/validation';
 
 @Injectable()
 export class QuestionnaireService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly returnApprovals: ReturnApprovalsService,
+  ) {}
 
   async getProfileAndTasks(workspaceId: string): Promise<{
     answers: QuestionnaireAnswersDto;
@@ -55,7 +59,9 @@ export class QuestionnaireService {
 
   async saveProfile(
     workspaceId: string,
+    userId: string,
     input: QuestionnaireInput,
+    ipAddress?: string,
   ): Promise<{
     answers: QuestionnaireAnswersDto;
     readiness: ReadinessDetailsDto;
@@ -80,6 +86,16 @@ export class QuestionnaireService {
         answersJson: input as any,
       },
     });
+
+    // Marital status, children and the other engine inputs are return facts:
+    // a saved answer after dual approval must supersede both approvals. Failure
+    // is not swallowed — a stale approval is worse than a failed save.
+    await this.returnApprovals.invalidateForChange(
+      workspaceId,
+      userId,
+      'Questionnaire answers updated',
+      ipAddress,
+    );
 
     const readiness = await this.evaluateMissingItems(workspaceId, input as QuestionnaireAnswersDto);
 

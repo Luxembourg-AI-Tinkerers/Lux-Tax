@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '../lib/api';
 import { ConfirmedFactDto, FactCategory } from '@luxtax/contracts';
+import { FACT_INCLUSION_DOWNGRADE_MESSAGE, factInclusionWarning } from '../lib/fact-inclusion';
 
 interface FactsViewProps {
   workspaceId: string;
@@ -18,13 +19,30 @@ interface NewFactForm {
 }
 
 const PRESET_FIELDS = [
-  { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'grossSalary', label: 'Gross Salary (Case 101 - Rémunération brute)' },
-  { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'socialSecurity', label: 'Social Security (Case 103 - Cotisations sociales déductibles)' },
-  { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'withholdingTax', label: 'Tax Withheld at Source (Case 105 - Retenue d\'impôt)' },
-  { category: FactCategory.MORTGAGE_DEDUCTION, fieldKey: 'mortgageInterest', label: 'Mortgage Debit Interest (Case 141 - Intérêts débiteurs habitation)' },
-  { category: FactCategory.INSURANCE_DEDUCTION, fieldKey: 'pension111bis', label: 'Private Pension Plan (Art 111bis LIR - Prévoyance vieillesse)' },
-  { category: FactCategory.INSURANCE_DEDUCTION, fieldKey: 'insurance111', label: 'Life & Disability Insurance (Art 111 LIR - Primes d\'assurance)' },
-  { category: FactCategory.DONATION_DEDUCTION, fieldKey: 'donations', label: 'Charitable Donations (Art 112 LIR - Dons reconnus)' },
+  { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'grossSalary', label: 'Gross salary — Art. 95 (certificat 160 code 101)' },
+  { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'socialSecurity', label: 'Social contributions — code 103' },
+  { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'withholdingTax', label: 'Tax withheld at source — code 105' },
+  { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'fraisObtention', label: 'Actual professional expenses — Art. 105 (if above €540)' },
+  { category: FactCategory.PENSION_INCOME, fieldKey: 'grossPension', label: 'Pension / rente — Art. 96' },
+  { category: FactCategory.PENSION_INCOME, fieldKey: 'withholdingTax', label: 'Withholding on pension' },
+  { category: FactCategory.FREELANCE_INCOME, fieldKey: 'freelanceRevenue', label: 'Independent revenue — Art. 14 / 91' },
+  { category: FactCategory.BUSINESS_EXPENSE, fieldKey: 'businessExpense', label: 'Deductible business expense — Art. 14 / 91' },
+  { category: FactCategory.FREELANCE_INCOME, fieldKey: 'professionalRevenue', label: 'Liberal profession revenue — Art. 91 (Form 100 page 6, sheet I)' },
+  { category: FactCategory.BUSINESS_EXPENSE, fieldKey: 'professionalExpense', label: 'Liberal profession expense — Art. 91 (Form 100 page 6, sheet I)' },
+  { category: FactCategory.CAPITAL_INCOME, fieldKey: 'capitalIncome', label: 'Capital income — interest, non-qualifying dividends (Art. 97)' },
+  { category: FactCategory.CAPITAL_INCOME, fieldKey: 'qualifyingDividend', label: 'Qualifying dividend — 50 % exempt (Art. 115 n° 15a)' },
+  { category: FactCategory.CAPITAL_INCOME, fieldKey: 'withholdingTax', label: 'Withholding on capital income (15 % / RELIBI)' },
+  { category: FactCategory.RENTAL_INCOME, fieldKey: 'grossRent', label: 'Gross rent received — Art. 98' },
+  { category: FactCategory.RENTAL_INCOME, fieldKey: 'rentalCharges', label: 'Rental charges paid — Art. 98' },
+  { category: FactCategory.FOREIGN_INCOME, fieldKey: 'foreignIncome', label: 'Foreign income — Art. 2 / treaties' },
+  { category: FactCategory.MORTGAGE_INTEREST, fieldKey: 'mortgageInterest', label: 'Owner-occupier interest — Art. 98 n° 5 / 105' },
+  { category: FactCategory.INSURANCE_DEDUCTION, fieldKey: 'insurance111', label: 'Insurance / consumer interest — Art. 111 (€672 envelope)' },
+  { category: FactCategory.PENSION_SAVINGS_111BIS, fieldKey: 'art111bis', label: 'Prévoyance-vieillesse — Art. 111bis (€3,200 / €4,500)' },
+  { category: FactCategory.SAVINGS_HOUSING, fieldKey: 'savingsHousing', label: 'Épargne-logement — Art. 111 al. 5' },
+  { category: FactCategory.LRCP_CONTRIBUTION, fieldKey: 'lrcp', label: 'LRCP personal contribution — Art. 110 n° 3 (€1,200)' },
+  { category: FactCategory.DONATION_DEDUCTION, fieldKey: 'donations', label: 'Donations — Art. 112 (additive to the forfait)' },
+  { category: FactCategory.CHILDCARE_EXPENSE, fieldKey: 'childcare', label: 'Childcare — Art. 127 (forfait €5,400)' },
+  { category: FactCategory.HOUSEHOLD_HELP_EXPENSE, fieldKey: 'householdHelp', label: 'Household help — Art. 127' },
 ];
 
 export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
@@ -123,19 +141,29 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
     setAddingFact(false);
     if (res.error) {
       showFeedback('error', res.error);
+      return;
+    }
+
+    const inclusionWarning = factInclusionWarning(
+      newFact.isIncludedInReturn,
+      res.data?.isIncludedInReturn,
+    );
+    if (inclusionWarning) {
+      showFeedback('error', inclusionWarning);
     } else {
       showFeedback('success', `Added ${newFact.fieldKey} of €${num.toFixed(2)} to return`);
-      setIsAddModalOpen(false);
-      setNewFact({
-        category: FactCategory.EMPLOYMENT_INCOME,
-        fieldKey: 'grossSalary',
-        amount: '',
-        description: '',
-        isIncludedInReturn: true,
-      });
-      await refresh();
-      onFactsChanged();
     }
+
+    setIsAddModalOpen(false);
+    setNewFact({
+      category: FactCategory.EMPLOYMENT_INCOME,
+      fieldKey: 'grossSalary',
+      amount: '',
+      description: '',
+      isIncludedInReturn: true,
+    });
+    await refresh();
+    onFactsChanged();
   };
 
   const handleQuickLoadDemo = async () => {
@@ -144,13 +172,14 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
       { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'grossSalary', amount: '75000.00', description: '2025 Annual Employment Gross Salary' },
       { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'socialSecurity', amount: '9375.00', description: 'CCSS Statutory Health & Pension Contributions (12.5%)' },
       { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'withholdingTax', amount: '12800.00', description: 'Employer Tax Withheld at Source (Retenue d\'impôt)' },
-      { category: FactCategory.MORTGAGE_DEDUCTION, fieldKey: 'mortgageInterest', amount: '3500.00', description: 'BCEE Mortgage Debit Interest (Habitation personnelle)' },
-      { category: FactCategory.INSURANCE_DEDUCTION, fieldKey: 'pension111bis', amount: '3200.00', description: 'Foyer Prévoyance-Vieillesse Private Pension Contract' },
+      { category: FactCategory.MORTGAGE_INTEREST, fieldKey: 'mortgageInterest', amount: '3500.00', description: 'BCEE Mortgage Debit Interest (Habitation personnelle)' },
+      { category: FactCategory.PENSION_SAVINGS_111BIS, fieldKey: 'art111bis', amount: '3200.00', description: 'Foyer Prévoyance-Vieillesse Private Pension Contract' },
       { category: FactCategory.DONATION_DEDUCTION, fieldKey: 'donations', amount: '500.00', description: 'Donation to Croix-Rouge Luxembourgeoise' },
     ];
 
+    let inclusionDowngraded = false;
     for (const item of demoItems) {
-      await apiClient.confirmFact(workspaceId, {
+      const demoRes = await apiClient.confirmFact(workspaceId, {
         category: item.category,
         fieldKey: item.fieldKey,
         amount: item.amount,
@@ -159,10 +188,18 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
         isSharedWithHousehold: true,
         description: item.description,
       });
+      if (factInclusionWarning(true, demoRes.data?.isIncludedInReturn)) {
+        inclusionDowngraded = true;
+      }
     }
 
     setLoadingDemo(false);
-    showFeedback('success', 'Loaded 6 realistic 2025 Luxembourg tax facts into workspace!');
+    showFeedback(
+      inclusionDowngraded ? 'error' : 'success',
+      inclusionDowngraded
+        ? FACT_INCLUSION_DOWNGRADE_MESSAGE
+        : 'Loaded 6 realistic 2025 Luxembourg tax facts into workspace!',
+    );
     await refresh();
     onFactsChanged();
   };
@@ -238,7 +275,7 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
               Confirmed Tax Facts ({confirmedFacts.length})
             </h3>
             <p className="text-xs text-slate-500">
-              All financial values confirmed here are directly injected into the 2025 calculation engine and Form 100.
+              All financial values confirmed here are injected into the versioned calculation engine and the Form 100 package for the workspace tax year.
             </p>
           </div>
           <div className="flex items-center gap-2">

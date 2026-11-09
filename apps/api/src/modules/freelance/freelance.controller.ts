@@ -14,8 +14,13 @@ import { FreelanceService } from './freelance.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { HouseholdGuard } from '../../common/guards/household.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { updateFreelanceProfileSchema } from '@luxtax/validation';
-import { FreelanceBusinessProfileDto, FreelanceMetricsDto } from '@luxtax/contracts';
+import {
+  FreelanceBusinessProfileDto,
+  FreelanceMetricsDto,
+  HouseholdRole,
+} from '@luxtax/contracts';
 
 @Controller('api/workspaces/:workspaceId/freelance')
 @UseGuards(JwtAuthGuard, HouseholdGuard)
@@ -29,6 +34,7 @@ export class FreelanceController {
     return this.freelanceService.getProfiles(workspaceId);
   }
 
+  @Roles(HouseholdRole.PRIMARY_FILER, HouseholdRole.CO_FILER)
   @Put('profiles/:ownerId')
   async updateProfile(
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
@@ -50,6 +56,7 @@ export class FreelanceController {
     return this.freelanceService.getMetrics(workspaceId, ownerId);
   }
 
+  @Roles(HouseholdRole.PRIMARY_FILER, HouseholdRole.CO_FILER)
   @Post('demo')
   async loadDemo(
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,

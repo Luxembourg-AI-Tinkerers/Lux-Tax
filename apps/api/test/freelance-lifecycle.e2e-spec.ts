@@ -198,7 +198,6 @@ describe('Dual-Spouse Freelance & Business Lifecycle (e2e)', () => {
         fileName: 'Invoice_Fintech_Lux_Alice.txt',
         fileContentBase64: invoiceContent,
         mimeType: 'text/plain',
-        visibility: DocumentVisibility.INCLUDED_IN_RETURN,
         documentType: DocumentType.FREELANCE_INVOICE,
         ownerId: aliceId,
       },
@@ -206,7 +205,17 @@ describe('Dual-Spouse Freelance & Business Lifecycle (e2e)', () => {
     expect(invRes.statusCode).toBe(201);
     const invDoc = JSON.parse(invRes.payload);
     expect(invDoc.ownerId).toBe(aliceId);
+    expect(invDoc.visibility).toBe(DocumentVisibility.PRIVATE_DRAFT);
     expect(invDoc.documentType).toBe(DocumentType.FREELANCE_INVOICE);
+
+    // Uploads are private drafts; the requested state is applied afterwards.
+    const invVisRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/workspaces/${workspaceId}/documents/${invDoc.id}/visibility`,
+      headers: { authorization: `Bearer ${aliceToken}` },
+      payload: { visibility: DocumentVisibility.INCLUDED_IN_RETURN },
+    });
+    expect(invVisRes.statusCode).toBe(200);
 
     // Alice uploads business expense
     const expenseContent = Buffer.from(
@@ -221,7 +230,6 @@ describe('Dual-Spouse Freelance & Business Lifecycle (e2e)', () => {
         fileName: 'Hardware_MacBook_Pro_Alice.txt',
         fileContentBase64: expenseContent,
         mimeType: 'text/plain',
-        visibility: DocumentVisibility.INCLUDED_IN_RETURN,
         documentType: DocumentType.BUSINESS_EXPENSE,
         ownerId: aliceId,
       },
@@ -229,6 +237,15 @@ describe('Dual-Spouse Freelance & Business Lifecycle (e2e)', () => {
     expect(expRes.statusCode).toBe(201);
     const expDoc = JSON.parse(expRes.payload);
     expect(expDoc.ownerId).toBe(aliceId);
+    expect(expDoc.visibility).toBe(DocumentVisibility.PRIVATE_DRAFT);
+
+    const expVisRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/workspaces/${workspaceId}/documents/${expDoc.id}/visibility`,
+      headers: { authorization: `Bearer ${aliceToken}` },
+      payload: { visibility: DocumentVisibility.INCLUDED_IN_RETURN },
+    });
+    expect(expVisRes.statusCode).toBe(200);
 
     // Confirm facts for Alice
     await app.inject({
@@ -274,7 +291,6 @@ describe('Dual-Spouse Freelance & Business Lifecycle (e2e)', () => {
         fileName: 'Invoice_Ecommerce_Bob.txt',
         fileContentBase64: bobInvoiceContent,
         mimeType: 'text/plain',
-        visibility: DocumentVisibility.INCLUDED_IN_RETURN,
         documentType: DocumentType.FREELANCE_INVOICE,
         ownerId: bobId,
       },
@@ -282,6 +298,15 @@ describe('Dual-Spouse Freelance & Business Lifecycle (e2e)', () => {
     expect(invRes.statusCode).toBe(201);
     const invDoc = JSON.parse(invRes.payload);
     expect(invDoc.ownerId).toBe(bobId);
+    expect(invDoc.visibility).toBe(DocumentVisibility.PRIVATE_DRAFT);
+
+    const invVisRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/workspaces/${workspaceId}/documents/${invDoc.id}/visibility`,
+      headers: { authorization: `Bearer ${bobToken}` },
+      payload: { visibility: DocumentVisibility.INCLUDED_IN_RETURN },
+    });
+    expect(invVisRes.statusCode).toBe(200);
 
     // Bob uploads business expense
     const bobExpenseContent = Buffer.from(
@@ -296,7 +321,6 @@ describe('Dual-Spouse Freelance & Business Lifecycle (e2e)', () => {
         fileName: 'Coworking_Bob.txt',
         fileContentBase64: bobExpenseContent,
         mimeType: 'text/plain',
-        visibility: DocumentVisibility.INCLUDED_IN_RETURN,
         documentType: DocumentType.BUSINESS_EXPENSE,
         ownerId: bobId,
       },
@@ -304,6 +328,15 @@ describe('Dual-Spouse Freelance & Business Lifecycle (e2e)', () => {
     expect(expRes.statusCode).toBe(201);
     const expDoc = JSON.parse(expRes.payload);
     expect(expDoc.ownerId).toBe(bobId);
+    expect(expDoc.visibility).toBe(DocumentVisibility.PRIVATE_DRAFT);
+
+    const expVisRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/workspaces/${workspaceId}/documents/${expDoc.id}/visibility`,
+      headers: { authorization: `Bearer ${bobToken}` },
+      payload: { visibility: DocumentVisibility.INCLUDED_IN_RETURN },
+    });
+    expect(expVisRes.statusCode).toBe(200);
 
     // Confirm facts for Bob
     await app.inject({

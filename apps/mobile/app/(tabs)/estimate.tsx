@@ -10,6 +10,8 @@ import {
   Alert,
 } from 'react-native';
 import { mobileApiClient } from '../../src/lib/api-client';
+import { resolveWorkspace } from '../../src/lib/workspace';
+import { enqueueOperation, isNetworkError, replayQueue } from '../../src/lib/queue-runtime';
 import { TaxCalculationResultDto, TaxYearWorkspaceDto } from '@luxtax/contracts';
 
 export default function MobileEstimateScreen() {
@@ -22,14 +24,30 @@ export default function MobileEstimateScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const loadData = async () => {
-    const hhRes = await mobileApiClient.getHouseholds();
-    if (hhRes.data && hhRes.data.length > 0) {
-      const hId = hhRes.data[0].id;
-      setHouseholdId(hId);
-
-      const wsRes = await mobileApiClient.getWorkspace(hId, 2025);
-      if (wsRes.data) setWorkspace(wsRes.data);
+    // MOB-1: the workspace id — not the household id — identifies the return.
+    const resolved = await resolveWorkspace(mobileApiClient, 2025);
+    if (!resolved.ok) {
+      setWorkspace(null);
+      setHouseholdId(null);
+      if (resolved.reason === 'NO_HOUSEHOLD') {
+        Alert.alert('No household', resolved.message);
+      }
+      setLoading(false);
+      setRefreshing(false);
+      return;
     }
+
+    setHouseholdId(resolved.workspaceId);
+    const wsRes = await mobileApiClient.getWorkspace(resolved.workspaceId, 2025);
+    if (wsRes.data) setWorkspace(wsRes.data);
+
+    // MOB-4: replay anything queued while offline before showing the figures.
+    try {
+      await replayQueue(mobileApiClient);
+    } catch {
+      // replay is best-effort; the queue keeps its items for the next attempt
+    }
+
     setLoading(false);
     setRefreshing(false);
   };
@@ -39,28 +57,59 @@ export default function MobileEstimateScreen() {
   }, []);
 
   const handleRunCalculation = async () => {
-    if (!householdId) return;
+    if (!workspace?.id) {
+      Alert.alert('No workspace', 'Open or create a tax workspace for 2025 first.');
+      return;
+    }
     setCalculating(true);
-    const res = await mobileApiClient.calculateTax(householdId, 2025);
+    const res = await mobileApiClient.calculateTax(workspace.id);
     setCalculating(false);
 
     if (res.data) {
       setCalcResult(res.data);
       await loadData();
+    } else if (isNetworkError(res.error?.message)) {
+      // MOB-4: queue-first — the calculation is retried automatically once online.
+      const queued = await enqueueOperation({
+        kind: 'CALCULATE_TAX',
+        workspaceId: workspace.id,
+        dedupeKey: `calc:${workspace.id}`,
+      });
+      Alert.alert(
+        'Queued',
+        queued.ok
+          ? 'You are offline. The calculation is queued and will run when the connection returns.'
+          : 'You are offline, and this calculation is already queued.',
+      );
     } else {
       Alert.alert('Calculation Failed', res.error?.message || 'Could not calculate tax');
     }
   };
 
   const handleApproveReturn = async () => {
-    if (!householdId) return;
+    if (!workspace?.id) {
+      Alert.alert('No workspace', 'Open or create a tax workspace for 2025 first.');
+      return;
+    }
     setApproving(true);
-    const res = await mobileApiClient.approveReturn(householdId, 2025);
+    const res = await mobileApiClient.approveReturn(workspace.id);
     setApproving(false);
 
     if (res.data) {
       Alert.alert('Return Approved', 'Your approval has been recorded on this version of the declaration.');
       await loadData();
+    } else if (isNetworkError(res.error?.message)) {
+      const queued = await enqueueOperation({
+        kind: 'APPROVE_RETURN',
+        workspaceId: workspace.id,
+        dedupeKey: `approve:${workspace.id}:${workspace.activeReturnVersion}`,
+      });
+      Alert.alert(
+        'Queued',
+        queued.ok
+          ? 'You are offline. Your approval is queued and will be sent when the connection returns.'
+          : 'You are offline, and this approval is already queued.',
+      );
     } else {
       Alert.alert('Approval Failed', res.error?.message || 'Could not record approval');
     }
@@ -75,13 +124,14 @@ export default function MobileEstimateScreen() {
     );
   }
 
+  // `balancePayableOrRefund` is positive when tax is due, negative when refunded.
   const balance = calcResult
-    ? Number(calcResult.estimatedRefundOrBalance)
+    ? Number(calcResult.balancePayableOrRefund)
     : workspace?.estimatedTaxBalance
-    ? Number(workspace.estimatedTaxBalance)
-    : 0;
+      ? Number(workspace.estimatedTaxBalance)
+      : 0;
 
-  const isRefund = balance > 0;
+  const isRefund = balance < 0;
 
   return (
     <ScrollView
@@ -126,7 +176,7 @@ export default function MobileEstimateScreen() {
 
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Total Gross Income</Text>
-            <Text style={styles.rowVal}>€{Number(calcResult.totalGrossIncome).toFixed(2)}</Text>
+            <Text style={styles.rowVal}>€{Number(calcResult.grossIncome).toFixed(2)}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Total Deductions Allowed</Text>
@@ -147,7 +197,7 @@ export default function MobileEstimateScreen() {
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Solidarity Surcharge (7%)</Text>
-            <Text style={styles.rowVal}>€{Number(calcResult.solidaritySurcharge).toFixed(2)}</Text>
+            <Text style={styles.rowVal}>€{Number(calcResult.solidaritySurchargeAmount).toFixed(2)}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Tax Credits (CIS / CIM)</Text>
@@ -158,14 +208,14 @@ export default function MobileEstimateScreen() {
           <View style={[styles.row, styles.dividerRow]}>
             <Text style={[styles.rowLabel, { fontWeight: '700' }]}>Final Tax Liability</Text>
             <Text style={[styles.rowVal, { fontWeight: '700' }]}>
-              €{Number(calcResult.totalTaxLiability).toFixed(2)}
+              €{Number(calcResult.finalTaxLiability).toFixed(2)}
             </Text>
           </View>
 
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Withholding Tax Paid at Source</Text>
             <Text style={[styles.rowVal, { color: '#0284c7' }]}>
-              €{Number(calcResult.withholdingTaxPaid).toFixed(2)}
+              €{Number(calcResult.taxWithheldAtSource).toFixed(2)}
             </Text>
           </View>
         </View>
@@ -179,9 +229,9 @@ export default function MobileEstimateScreen() {
             <View key={idx} style={styles.provRow}>
               <View style={styles.provHeader}>
                 <Text style={styles.provDesc}>{p.description}</Text>
-                <Text style={styles.provAmount}>€{Number(p.amount).toFixed(2)}</Text>
+                <Text style={styles.provAmount}>€{Number(p.outputAmount).toFixed(2)}</Text>
               </View>
-              <Text style={styles.provRule}>Rule: {p.ruleCode} ({p.category})</Text>
+              <Text style={styles.provRule}>Rule: {p.ruleCode}</Text>
             </View>
           ))}
         </View>

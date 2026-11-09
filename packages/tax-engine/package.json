@@ -1,6 +1,6 @@
 {
   "name": "@luxtax/tax-engine",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -9,7 +9,8 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'Linting tax-engine...'",
-    "test": "node --test test/*.spec.ts"
+    "test": "node --test test/*.spec.ts",
+    "test:golden": "node ../../.tools/node_modules/tsx/dist/cli.mjs --tsconfig ../../tsconfig.test.json --test test/tax-engine.spec.ts"
   },
   "dependencies": {
     "@luxtax/contracts": "workspace:*"

@@ -20,6 +20,7 @@ import { TaxCalculatorView } from '../../../../components/TaxCalculatorView';
 import { FilingPackageView } from '../../../../components/FilingPackageView';
 import { AssessmentView } from '../../../../components/AssessmentView';
 import { AdminConsoleView } from '../../../../components/AdminConsoleView';
+import { NotificationCenter } from '../../../../components/NotificationCenter';
 
 type TabKey =
   | 'overview'
@@ -133,13 +134,14 @@ export default function DashboardPage() {
                     ))}
                   </select>
                 ) : (
-                  <strong className="text-xs text-slate-700">2025</strong>
+                  <strong className="text-xs text-slate-700">{selectedYear}</strong>
                 )}
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
+            {workspace && <NotificationCenter workspaceId={workspace.id} />}
             <div className="hidden sm:block text-right">
               <p className="text-xs font-semibold text-slate-800">{user?.email}</p>
               <p className="text-[10px] text-slate-400">Resident Taxpayer</p>
@@ -221,7 +223,7 @@ export default function DashboardPage() {
                     Estimated Outcome
                   </h2>
                   <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
-                    Deterministic 2025
+                    Deterministic engine
                   </span>
                 </div>
                 <div className="flex items-baseline gap-2 mb-2">
@@ -421,6 +423,7 @@ export default function DashboardPage() {
         {activeTab === 'calculator' && workspace && (
           <TaxCalculatorView
             workspaceId={workspace.id}
+            taxYear={workspace.taxYear}
             onCalculated={loadData}
             onNavigateToFiling={() => setActiveTab('filing')}
           />
@@ -428,6 +431,7 @@ export default function DashboardPage() {
 
         {activeTab === 'filing' && workspace && household && (
           <FilingPackageView
+            key={workspace.id}
             workspace={workspace}
             household={household}
             onRefresh={loadData}

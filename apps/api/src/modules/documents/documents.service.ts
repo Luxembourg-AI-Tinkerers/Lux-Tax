@@ -12,13 +12,18 @@ import {
   DocumentStatus,
   AuditEventType,
   DocumentDto,
+  MembershipStatus,
+  NotificationSeverity,
+  NotificationType,
 } from '@luxtax/contracts';
+import { NotificationsService } from '../notifications/notifications.service';
 import { UploadDocumentInput } from '@luxtax/validation';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
 import { ReceiptAiVisionService } from './receipt-ai-vision.service';
+import { ReturnApprovalsService } from '../filing/return-approvals.service';
 
 @Injectable()
 export class DocumentsService {
@@ -28,6 +33,8 @@ export class DocumentsService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly receiptAiVisionService: ReceiptAiVisionService,
+    private readonly returnApprovals: ReturnApprovalsService,
+    private readonly notifications: NotificationsService,
   ) {
     if (!fs.existsSync(this.uploadDir)) {
       fs.mkdirSync(this.uploadDir, { recursive: true });
@@ -48,6 +55,37 @@ export class DocumentsService {
     if (!workspace) {
       throw new NotFoundException('Workspace not found');
     }
+
+    // A document always starts as a private draft. It may be attributed to the
+    // uploader or to another active member of the same household (upload on
+    // behalf of a spouse), but never to an arbitrary user id. Visibility is
+    // changed afterwards through the audited endpoint, so a crafted upload body
+    // cannot create a shared document.
+    if (input.ownerId && input.ownerId !== uploaderId) {
+      const ownerMembership = await this.prisma.householdMembership.findUnique({
+        where: {
+          householdId_userId: {
+            householdId: workspace.householdId,
+            userId: input.ownerId,
+          },
+        },
+      });
+
+      if (!ownerMembership || ownerMembership.status !== MembershipStatus.ACTIVE) {
+        throw new BadRequestException(
+          'Document owner must be the uploader or an active member of this household',
+        );
+      }
+    }
+    if (input.visibility && input.visibility !== DocumentVisibility.PRIVATE_DRAFT) {
+      throw new BadRequestException(
+        'Documents must be uploaded as PRIVATE_DRAFT; change visibility after upload',
+      );
+    }
+
+    // Uploading for a spouse attributes the document and the facts the parser
+    // extracts from it to that spouse, so the record stays consistent.
+    const documentOwnerId = input.ownerId ?? uploaderId;
 
     // 1. Compute SHA-256 hash of file content
     const fileBuffer = Buffer.from(input.fileContentBase64, 'base64');
@@ -90,7 +128,7 @@ export class DocumentsService {
       data: {
         workspaceId,
         uploaderId,
-        ownerId: input.ownerId || uploaderId,
+        ownerId: documentOwnerId,
         fileName: safeFileName,
         originalName: input.fileName,
         mimeType: input.mimeType,
@@ -99,7 +137,7 @@ export class DocumentsService {
         storagePath,
         documentType: finalDocType,
         status: DocumentStatus.EXTRACTED,
-        visibility: input.visibility || DocumentVisibility.PRIVATE_DRAFT,
+        visibility: DocumentVisibility.PRIVATE_DRAFT,
         pageCount: 1,
       },
       include: {
@@ -123,7 +161,7 @@ export class DocumentsService {
         data: {
           documentId: document.id,
           workspaceId,
-          ownerId: input.ownerId || uploaderId,
+          ownerId: documentOwnerId,
           fieldName: field.name,
           fieldValue: field.value,
           currency: 'EUR',
@@ -191,7 +229,16 @@ export class DocumentsService {
         workspaceId,
         OR: [
           { uploaderId: currentUserId },
-          { visibility: { in: [DocumentVisibility.SHARED_FOR_DISCUSSION, DocumentVisibility.INCLUDED_IN_RETURN] } },
+          { ownerId: currentUserId },
+          {
+            visibility: {
+              in: [
+                DocumentVisibility.SHARED_FOR_DISCUSSION,
+                DocumentVisibility.PROPOSED_FOR_RETURN,
+                DocumentVisibility.INCLUDED_IN_RETURN,
+              ],
+            },
+          },
         ],
       },
       include: {
@@ -263,6 +310,42 @@ export class DocumentsService {
       ipAddress,
     });
 
+    // Moving a document into (or out of) the return changes what the return
+    // contains, so a standing approval no longer covers it. The reason stays
+    // generic: the audit feed is household-readable and must not carry the
+    // name of a private file. No-op when nobody approved yet.
+    await this.returnApprovals.invalidateForChange(
+      workspaceId,
+      userId,
+      'Document visibility changed',
+      ipAddress,
+    );
+
+    // A shared document asks the other filers to confirm its extracted facts.
+    // A private draft notifies nobody; the actor already knows.
+    if (
+      visibility === DocumentVisibility.SHARED_FOR_DISCUSSION ||
+      visibility === DocumentVisibility.PROPOSED_FOR_RETURN
+    ) {
+      try {
+        await this.notifications.emitToHousehold({
+          householdId: doc.workspace.householdId,
+          workspaceId,
+          actorId: userId,
+          excludeUserIds: [userId],
+          dedupeKey: `document-shared:${documentId}:${visibility}`,
+          type: NotificationType.DOCUMENT_CONFIRMATION_REQUIRED,
+          severity: NotificationSeverity.INFO,
+          title: 'Document shared — facts need confirmation',
+          body: 'A household member shared a document. Review its extracted facts before they enter the return.',
+          entityType: 'Document',
+          entityId: documentId,
+        });
+      } catch {
+        // A notification failure must not undo the visibility change.
+      }
+    }
+
     return {
       id: updated.id,
       workspaceId: updated.workspaceId,
@@ -324,6 +407,15 @@ export class DocumentsService {
       description: `Deleted document "${doc.originalName}"`,
       ipAddress,
     });
+
+    // A deleted document may have carried facts into the return; supersede any
+    // approval. Reason is generic on purpose — never the deleted file name.
+    await this.returnApprovals.invalidateForChange(
+      workspaceId,
+      userId,
+      'Document deleted',
+      ipAddress,
+    );
   }
 
   /**

@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import {
   AdminOverviewDto,
@@ -35,8 +36,10 @@ import {
   updateModelRouteSchema,
 } from '@luxtax/validation';
 
+// Interim gate: every route below requires an account named in the operator-managed
+// ADMIN_EMAILS allowlist. The full nine-role platform RBAC (plan §5.1) is a follow-up.
 @Controller('api/admin')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PlatformAdminGuard)
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 

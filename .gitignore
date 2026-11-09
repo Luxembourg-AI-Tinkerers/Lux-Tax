@@ -4,10 +4,19 @@ node_modules/
 .pnp
 .pnp.js
 
+# Local verification toolchain (JS dependencies, database clusters, probes)
+.tools/node_modules/
+.tools/pgdata/
+.tools/pgdata2/
+.tools/types/
+.tmp-build/
+.tmp-lir/
+tmp/
+
 # Testing and Coverage
 coverage/
 *.lcov
-.nyc_output
+.nyc_output/
 
 # Build Outputs
 dist/
@@ -17,6 +26,11 @@ out/
 .turbo/
 uploads/
 apps/api/uploads/
+
+# Research source PDFs (large, cited by path in the tracker)
+100f-2025.pdf
+lir2025.pdf
+lir2026.pdf
 
 # Expo / React Native
 .expo/
@@ -54,3 +68,6 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Agent runtime state
+.zwork/

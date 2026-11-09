@@ -114,20 +114,47 @@ export function CameraScanModal({
     const dateStr = new Date().toISOString().split('T')[0];
     const fileName = `Scan_Receipt_${dateStr}_${Math.floor(Math.random() * 1000)}.jpg`;
 
+    // The API accepts private drafts only. The chosen visibility is applied by
+    // a second, audited call so a failed promotion is reported instead of the
+    // scan silently staying private (or being uploaded as included).
     const res = await apiClient.uploadDocument(workspaceId, {
       fileName,
       fileContentBase64: base64,
       mimeType: 'image/jpeg',
-      visibility,
     });
 
-    setUploading(false);
     if (res.error) {
+      setUploading(false);
       onError(res.error);
-    } else {
-      onSuccess(`Document "${fileName}" scanned & extracted with AI successfully!`);
-      onClose();
+      return;
     }
+
+    if (!res.data) {
+      setUploading(false);
+      onError(
+        `Document "${fileName}" was saved as a private draft, but the upload response had no document id; set its visibility from the documents list.`,
+      );
+      onClose();
+      return;
+    }
+
+    // A private scan needs no promotion; any other state is applied explicitly.
+    const patch =
+      visibility === DocumentVisibility.PRIVATE_DRAFT
+        ? null
+        : await apiClient.updateDocumentVisibility(workspaceId, res.data.id, visibility);
+    setUploading(false);
+
+    if (patch?.error) {
+      onError(
+        `Document "${fileName}" is saved as a private draft, but applying "${visibility}" failed: ${patch.error}`,
+      );
+      onClose();
+      return;
+    }
+
+    onSuccess(`Document "${fileName}" scanned & extracted with AI successfully!`);
+    onClose();
   };
 
   if (!isOpen) return null;

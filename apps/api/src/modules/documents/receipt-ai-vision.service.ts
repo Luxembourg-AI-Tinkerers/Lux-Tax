@@ -260,6 +260,58 @@ Return JSON with format:
       };
     }
 
+    // --- C2. PENSION CERTIFICATE (modèle 170) ---
+    // Guarded against the third-pillar contract branch: a prévoyance document
+    // mentions "pension" but belongs to Art. 111bis.
+    const looksLikeThirdPillar =
+      textLower.includes('prévoyance') ||
+      textLower.includes('prevoyance') ||
+      textLower.includes('111bis') ||
+      textLower.includes('épargne retraite') ||
+      textLower.includes('epargne retraite');
+
+    if (
+      !looksLikeThirdPillar &&
+      (textLower.includes('certificat de pension') ||
+        textLower.includes('modèle 170') ||
+        textLower.includes('modele 170') ||
+        textLower.includes('caisse de pension') ||
+        textLower.includes('pension ou rente') ||
+        textLower.includes('rentes et pensions'))
+    ) {
+      const grossMatch =
+        rawText.match(/(?:code\s*20[01]|pension\s*brute|rente\s*brute|montant\s*brut)[^\d]*([\d.,]+)/i) ||
+        rawText.match(/([\d]+[.,][\d]{2})/);
+      if (grossMatch) {
+        fields.push({
+          name: 'grossPension',
+          value: this.normalizeAmount(grossMatch[1]),
+          confidence: 0.94,
+          snippet: grossMatch[0],
+          category: FactCategory.PENSION_INCOME,
+        });
+      }
+
+      const taxMatch = rawText.match(/(?:code\s*20[35]|retenue\s*d['’]impôt|withholding)[^\d]*([\d.,]+)/i);
+      if (taxMatch) {
+        fields.push({
+          name: 'withholdingTax',
+          value: this.normalizeAmount(taxMatch[1]),
+          confidence: 0.93,
+          snippet: taxMatch[0],
+          category: FactCategory.PENSION_INCOME,
+        });
+      }
+
+      return {
+        documentType: DocumentType.PENSION_CERTIFICATE,
+        confidence: 0.94,
+        extractedSnippet: rawText.substring(0, 300),
+        modelUsed: `${modelUsed} (Docling AI Parser)`,
+        fields,
+      };
+    }
+
     // --- D. MORTGAGE INTEREST (Attestation d'intérêts débiteurs) ---
     if (
       textLower.includes('intérêts débiteurs') ||
@@ -287,8 +339,40 @@ Return JSON with format:
       };
     }
 
-    // --- E. INSURANCE & PENSION (Art. 111 / 111bis) ---
-    if (textLower.includes('assurance') || textLower.includes('prévoyance') || textLower.includes('art 111')) {
+    // --- E1. THIRD-PILLAR PENSION (Art. 111bis / 111ter) ---
+    // Detected before the generic insurance branch: these premiums are NOT part
+    // of the EUR 672 Art. 111 envelope and must not be capped at 672.
+    if (
+      textLower.includes('prévoyance') ||
+      textLower.includes('prevoyance') ||
+      textLower.includes('111bis') ||
+      textLower.includes('111 ter') ||
+      textLower.includes('épargne retraite') ||
+      textLower.includes('epargne retraite') ||
+      textLower.includes('pepp')
+    ) {
+      const amount = this.extractAmountExcludingPatterns(rawText, [/art(?:icle)?\s*111bis/i]);
+      if (amount) {
+        fields.push({
+          name: 'pensionSavings111bis',
+          value: amount.value,
+          confidence: 0.93,
+          snippet: amount.snippet,
+          category: FactCategory.PENSION_SAVINGS_111BIS,
+        });
+      }
+
+      return {
+        documentType: DocumentType.INSURANCE_CERTIFICATE,
+        confidence: 0.93,
+        extractedSnippet: rawText.substring(0, 300),
+        modelUsed: `${modelUsed} (Docling AI Parser)`,
+        fields,
+      };
+    }
+
+    // --- E2. PRIVATE INSURANCE (Art. 111, EUR 672 envelope) ---
+    if (textLower.includes('assurance') || textLower.includes('art 111')) {
       const amount = this.extractAmountExcludingPatterns(rawText, [/art(?:icle)?\s*111(?:bis)?/i]);
       if (amount) {
         fields.push({

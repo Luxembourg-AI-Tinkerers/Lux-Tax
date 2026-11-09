@@ -1,0 +1,19 @@
+﻿{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "baseUrl": ".",
+    "typeRoots": ["./.tools/node_modules/@types"],
+    "types": ["node"],
+    "paths": {
+      "@luxtax/contracts": ["./packages/contracts/dist/index.d.ts"],
+      "zod": ["./.tools/node_modules/zod"]
+    }
+  },
+  "include": ["packages/contracts/src/**/*.ts", "packages/validation/src/**/*.ts"]
+}

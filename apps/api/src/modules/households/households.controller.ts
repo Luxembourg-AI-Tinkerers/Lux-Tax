@@ -12,6 +12,7 @@ import { HouseholdsService } from './households.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { HouseholdGuard } from '../../common/guards/household.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
 import {
   createHouseholdSchema,
   inviteMemberSchema,
@@ -23,6 +24,7 @@ import {
   AcceptInvitationDto,
   HouseholdDto,
   InvitationDetailsDto,
+  HouseholdRole,
 } from '@luxtax/contracts';
 
 @Controller('api/households')
@@ -56,6 +58,7 @@ export class HouseholdsController {
 
   @Post(':id/invitations')
   @UseGuards(JwtAuthGuard, HouseholdGuard)
+  @Roles(HouseholdRole.PRIMARY_FILER)
   async inviteMember(
     @Param('id', ParseUUIDPipe) householdId: string,
     @CurrentUser('id') inviterId: string,

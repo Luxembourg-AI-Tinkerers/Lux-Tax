@@ -223,6 +223,17 @@ describe('Luxembourg Tax Workspace - Full Lifecycle (e2e)', () => {
     expect(resListB.statusCode).toBe(200);
     expect(JSON.parse(resListB.payload).length).toBe(0);
 
+    // Private Draft facts are invisible to Spouse B as well
+    const resFactsBPrivate = await app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${workspaceId}/facts`,
+      headers: { authorization: `Bearer ${tokenB}` },
+    });
+    expect(resFactsBPrivate.statusCode).toBe(200);
+    const factsBPrivate = JSON.parse(resFactsBPrivate.payload);
+    expect(factsBPrivate.extractedFacts.length).toBe(0);
+    expect(factsBPrivate.confirmedFacts.length).toBe(0);
+
     // Spouse A updates visibility to SHARED_FOR_DISCUSSION
     const resVis = await app.inject({
       method: 'PATCH',
@@ -252,6 +263,16 @@ describe('Luxembourg Tax Workspace - Full Lifecycle (e2e)', () => {
     const { extractedFacts } = JSON.parse(resFacts.payload);
     expect(extractedFacts.length).toBeGreaterThanOrEqual(3);
 
+    // A document must be proposed for the return before its facts may enter the
+    // joint calculation; SHARED_FOR_DISCUSSION is discussion-only.
+    const resPromote = await app.inject({
+      method: 'PATCH',
+      url: `/api/workspaces/${workspaceId}/documents/${documentId}/visibility`,
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { visibility: DocumentVisibility.PROPOSED_FOR_RETURN },
+    });
+    expect(resPromote.statusCode).toBe(200);
+
     const grossFact = extractedFacts.find((f: any) => f.fieldName === 'grossSalary');
     const socialFact = extractedFacts.find((f: any) => f.fieldName === 'socialSecurity');
     const taxFact = extractedFacts.find((f: any) => f.fieldName === 'withholdingTax');
@@ -271,7 +292,9 @@ describe('Luxembourg Tax Workspace - Full Lifecycle (e2e)', () => {
       },
     });
     expect(resConfGross.statusCode).toBe(201);
-    salaryFactId = JSON.parse(resConfGross.payload).id;
+    const grossConfirmed = JSON.parse(resConfGross.payload);
+    salaryFactId = grossConfirmed.id;
+    expect(grossConfirmed.isIncludedInReturn).toBe(true);
 
     // Confirm Social Contributions
     await app.inject({
@@ -317,6 +340,323 @@ describe('Luxembourg Tax Workspace - Full Lifecycle (e2e)', () => {
     expect(resQuest.statusCode).toBe(200);
     const qBody = JSON.parse(resQuest.payload);
     expect(qBody.readiness.completionScore).toBeGreaterThan(50);
+  });
+
+  it('Step 3b: shared-for-discussion documents and spoofed uploads stay out of the return', async () => {
+    // Spouse B uploads her own salary certificate. The upload is forced to
+    // PRIVATE_DRAFT regardless of the body.
+    const secondCertificate = `
+      CERTIFICAT DE REMUNERATION 2025
+      Employeur: Amazon EU S.a r.l.
+      Salarie: Marie Weber
+      Code 101 - Remuneration brute: 20000.00 EUR
+      Code 103 - Cotisations de securite sociale: 2400.00 EUR
+      Code 105 - Retenue d'impot: 1000.00 EUR
+    `;
+    const secondBase64 = Buffer.from(secondCertificate).toString('base64');
+
+    const resUploadSecond = await app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${workspaceId}/documents`,
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: {
+        fileName: 'certificat_salaire_marie_2025.txt',
+        fileContentBase64: secondBase64,
+        mimeType: 'text/plain',
+      },
+    });
+    expect(resUploadSecond.statusCode).toBe(201);
+    const secondDoc = JSON.parse(resUploadSecond.payload);
+    expect(secondDoc.visibility).toBe(DocumentVisibility.PRIVATE_DRAFT);
+    expect(secondDoc.ownerId).toBe(userBId);
+
+    // An active household member may be named as owner (upload on behalf of a
+    // spouse), but the document still starts as a private draft.
+    const resSpouseOwner = await app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${workspaceId}/documents`,
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: {
+        fileName: 'spouse_attributed.txt',
+        fileContentBase64: Buffer.from('SPOUSE ATTRIBUTION ATTEMPT').toString('base64'),
+        mimeType: 'text/plain',
+        ownerId: userAId,
+      },
+    });
+    expect(resSpouseOwner.statusCode).toBe(201);
+    const spouseOwnedDoc = JSON.parse(resSpouseOwner.payload);
+    expect(spouseOwnedDoc.ownerId).toBe(userAId);
+    expect(spouseOwnedDoc.uploaderId).toBe(userBId);
+    expect(spouseOwnedDoc.visibility).toBe(DocumentVisibility.PRIVATE_DRAFT);
+
+    // An owner from outside the household, or a non-private visibility in the
+    // body, is rejected.
+    const resSpoofedOwner = await app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${workspaceId}/documents`,
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: {
+        fileName: 'spoofed_owner.txt',
+        fileContentBase64: Buffer.from('SPOOFED OWNER ATTEMPT').toString('base64'),
+        mimeType: 'text/plain',
+        ownerId: '00000000-0000-4000-8000-000000000000',
+      },
+    });
+    expect(resSpoofedOwner.statusCode).toBe(400);
+
+    const resSpoofedVisibility = await app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${workspaceId}/documents`,
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: {
+        fileName: 'spoofed_visibility.txt',
+        fileContentBase64: Buffer.from('SPOOFED VISIBILITY ATTEMPT').toString('base64'),
+        mimeType: 'text/plain',
+        visibility: DocumentVisibility.INCLUDED_IN_RETURN,
+      },
+    });
+    expect(resSpoofedVisibility.statusCode).toBe(400);
+
+    // Keep the second document in discussion: its facts must not reach the return.
+    const resShareSecond = await app.inject({
+      method: 'PATCH',
+      url: `/api/workspaces/${workspaceId}/documents/${secondDoc.id}/visibility`,
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: { visibility: DocumentVisibility.SHARED_FOR_DISCUSSION },
+    });
+    expect(resShareSecond.statusCode).toBe(200);
+
+    const resFactsB = await app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${workspaceId}/facts`,
+      headers: { authorization: `Bearer ${tokenB}` },
+    });
+    expect(resFactsB.statusCode).toBe(200);
+    const factsB = JSON.parse(resFactsB.payload);
+    const marieGross = factsB.extractedFacts.find(
+      (f: any) => f.fieldName === 'grossSalary' && f.documentId === secondDoc.id,
+    );
+    expect(marieGross).toBeDefined();
+
+    const resConfirmShared = await app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${workspaceId}/facts/confirm`,
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: {
+        extractedFactId: marieGross.id,
+        category: FactCategory.EMPLOYMENT_INCOME,
+        fieldKey: 'grossSalary',
+        amount: marieGross.fieldValue,
+        isIncludedInReturn: true,
+      },
+    });
+    expect(resConfirmShared.statusCode).toBe(201);
+    // The body asked for inclusion, but SHARED_FOR_DISCUSSION cannot enter the return.
+    expect(JSON.parse(resConfirmShared.payload).isIncludedInReturn).toBe(false);
+
+    const resCalcShared = await app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${workspaceId}/calculate`,
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(resCalcShared.statusCode).toBe(201);
+    // Only Spouse A's proposed certificate (75000) is calculated; the 20000
+    // from the discussion-only document is excluded.
+    expect(JSON.parse(resCalcShared.payload).grossIncome).toBe(75000);
+  });
+
+  it('Step 3c: a private fact never leaks through the activity feed and stays private when its document is deleted', async () => {
+    // Spouse A keeps a second salary certificate private and confirms a figure
+    // from it. The body asks for inclusion, sharing and a different owner; the
+    // API must force all three back to the private-draft rule (M1).
+    const privateCertificate = `
+      CERTIFICAT DE REMUNERATION 2025
+      Employeur: Banque Privee S.A.
+      Salarie: Jean Weber
+      Code 101 - Remuneration brute: 97531.42 EUR
+      Code 103 - Cotisations de securite sociale: 12000.00 EUR
+      Code 105 - Retenue d'impot: 8000.00 EUR
+    `;
+
+    const resUploadPrivate = await app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${workspaceId}/documents`,
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: {
+        fileName: 'private_salary_memo.txt',
+        fileContentBase64: Buffer.from(privateCertificate).toString('base64'),
+        mimeType: 'text/plain',
+      },
+    });
+    expect(resUploadPrivate.statusCode).toBe(201);
+    const privateDoc = JSON.parse(resUploadPrivate.payload);
+    expect(privateDoc.visibility).toBe(DocumentVisibility.PRIVATE_DRAFT);
+    expect(privateDoc.ownerId).toBe(userAId);
+
+    const resPrivateFacts = await app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${workspaceId}/facts`,
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(resPrivateFacts.statusCode).toBe(200);
+    const privateExtracted = JSON.parse(resPrivateFacts.payload).extractedFacts.find(
+      (f: any) => f.documentId === privateDoc.id,
+    );
+    expect(privateExtracted).toBeDefined();
+
+    const PRIVATE_FIELD_KEY = 'privateSalaryMemo';
+    const PRIVATE_AMOUNT = '97531.42';
+    const UPDATED_PRIVATE_AMOUNT = '86420.11';
+
+    const resConfirmPrivate = await app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${workspaceId}/facts/confirm`,
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: {
+        extractedFactId: privateExtracted.id,
+        category: FactCategory.EMPLOYMENT_INCOME,
+        fieldKey: PRIVATE_FIELD_KEY,
+        amount: PRIVATE_AMOUNT,
+        isIncludedInReturn: true,
+        isSharedWithHousehold: true,
+        ownerId: userBId,
+      },
+    });
+    expect(resConfirmPrivate.statusCode).toBe(201);
+    const privateFact = JSON.parse(resConfirmPrivate.payload);
+    // M1: a private-draft fact is never shared, never included and never
+    // re-attributed, even when the request body asks for it.
+    expect(privateFact.ownerId).toBe(userAId);
+    expect(privateFact.isSharedWithHousehold).toBe(false);
+    expect(privateFact.isIncludedInReturn).toBe(false);
+
+    const readActivity = async (token: string) => {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/households/${householdId}/activity?limit=100`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      return { payload: res.payload, events: JSON.parse(res.payload) };
+    };
+
+    // B1: spouse B may see that an event happened, but not its field key or
+    // amount.
+    const activityAfterConfirm = await readActivity(tokenB);
+    expect(activityAfterConfirm.payload).not.toContain(PRIVATE_FIELD_KEY);
+    expect(activityAfterConfirm.payload).not.toContain(PRIVATE_AMOUNT);
+    const confirmEvent = activityAfterConfirm.events.find(
+      (e: any) =>
+        e.entityType === 'ConfirmedFact' && e.entityId === privateFact.id,
+    );
+    expect(confirmEvent).toBeDefined();
+    expect(confirmEvent.description).toBe('Confirmed a private fact (details hidden)');
+    expect(confirmEvent.newValue.fieldKey).toBeUndefined();
+    expect(confirmEvent.newValue.amount).toBeUndefined();
+    expect(confirmEvent.newValue.category).toBe(FactCategory.EMPLOYMENT_INCOME);
+
+    // M3: the spouse cannot destroy a private fact with a guessed id.
+    const resDeleteByB = await app.inject({
+      method: 'DELETE',
+      url: `/api/workspaces/${workspaceId}/facts/${privateFact.id}`,
+      headers: { authorization: `Bearer ${tokenB}` },
+    });
+    expect(resDeleteByB.statusCode).toBe(403);
+
+    // B1: updating the private amount must not publish the old or the new value.
+    const resUpdatePrivate = await app.inject({
+      method: 'PATCH',
+      url: `/api/workspaces/${workspaceId}/facts/${privateFact.id}`,
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { amount: UPDATED_PRIVATE_AMOUNT },
+    });
+    expect(resUpdatePrivate.statusCode).toBe(200);
+    const activityAfterUpdate = await readActivity(tokenB);
+    expect(activityAfterUpdate.payload).not.toContain(PRIVATE_AMOUNT);
+    expect(activityAfterUpdate.payload).not.toContain(UPDATED_PRIVATE_AMOUNT);
+    expect(activityAfterUpdate.payload).not.toContain(PRIVATE_FIELD_KEY);
+
+    // M1: deleting the private source document nulls sourceDocumentId. The fact
+    // must stay private to A instead of becoming a shared manual fact.
+    const resDeletePrivateDoc = await app.inject({
+      method: 'DELETE',
+      url: `/api/workspaces/${workspaceId}/documents/${privateDoc.id}`,
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(resDeletePrivateDoc.statusCode).toBe(200);
+
+    const factsForBAfterDelete = JSON.parse(
+      (
+        await app.inject({
+          method: 'GET',
+          url: `/api/workspaces/${workspaceId}/facts`,
+          headers: { authorization: `Bearer ${tokenB}` },
+        })
+      ).payload,
+    );
+    expect(
+      factsForBAfterDelete.confirmedFacts.some(
+        (f: any) => f.id === privateFact.id,
+      ),
+    ).toBe(false);
+
+    const factsForAAfterDelete = JSON.parse(
+      (
+        await app.inject({
+          method: 'GET',
+          url: `/api/workspaces/${workspaceId}/facts`,
+          headers: { authorization: `Bearer ${tokenA}` },
+        })
+      ).payload,
+    );
+    const orphanedFact = factsForAAfterDelete.confirmedFacts.find(
+      (f: any) => f.id === privateFact.id,
+    );
+    expect(orphanedFact).toBeDefined();
+    expect(orphanedFact.sourceDocumentId).toBeNull();
+    expect(orphanedFact.isSharedWithHousehold).toBe(false);
+    expect(orphanedFact.isIncludedInReturn).toBe(false);
+
+    const resUpdateOrphanByB = await app.inject({
+      method: 'PATCH',
+      url: `/api/workspaces/${workspaceId}/facts/${privateFact.id}`,
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: { amount: '1.00' },
+    });
+    expect(resUpdateOrphanByB.statusCode).toBe(403);
+
+    // B1: deleting the private fact logs a redacted event only.
+    const resDeletePrivate = await app.inject({
+      method: 'DELETE',
+      url: `/api/workspaces/${workspaceId}/facts/${privateFact.id}`,
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(resDeletePrivate.statusCode).toBe(200);
+
+    const activityAfterDeleteFact = await readActivity(tokenB);
+    expect(activityAfterDeleteFact.payload).not.toContain(PRIVATE_AMOUNT);
+    expect(activityAfterDeleteFact.payload).not.toContain(UPDATED_PRIVATE_AMOUNT);
+    expect(activityAfterDeleteFact.payload).not.toContain(PRIVATE_FIELD_KEY);
+    const factEvents = activityAfterDeleteFact.events.filter(
+      (e: any) =>
+        e.entityType === 'ConfirmedFact' && e.entityId === privateFact.id,
+    );
+    expect(factEvents.length).toBeGreaterThanOrEqual(3);
+    expect(
+      factEvents.some(
+        (e: any) => e.description === 'Updated a private fact (details hidden)',
+      ),
+    ).toBe(true);
+    expect(
+      factEvents.some(
+        (e: any) => e.description === 'Deleted a private fact (details hidden)',
+      ),
+    ).toBe(true);
+    for (const event of factEvents) {
+      expect(JSON.stringify(event)).not.toContain(PRIVATE_AMOUNT);
+      expect(JSON.stringify(event)).not.toContain(UPDATED_PRIVATE_AMOUNT);
+      expect(JSON.stringify(event)).not.toContain(PRIVATE_FIELD_KEY);
+    }
   });
 
   it('Step 4: Deterministic calculation and dual-spouse approval', async () => {

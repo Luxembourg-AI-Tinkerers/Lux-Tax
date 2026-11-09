@@ -24,7 +24,9 @@ import {
   QuestionnaireAnswersDto,
   ReadinessDetailsDto,
   TaxCalculationResultDto,
+  ScenarioComparisonDto,
   ReturnVersionDto,
+  ReturnVersionHistoryDto,
   FilingPackageDto,
   AssessmentDto,
   TaxRulePackageDto,
@@ -42,6 +44,13 @@ import {
   FreelanceBusinessProfileDto,
   UpdateFreelanceProfileDto,
   FreelanceMetricsDto,
+  NotificationListDto,
+  NotificationDto,
+  NotificationPreferenceDto,
+  UpdateNotificationPreferencesDto,
+  FilingRecordDto,
+  CreateFilingRecordDto,
+  UpdateAssessmentFollowUpDto,
 } from '@luxtax/contracts';
 
 export interface ApiClientConfig {
@@ -360,6 +369,16 @@ export class LuxTaxApiClient {
     });
   }
 
+  /** Three assessment modes on the same facts; never persists a comparison run. */
+  async compareScenarios(workspaceId: string) {
+    return this.request<ScenarioComparisonDto>(
+      `/api/workspaces/${workspaceId}/scenario-comparison`,
+      {
+        method: 'GET',
+      }
+    );
+  }
+
   // Filing Package, Approvals, and Assessment APIs
   async approveReturn(workspaceId: string) {
     return this.request<ReturnVersionDto>(`/api/workspaces/${workspaceId}/approve`, {
@@ -395,6 +414,16 @@ export class LuxTaxApiClient {
     });
   }
 
+  /** Every return version plus superseded approvals and their invalidation reason. */
+  async getReturnVersionHistory(workspaceId: string) {
+    return this.request<ReturnVersionHistoryDto>(
+      `/api/workspaces/${workspaceId}/return-versions`,
+      {
+        method: 'GET',
+      }
+    );
+  }
+
   async getFilingPackage(workspaceId: string) {
     return this.request<FilingPackageDto | null>(`/api/workspaces/${workspaceId}/filing-package`, {
       method: 'GET',
@@ -405,6 +434,39 @@ export class LuxTaxApiClient {
     return this.request<AssessmentDto | null>(`/api/workspaces/${workspaceId}/assessment`, {
       method: 'GET',
     });
+  }
+
+  /**
+   * Records the actual submission. The API freezes the matching return version
+   * in the same transaction, so the filed snapshot cannot be edited afterwards.
+   */
+  async recordFiling(workspaceId: string, body: CreateFilingRecordDto) {
+    return this.request<FilingRecordDto>(`/api/workspaces/${workspaceId}/filing-record`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** The workspace's filing record, or `null` while it has not been filed. */
+  async getFilingRecord(workspaceId: string) {
+    return this.request<FilingRecordDto | null>(`/api/workspaces/${workspaceId}/filing-record`, {
+      method: 'GET',
+    });
+  }
+
+  /** Corrects the objection/follow-up dates of an imported assessment. */
+  async updateAssessmentFollowUp(
+    workspaceId: string,
+    assessmentId: string,
+    body: UpdateAssessmentFollowUpDto,
+  ) {
+    return this.request<AssessmentDto>(
+      `/api/workspaces/${workspaceId}/assessment/${assessmentId}/follow-up`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }
+    );
   }
 
   // Audit APIs
@@ -420,6 +482,66 @@ export class LuxTaxApiClient {
       `/api/households/${householdId}/activity${query}`,
       {
         method: 'GET',
+      }
+    );
+  }
+
+  // Notification APIs
+  async getNotifications(workspaceId: string, unreadOnly = false) {
+    return this.request<NotificationListDto>(
+      `/api/workspaces/${workspaceId}/notifications?unreadOnly=${unreadOnly}`,
+      {
+        method: 'GET',
+      }
+    );
+  }
+
+  async getNotificationUnreadCount(workspaceId: string) {
+    return this.request<{ unreadCount: number }>(
+      `/api/workspaces/${workspaceId}/notifications/unread-count`,
+      {
+        method: 'GET',
+      }
+    );
+  }
+
+  /** Marks one notification read; the API answers `{ success: boolean }`. */
+  async markNotificationRead(workspaceId: string, notificationId: string) {
+    return this.request<{ success: boolean }>(
+      `/api/workspaces/${workspaceId}/notifications/${notificationId}/read`,
+      {
+        method: 'PATCH',
+      }
+    );
+  }
+
+  async markAllNotificationsRead(workspaceId: string) {
+    return this.request<{ updated: number }>(
+      `/api/workspaces/${workspaceId}/notifications/read-all`,
+      {
+        method: 'POST',
+      }
+    );
+  }
+
+  async getNotificationPreferences(workspaceId: string) {
+    return this.request<NotificationPreferenceDto>(
+      `/api/workspaces/${workspaceId}/notifications/preferences`,
+      {
+        method: 'GET',
+      }
+    );
+  }
+
+  async updateNotificationPreferences(
+    workspaceId: string,
+    body: UpdateNotificationPreferencesDto,
+  ) {
+    return this.request<NotificationPreferenceDto>(
+      `/api/workspaces/${workspaceId}/notifications/preferences`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(body),
       }
     );
   }

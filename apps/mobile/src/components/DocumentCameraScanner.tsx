@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -15,10 +15,12 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { DocumentVisibility, DocumentType, DocumentDto } from '@luxtax/contracts';
 import { mobileApiClient } from '../lib/api-client';
+import { enqueueOperation, isNetworkError, replayQueue } from '../lib/queue-runtime';
 
 interface DocumentCameraScannerProps {
   visible: boolean;
-  householdId: string;
+  /** MOB-1: uploads are workspace-scoped; a household id must not be passed here. */
+  workspaceId: string;
   taxYear: number;
   onClose: () => void;
   onUploadSuccess: (doc: DocumentDto) => void;
@@ -34,7 +36,7 @@ interface CapturedScan {
 
 export function DocumentCameraScanner({
   visible,
-  householdId,
+  workspaceId,
   taxYear,
   onClose,
   onUploadSuccess,
@@ -43,6 +45,12 @@ export function DocumentCameraScanner({
   const [selectedType, setSelectedType] = useState<DocumentType>(DocumentType.CHILDCARE_INVOICE);
   const [visibility, setVisibility] = useState<DocumentVisibility>(DocumentVisibility.INCLUDED_IN_RETURN);
   const [uploading, setUploading] = useState(false);
+
+  // MOB-4: opening the scanner is a natural moment to drain the queue.
+  useEffect(() => {
+    if (!visible) return;
+    void replayQueue(mobileApiClient).catch(() => undefined);
+  }, [visible]);
 
   // 1. Launch Camera to scan receipt
   const handleLaunchCamera = async () => {
@@ -158,14 +166,35 @@ export function DocumentCameraScanner({
 
     setUploading(true);
     try {
-      const res = await mobileApiClient.uploadDocument(householdId, taxYear, {
+      const body = {
         fileName: captured.fileName,
         mimeType: captured.mimeType,
         fileContentBase64: captured.base64,
         visibility,
-      });
+      };
+      const res = await mobileApiClient.uploadDocument(workspaceId, body);
 
       setUploading(false);
+
+      // MOB-4: keep the scan instead of losing it when the connection drops.
+      if (!res.data && isNetworkError(res.error?.message)) {
+        const queued = await enqueueOperation({
+          kind: 'UPLOAD_DOCUMENT',
+          workspaceId,
+          payload: body,
+          dedupeKey: `upload:${workspaceId}:${captured.fileName}`,
+        });
+        Alert.alert(
+          'Saved offline',
+          queued.ok
+            ? 'You are offline. The scan is queued and will be uploaded when the connection returns.'
+            : 'You are offline, and this scan is already queued.',
+        );
+        handleReset();
+        onClose();
+        return;
+      }
+
       if (res.data) {
         Alert.alert(
           'Document Processed',

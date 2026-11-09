@@ -8,6 +8,8 @@ describe('Admin Governance & Model Registry (e2e)', () => {
   let prisma: PrismaService;
   let accessToken: string;
   let adminUserId: string;
+  let ordinaryUserId: string;
+  let ordinaryToken: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -36,6 +38,28 @@ describe('Admin Governance & Model Registry (e2e)', () => {
     const body = JSON.parse(regRes.payload);
     accessToken = body.tokens.accessToken;
     adminUserId = body.user.id;
+
+    // API-1: /api/admin/** is gated by the operator-managed ADMIN_EMAILS allowlist,
+    // so the registered administrator must be allowlisted before the first admin call.
+    process.env.ADMIN_EMAILS = uniqueEmail;
+
+    // A second, ordinary taxpayer: registered, authenticated, no platform grant.
+    const ordinaryEmail = `user-${Date.now()}@e2e.lu`;
+    const ordinaryRes = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: {
+        email: ordinaryEmail,
+        password: 'E2e-Password-1',
+        firstName: 'Ordinary',
+        lastName: 'Taxpayer',
+      },
+    });
+
+    expect(ordinaryRes.statusCode).toBe(201);
+    const ordinaryBody = JSON.parse(ordinaryRes.payload);
+    ordinaryToken = ordinaryBody.tokens.accessToken;
+    ordinaryUserId = ordinaryBody.user.id;
   });
 
   afterAll(async () => {
@@ -45,6 +69,14 @@ describe('Admin Governance & Model Registry (e2e)', () => {
       await prisma.personProfile.deleteMany({ where: { userId: adminUserId } });
       await prisma.user.deleteMany({ where: { id: adminUserId } });
     }
+    if (prisma && ordinaryUserId) {
+      await prisma.auditEvent.deleteMany({ where: { actorId: ordinaryUserId } });
+      await prisma.session.deleteMany({ where: { userId: ordinaryUserId } });
+      await prisma.personProfile.deleteMany({ where: { userId: ordinaryUserId } });
+      await prisma.user.deleteMany({ where: { id: ordinaryUserId } });
+    }
+    delete process.env.ADMIN_EMAILS;
+
     if (app) {
       await app.close();
     }
@@ -172,6 +204,28 @@ describe('Admin Governance & Model Registry (e2e)', () => {
     const body = JSON.parse(res.payload);
     expect(Array.isArray(body)).toBe(true);
     expect(body.length).toBeGreaterThan(0);
+  });
+
+  it('GET /api/admin/overview returns 403 for a registered non-admin user', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/overview',
+      headers: { authorization: `Bearer ${ordinaryToken}` },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.payload).message).toBe('Platform administrator access required');
+  });
+
+  it('GET /api/admin/audit returns 403 for a registered non-admin user', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/audit?limit=10',
+      headers: { authorization: `Bearer ${ordinaryToken}` },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.payload).message).toBe('Platform administrator access required');
   });
 
   describe('Custom Public AI Model Integration & Dynamic Routing', () => {

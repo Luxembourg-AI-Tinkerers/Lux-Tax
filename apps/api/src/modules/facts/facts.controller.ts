@@ -15,8 +15,9 @@ import { FactsService } from './facts.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { HouseholdGuard } from '../../common/guards/household.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { confirmFactSchema, updateFactSchema } from '@luxtax/validation';
-import { ConfirmedFactDto, ExtractedFactDto } from '@luxtax/contracts';
+import { ConfirmedFactDto, ExtractedFactDto, HouseholdRole } from '@luxtax/contracts';
 import { FastifyRequest } from 'fastify';
 
 @Controller('api/workspaces/:workspaceId/facts')
@@ -27,10 +28,12 @@ export class FactsController {
   @Get()
   async getFacts(
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @CurrentUser('id') userId: string,
   ): Promise<{ extractedFacts: ExtractedFactDto[]; confirmedFacts: ConfirmedFactDto[] }> {
-    return this.factsService.getFactsForWorkspace(workspaceId);
+    return this.factsService.getFactsForWorkspace(workspaceId, userId);
   }
 
+  @Roles(HouseholdRole.PRIMARY_FILER, HouseholdRole.CO_FILER)
   @Post('confirm')
   async confirmFact(
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
@@ -45,6 +48,7 @@ export class FactsController {
     return this.factsService.confirmFact(workspaceId, userId, parseResult.data, req.ip);
   }
 
+  @Roles(HouseholdRole.PRIMARY_FILER, HouseholdRole.CO_FILER)
   @Patch(':factId')
   async updateFact(
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
@@ -60,6 +64,7 @@ export class FactsController {
     return this.factsService.updateFact(workspaceId, factId, userId, parseResult.data, req.ip);
   }
 
+  @Roles(HouseholdRole.PRIMARY_FILER, HouseholdRole.CO_FILER)
   @Delete(':factId')
   async deleteFact(
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,

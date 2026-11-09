@@ -14,6 +14,7 @@ import {
   UpdateFreelanceProfileDto,
   HouseholdRole,
 } from '@luxtax/contracts';
+import { factInclusionWarning } from '../lib/fact-inclusion';
 
 interface FreelanceBusinessViewProps {
   workspaceId: string;
@@ -217,7 +218,6 @@ export function FreelanceBusinessView({
         fileName: selectedFile.name,
         fileContentBase64: base64,
         mimeType: selectedFile.type || 'text/plain',
-        visibility: DocumentVisibility.INCLUDED_IN_RETURN,
         documentType: uploadDocType,
         ownerId: uploadTargetOwnerId,
       });
@@ -225,16 +225,45 @@ export function FreelanceBusinessView({
       setUploading(false);
       if (res.error) {
         showFeedback('error', res.error);
-      } else {
+        return;
+      }
+
+      if (!res.data) {
         showFeedback(
-          'success',
-          `"${selectedFile.name}" uploaded and attributed to ${targetMember?.user?.email || 'spouse'}!`
+          'error',
+          `"${selectedFile.name}" was saved as a private draft, but the upload response had no document id; include it from the document vault.`
         );
         setIsUploadModalOpen(false);
         setSelectedFile(null);
         await refreshData();
         onDataChanged();
+        return;
       }
+
+      // Freelance evidence is meant to feed the return, but the document always
+      // starts private and is promoted explicitly. A failed promotion keeps it
+      // private and says so rather than pretending it was included.
+      const patch = await apiClient.updateDocumentVisibility(
+        workspaceId,
+        res.data.id,
+        DocumentVisibility.INCLUDED_IN_RETURN,
+      );
+
+      if (patch.error) {
+        showFeedback(
+          'error',
+          `"${selectedFile.name}" is saved as a private draft, but including it in the return failed: ${patch.error}`
+        );
+      } else {
+        showFeedback(
+          'success',
+          `"${selectedFile.name}" uploaded and attributed to ${targetMember?.user?.email || 'spouse'}!`
+        );
+      }
+      setIsUploadModalOpen(false);
+      setSelectedFile(null);
+      await refreshData();
+      onDataChanged();
     };
 
     reader.onerror = () => {
@@ -271,11 +300,23 @@ export function FreelanceBusinessView({
     setConfirmingFactId(null);
     if (res.error) {
       showFeedback('error', res.error);
+      return;
+    }
+
+    // A discussion-only document is saved but excluded from the return; do not
+    // report the fact as included when the API downgraded it.
+    const inclusionWarning = factInclusionWarning(true, res.data?.isIncludedInReturn);
+    if (inclusionWarning) {
+      showFeedback(
+        'error',
+        `Confirmed €${fact.fieldValue} as ${isExpense ? 'a business expense' : 'freelance revenue'}. ${inclusionWarning}`,
+      );
     } else {
       showFeedback('success', `Confirmed €${fact.fieldValue} into ${isExpense ? 'Business Expenses' : 'Freelance Revenue'}!`);
-      await refreshData();
-      onDataChanged();
     }
+
+    await refreshData();
+    onDataChanged();
   };
 
   // Toggle Visibility

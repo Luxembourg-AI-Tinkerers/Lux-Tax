@@ -95,15 +95,24 @@ describe('Receipt & Camera Document Scanning with AI Model Extraction (e2e)', ()
         fileName: 'scan_receipt_creche_oct2025.jpg',
         fileContentBase64: simulatedChildcareReceiptImage,
         mimeType: 'image/jpeg',
-        visibility: DocumentVisibility.INCLUDED_IN_RETURN,
       },
     });
 
     expect(res.statusCode).toBe(201);
     const doc = JSON.parse(res.payload);
     expect(doc.id).toBeDefined();
+    expect(doc.visibility).toBe(DocumentVisibility.PRIVATE_DRAFT);
     expect(doc.documentType).toBe(DocumentType.CHILDCARE_INVOICE);
     expect(doc.extractedFactsCount).toBeGreaterThanOrEqual(1);
+
+    // Uploads are private drafts; the requested state is applied afterwards.
+    const visRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/workspaces/${workspaceId}/documents/${doc.id}/visibility`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { visibility: DocumentVisibility.INCLUDED_IN_RETURN },
+    });
+    expect(visRes.statusCode).toBe(200);
 
     // Verify extracted facts in workspace
     const factsRes = await app.inject({
@@ -131,13 +140,22 @@ describe('Receipt & Camera Document Scanning with AI Model Extraction (e2e)', ()
         fileName: 'camera_scan_croix_rouge_don.png',
         fileContentBase64: simulatedDonationReceiptImage,
         mimeType: 'image/png',
-        visibility: DocumentVisibility.INCLUDED_IN_RETURN,
       },
     });
 
     expect(res.statusCode).toBe(201);
     const doc = JSON.parse(res.payload);
+    expect(doc.visibility).toBe(DocumentVisibility.PRIVATE_DRAFT);
     expect(doc.documentType).toBe(DocumentType.DONATION_CERTIFICATE);
+
+    // Promote the private draft before its facts may enter the return.
+    const visRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/workspaces/${workspaceId}/documents/${doc.id}/visibility`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { visibility: DocumentVisibility.INCLUDED_IN_RETURN },
+    });
+    expect(visRes.statusCode).toBe(200);
 
     const factsRes = await app.inject({
       method: 'GET',
@@ -206,6 +224,8 @@ describe('Receipt & Camera Document Scanning with AI Model Extraction (e2e)', ()
     const confirmed = JSON.parse(confirmRes.payload);
     expect(confirmed.id).toBeDefined();
     expect(confirmed.extractedFactId).toBe(unconfirmed.id);
+    // The scan was promoted before confirmation, so the fact may join the return.
+    expect(confirmed.isIncludedInReturn).toBe(true);
   });
 
   it('uploads a professional training course invoice and populates trainingCourseExpense fact', async () => {
@@ -221,13 +241,21 @@ describe('Receipt & Camera Document Scanning with AI Model Extraction (e2e)', ()
         fileName: 'invoice_training_course_2025.pdf',
         fileContentBase64: courseInvoice,
         mimeType: 'application/pdf',
-        visibility: DocumentVisibility.INCLUDED_IN_RETURN,
       },
     });
 
     expect(res.statusCode).toBe(201);
     const doc = JSON.parse(res.payload);
     expect(doc.id).toBeDefined();
+    expect(doc.visibility).toBe(DocumentVisibility.PRIVATE_DRAFT);
+
+    const visRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/workspaces/${workspaceId}/documents/${doc.id}/visibility`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { visibility: DocumentVisibility.INCLUDED_IN_RETURN },
+    });
+    expect(visRes.statusCode).toBe(200);
 
     const factsRes = await app.inject({
       method: 'GET',
@@ -254,13 +282,21 @@ describe('Receipt & Camera Document Scanning with AI Model Extraction (e2e)', ()
         fileName: 'scan_work_laptop_screen.jpg',
         fileContentBase64: workReceipt,
         mimeType: 'image/jpeg',
-        visibility: DocumentVisibility.INCLUDED_IN_RETURN,
       },
     });
 
     expect(res.statusCode).toBe(201);
     const doc = JSON.parse(res.payload);
     expect(doc.id).toBeDefined();
+    expect(doc.visibility).toBe(DocumentVisibility.PRIVATE_DRAFT);
+
+    const visRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/workspaces/${workspaceId}/documents/${doc.id}/visibility`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { visibility: DocumentVisibility.INCLUDED_IN_RETURN },
+    });
+    expect(visRes.statusCode).toBe(200);
 
     const factsRes = await app.inject({
       method: 'GET',

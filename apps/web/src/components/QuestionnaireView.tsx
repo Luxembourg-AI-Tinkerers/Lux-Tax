@@ -3,11 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '../lib/api';
 import {
+  ChildReliefHistoryEntry,
   QuestionnaireAnswersDto,
   ReadinessDetailsDto,
   TaskSeverity,
   FactCategory,
 } from '@luxtax/contracts';
+import { FACT_INCLUSION_DOWNGRADE_MESSAGE, factInclusionWarning } from '../lib/fact-inclusion';
 
 interface QuestionnaireViewProps {
   workspaceId: string;
@@ -37,6 +39,17 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
   const [saving, setSaving] = useState(false);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const updateChildRelief = (index: number, patch: Partial<ChildReliefHistoryEntry>) => {
+    const list = [...(answers.childReliefHistory ?? [])];
+    list[index] = { ...list[index], ...patch };
+    setAnswers({ ...answers, childReliefHistory: list });
+  };
+
+  const removeChildRelief = (index: number) => {
+    const list = (answers.childReliefHistory ?? []).filter((_, i) => i !== index);
+    setAnswers({ ...answers, childReliefHistory: list.length > 0 ? list : undefined });
+  };
 
   const showFeedback = (type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
@@ -73,9 +86,11 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
       setAnswers(res.data.answers);
       setReadiness(res.data.readiness);
 
+      let inclusionDowngraded = false;
+
       // If user entered quick financial estimates, save them as confirmed facts
       if (quickSalary && parseFloat(quickSalary) > 0) {
-        await apiClient.confirmFact(workspaceId, {
+        const salaryFact = await apiClient.confirmFact(workspaceId, {
           category: FactCategory.EMPLOYMENT_INCOME,
           fieldKey: 'grossSalary',
           amount: parseFloat(quickSalary).toFixed(2),
@@ -84,9 +99,12 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
           isIncludedInReturn: true,
           isSharedWithHousehold: true,
         });
+        if (factInclusionWarning(true, salaryFact.data?.isIncludedInReturn)) {
+          inclusionDowngraded = true;
+        }
       }
       if (quickWithholding && parseFloat(quickWithholding) > 0) {
-        await apiClient.confirmFact(workspaceId, {
+        const withholdingFact = await apiClient.confirmFact(workspaceId, {
           category: FactCategory.EMPLOYMENT_INCOME,
           fieldKey: 'withholdingTax',
           amount: parseFloat(quickWithholding).toFixed(2),
@@ -95,9 +113,12 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
           isIncludedInReturn: true,
           isSharedWithHousehold: true,
         });
+        if (factInclusionWarning(true, withholdingFact.data?.isIncludedInReturn)) {
+          inclusionDowngraded = true;
+        }
       }
       if (quickMortgage && parseFloat(quickMortgage) > 0) {
-        await apiClient.confirmFact(workspaceId, {
+        const mortgageFact = await apiClient.confirmFact(workspaceId, {
           category: FactCategory.MORTGAGE_DEDUCTION,
           fieldKey: 'mortgageInterest',
           amount: parseFloat(quickMortgage).toFixed(2),
@@ -106,9 +127,16 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
           isIncludedInReturn: true,
           isSharedWithHousehold: true,
         });
+        if (factInclusionWarning(true, mortgageFact.data?.isIncludedInReturn)) {
+          inclusionDowngraded = true;
+        }
       }
 
-      showFeedback('success', 'Tax profile questionnaire & readiness saved successfully!');
+      if (inclusionDowngraded) {
+        showFeedback('error', FACT_INCLUSION_DOWNGRADE_MESSAGE);
+      } else {
+        showFeedback('success', 'Tax profile questionnaire & readiness saved successfully!');
+      }
       await refresh();
       onProfileUpdated();
     }
@@ -242,7 +270,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
       {/* Guided Questionnaire Form */}
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="text-base font-bold text-slate-900 mb-1">
-          Guided Household Tax Questionnaire (2025)
+          Guided household tax questionnaire
         </h3>
         <p className="text-xs text-slate-500 mb-6">
           Answers adapt the required tax schedule, deductions, and form annexes without requiring complex tax knowledge.
@@ -271,6 +299,113 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               ))}
             </div>
           </div>
+
+          {/* Art. 3 d) — mixed couple: where the spouse lives, and the collective request */}
+          {(answers.maritalStatus === 'MARRIED' || answers.maritalStatus === 'PACS') && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+              <label className="block text-[11px] font-semibold text-slate-600">
+                Where does your spouse live?
+              </label>
+              <select
+                value={answers.spouseResidence ?? ''}
+                onChange={(e) =>
+                  setAnswers({
+                    ...answers,
+                    spouseResidence: (e.target.value || undefined) as
+                      | 'RESIDENT'
+                      | 'NON_RESIDENT'
+                      | undefined,
+                  })
+                }
+                className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+              >
+                <option value="">Same country as me</option>
+                <option value="RESIDENT">Luxembourg (resident)</option>
+                <option value="NON_RESIDENT">Abroad (non-resident)</option>
+              </select>
+
+              {answers.spouseResidence && (
+                  <label className="flex items-start gap-2 text-[11px] text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={answers.mixedCoupleCollectiveRequested ?? false}
+                      onChange={(e) =>
+                        setAnswers({ ...answers, mixedCoupleCollectiveRequested: e.target.checked })
+                      }
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    />
+                    <span>
+                      Request collective assessment (Art. 3 d). Granted only when the resident spouse
+                      earns at least 90 % of the household&apos;s professional income in Luxembourg;
+                      otherwise the couple is taxed separately and the calculation says so.
+                    </span>
+                  </label>
+                )}
+            </div>
+          )}
+
+          {/* Art. 119 n° 3 b–c: three-year Class 2 window after death / divorce */}
+          {answers.maritalStatus === 'WIDOWED' && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                Year of spouse's death
+              </label>
+              <input
+                type="number"
+                value={answers.spouseDeathYear ?? ''}
+                placeholder="e.g. 2024"
+                onChange={(e) =>
+                  setAnswers({ ...answers, spouseDeathYear: e.target.value ? parseInt(e.target.value) : undefined })
+                }
+                className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                min={1900}
+                max={2100}
+              />
+              <p className="mt-1 text-[11px] text-slate-500">
+                Class 2 is kept for the year of death and the three following years (Art. 119 n° 3 b).
+              </p>
+            </div>
+          )}
+
+          {answers.maritalStatus === 'DIVORCED' && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 grid gap-3 sm:grid-cols-2 items-start">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Year of divorce / separation
+                </label>
+                <input
+                  type="number"
+                  value={answers.divorceOrSeparationYear ?? ''}
+                  placeholder="e.g. 2023"
+                  onChange={(e) =>
+                    setAnswers({
+                      ...answers,
+                      divorceOrSeparationYear: e.target.value ? parseInt(e.target.value) : undefined,
+                    })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={1900}
+                  max={2100}
+                />
+              </div>
+              <div>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={answers.class2BeforeEvent ?? false}
+                    onChange={(e) => setAnswers({ ...answers, class2BeforeEvent: e.target.checked })}
+                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                  />
+                  <span className="text-xs font-medium text-slate-800">
+                    Class 2 for five years before the divorce (Art. 119 n° 3 c)
+                  </span>
+                </label>
+                <p className="mt-1 ml-7 text-[11px] text-slate-500">
+                  If true, Class 2 is kept for the event year and the three following years.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Income Sources */}
           <div className="border-t border-slate-100 pt-5">
@@ -379,7 +514,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 {answers.hasPrimaryResidenceMortgage && (
                   <div className="mt-3 ml-7 grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
                     <div>
-                      <span className="block text-[11px] font-semibold text-slate-600 mb-1">Year of First Occupation:</span>
+                      <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Year the valeur locative was fixed (not the occupation year):
+                      </span>
                       <input
                         type="number"
                         value={answers.mortgageOccupancyYear || 2020}
@@ -391,7 +528,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                         }
                         className="w-full rounded border border-slate-300 px-3 py-1.5 text-xs"
                         min={1970}
-                        max={2025}
+                        max={2030}
                       />
                     </div>
                     <div>
@@ -419,7 +556,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                   className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
                 />
                 <span className="text-xs font-medium text-slate-800">
-                  Life Insurance / Private Pension Plans (Art 111 / 111bis LIR)
+                  Private insurance / consumer-loan interest (Art. 111 — €672 envelope)
                 </span>
               </label>
 
@@ -435,6 +572,842 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 </span>
               </label>
             </div>
+          </div>
+
+          {/* Household & professional profile (drives class, AEP, plafonds) */}
+          <div className="border-t border-slate-100 pt-5">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-3">
+              Household &amp; professional profile
+            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Your age on 1 January
+                </span>
+                <input
+                  type="number"
+                  value={answers.primaryAge ?? ''}
+                  placeholder="e.g. 42"
+                  onChange={(e) =>
+                    setAnswers({ ...answers, primaryAge: e.target.value ? parseInt(e.target.value) : undefined })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={16}
+                  max={110}
+                />
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Spouse age on 1 January
+                </span>
+                <input
+                  type="number"
+                  value={answers.spouseAge ?? ''}
+                  placeholder="e.g. 40"
+                  onChange={(e) =>
+                    setAnswers({ ...answers, spouseAge: e.target.value ? parseInt(e.target.value) : undefined })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={16}
+                  max={110}
+                />
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Unités d'éloignement — you (Art. 105bis)
+                </span>
+                <input
+                  type="number"
+                  value={answers.travelUnitsPrimary ?? ''}
+                  placeholder="0"
+                  onChange={(e) =>
+                    setAnswers({ ...answers, travelUnitsPrimary: e.target.value ? parseInt(e.target.value) : undefined })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={0}
+                  max={60}
+                />
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Unités d'éloignement — spouse
+                </span>
+                <input
+                  type="number"
+                  value={answers.travelUnitsSpouse ?? ''}
+                  placeholder="0"
+                  onChange={(e) =>
+                    setAnswers({ ...answers, travelUnitsSpouse: e.target.value ? parseInt(e.target.value) : undefined })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={0}
+                  max={60}
+                />
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Prior-year losses carried forward (Art. 114, €)
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={answers.priorYearLosses ?? ''}
+                  placeholder="0"
+                  onChange={(e) =>
+                    setAnswers({ ...answers, priorYearLosses: e.target.value ? parseFloat(e.target.value) : undefined })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={0}
+                />
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Children with a modération d'impôt
+                </span>
+                <input
+                  type="number"
+                  value={answers.childrenWithModeration ?? ''}
+                  placeholder="same as dependants"
+                  onChange={(e) =>
+                    setAnswers({
+                      ...answers,
+                      childrenWithModeration: e.target.value ? parseInt(e.target.value) : undefined,
+                    })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={0}
+                  max={20}
+                />
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Moderated children with no family allowance / CEDIES / SNJ (Art. 122 dégrèvement)
+                </span>
+                <input
+                  type="number"
+                  value={answers.moderatedChildrenWithoutBenefit ?? ''}
+                  placeholder="0"
+                  onChange={(e) =>
+                    setAnswers({
+                      ...answers,
+                      moderatedChildrenWithoutBenefit: e.target.value ? parseInt(e.target.value) : undefined,
+                    })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={0}
+                  max={20}
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Each such child gives EUR 922.50, capped at the tax due and never refundable.
+                </p>
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Children with expired moderation (bonification, Art. 123bis)
+                </span>
+                <input
+                  type="number"
+                  value={answers.childrenWithBonification ?? ''}
+                  placeholder="0"
+                  onChange={(e) =>
+                    setAnswers({
+                      ...answers,
+                      childrenWithBonification: e.target.value ? parseInt(e.target.value) : undefined,
+                    })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={0}
+                  max={20}
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Child left the household / studies finished; at most two bonifications per child.
+                </p>
+              </div>
+
+              <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Child relief history (Art. 122 / 123bis) — optional, overrides the three counts above
+                    </span>
+                    <p className="mt-0.5 text-[11px] text-slate-500">
+                      Per child: still moderated this year, or the year the moderation ended, and how many bonifications
+                      it has already generated (maximum two over its lifetime).
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAnswers({
+                        ...answers,
+                        childReliefHistory: [
+                          ...(answers.childReliefHistory ?? []),
+                          {
+                            childId: `Child ${(answers.childReliefHistory?.length ?? 0) + 1}`,
+                            // Conservative default, matching the scalar path: the user
+                            // must untick it when no allowance/CEDIES/SNJ was paid.
+                            benefitReceived: true,
+                          },
+                        ],
+                      })
+                    }
+                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white"
+                  >
+                    + Add child
+                  </button>
+                </div>
+
+                {(answers.childReliefHistory ?? []).length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    {(answers.childReliefHistory ?? []).map((child, index) => (
+                      <div
+                        key={index}
+                        className="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 sm:grid-cols-6"
+                      >
+                        <label className="text-[11px] font-semibold text-slate-600">
+                          Label
+                          <input
+                            type="text"
+                            value={child.childId ?? ''}
+                            onChange={(e) => updateChildRelief(index, { childId: e.target.value })}
+                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                          />
+                        </label>
+                        <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={child.moderationThisYear === true}
+                            onChange={(e) => updateChildRelief(index, { moderationThisYear: e.target.checked })}
+                          />
+                          Moderated this year
+                        </label>
+                        <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={child.benefitReceived === true}
+                            onChange={(e) => updateChildRelief(index, { benefitReceived: e.target.checked })}
+                          />
+                          Allowance / CEDIES / SNJ paid
+                        </label>
+                        <label className="text-[11px] font-semibold text-slate-600">
+                          Moderation ended (year)
+                          <input
+                            type="number"
+                            value={child.moderationEndYear ?? ''}
+                            placeholder="e.g. 2024"
+                            onChange={(e) =>
+                              updateChildRelief(index, {
+                                moderationEndYear: e.target.value ? parseInt(e.target.value) : undefined,
+                              })
+                            }
+                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                            min={1900}
+                            max={2100}
+                          />
+                        </label>
+                        <label className="text-[11px] font-semibold text-slate-600">
+                          Bonifications already granted
+                          <input
+                            type="number"
+                            value={child.bonificationsGranted ?? ''}
+                            placeholder="0"
+                            onChange={(e) =>
+                              updateChildRelief(index, {
+                                bonificationsGranted: e.target.value ? parseInt(e.target.value) : undefined,
+                              })
+                            }
+                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                            min={0}
+                            max={2}
+                          />
+                        </label>
+                        <div className="flex items-end">
+                          <button
+                            type="button"
+                            onClick={() => removeChildRelief(index)}
+                            className="w-full rounded border border-rose-200 px-2 py-1.5 text-[11px] font-semibold text-rose-600"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div className="grid gap-2 sm:col-span-6 sm:grid-cols-3">
+                          <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={child.inHousehold === false}
+                              onChange={(e) => updateChildRelief(index, { inHousehold: e.target.checked ? false : undefined })}
+                            />
+                            Lives outside this household
+                          </label>
+                          <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={child.residenceAlternee === true}
+                              onChange={(e) => updateChildRelief(index, { residenceAlternee: e.target.checked })}
+                            />
+                            Résidence alternée (2025–2026 only)
+                          </label>
+                          <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={child.jointParentalAuthority === true && child.familyAllowanceReceived === true}
+                              onChange={(e) =>
+                                updateChildRelief(index, {
+                                  jointParentalAuthority: e.target.checked,
+                                  familyAllowanceReceived: e.target.checked,
+                                })
+                              }
+                            />
+                            Joint parental authority + allowance here
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Reduced working capacity (0–1, invalidity forfait)
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={answers.invalidityRatePrimary ?? ''}
+                  placeholder="e.g. 0.40"
+                  onChange={(e) =>
+                    setAnswers({ ...answers, invalidityRatePrimary: e.target.value ? parseFloat(e.target.value) : undefined })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={0}
+                  max={1}
+                />
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Épargne-logement subscriber age on 1 January
+                </span>
+                <input
+                  type="number"
+                  value={answers.savingsHousingSubscriberAge ?? ''}
+                  placeholder="≤ 40 gives €1,344"
+                  onChange={(e) =>
+                    setAnswers({
+                      ...answers,
+                      savingsHousingSubscriberAge: e.target.value ? parseInt(e.target.value) : undefined,
+                    })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={16}
+                  max={110}
+                />
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Prime jeune salarié received (€, Art. 115 n° 13d)
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={answers.youngEmployeePrime ?? ''}
+                  placeholder="0"
+                  onChange={(e) =>
+                    setAnswers({ ...answers, youngEmployeePrime: e.target.value ? parseFloat(e.target.value) : undefined })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={0}
+                />
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Prime jeune salarié conditions met?
+                </span>
+                <select
+                  value={answers.youngEmployeePrimeEligible ? 'yes' : 'no'}
+                  onChange={(e) => setAnswers({ ...answers, youngEmployeePrimeEligible: e.target.value === 'yes' })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                >
+                  <option value="no">No / not applicable</option>
+                  <option value="yes">Under 30, first CDI in LU, first prime &lt; 5 years</option>
+                </select>
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  111bis souscripteurs (1 or 2)
+                </span>
+                <input
+                  type="number"
+                  value={answers.art111bisContributors ?? ''}
+                  placeholder="default 2 if married"
+                  onChange={(e) =>
+                    setAnswers({
+                      ...answers,
+                      art111bisContributors: e.target.value ? parseInt(e.target.value) : undefined,
+                    })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={1}
+                  max={2}
+                />
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Allocations paid for the child (CIM reduction, €)
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={answers.childAllocations ?? ''}
+                  placeholder="0"
+                  onChange={(e) =>
+                    setAnswers({ ...answers, childAllocations: e.target.value ? parseFloat(e.target.value) : undefined })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={0}
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={answers.spouseHasProfessionalIncome ?? false}
+                  onChange={(e) => setAnswers({ ...answers, spouseHasProfessionalIncome: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                <span className="text-xs font-medium text-slate-800">
+                  My spouse also has professional income (salary or side-business) — Art. 129b AEP €4,500
+                </span>
+              </label>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={answers.spouseIsConjointAidant ?? false}
+                  onChange={(e) => setAnswers({ ...answers, spouseIsConjointAidant: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                <span className="text-xs font-medium text-slate-800">
+                  My spouse is registered as conjoint-aidant in my business
+                </span>
+              </label>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={
+                    answers.isSingleParent ??
+                    ((answers.maritalStatus === 'SINGLE' ||
+                      answers.maritalStatus === 'DIVORCED' ||
+                      answers.maritalStatus === 'WIDOWED') &&
+                      (answers.childrenWithModeration ?? answers.childrenCount ?? 0) > 0)
+                  }
+                  onChange={(e) => setAnswers({ ...answers, isSingleParent: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                <span className="text-xs font-medium text-slate-800">
+                  Single parent (CIM, Art. 154ter)
+                  <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
+                    Automatic for a single, divorced or widowed parent with a moderated child; tick only to force it
+                    on or off.
+                  </span>
+                </span>
+              </label>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={answers.bothParentsSameHome ?? false}
+                  onChange={(e) => setAnswers({ ...answers, bothParentsSameHome: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                <span className="text-xs font-medium text-slate-800">
+                  Both parents live in the same home as the child (excludes the CIM)
+                </span>
+              </label>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={answers.hasPensionSavingsContract ?? false}
+                  onChange={(e) => setAnswers({ ...answers, hasPensionSavingsContract: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                <span className="text-xs font-medium text-slate-800">
+                  I hold a prévoyance-vieillesse contract (Art. 111bis — cap €3,200 for 2025, €4,500 from 2026)
+                </span>
+              </label>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={answers.hasSavingsHousingContract ?? false}
+                  onChange={(e) => setAnswers({ ...answers, hasSavingsHousingContract: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                <span className="text-xs font-medium text-slate-800">
+                  I hold an épargne-logement contract (Art. 111 al. 5 — €1,344 / €672)
+                </span>
+              </label>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={answers.amvpEligible ?? false}
+                  onChange={(e) => setAnswers({ ...answers, amvpEligible: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                <span className="text-xs font-medium text-slate-800">
+                  I keep working after becoming eligible for an early pension — AMVP €9,000 (2026 only)
+                </span>
+              </label>
+            </div>
+
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  ASRD single premium (€, Art. 111 al. 3/4)
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={answers.asrdPrimeUnique ?? ''}
+                  placeholder="0"
+                  onChange={(e) =>
+                    setAnswers({ ...answers, asrdPrimeUnique: e.target.value ? parseFloat(e.target.value) : undefined })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={0}
+                />
+              </div>
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Your age when the ASRD was taken out
+                </span>
+                <input
+                  type="number"
+                  value={answers.asrdSubscriberAge ?? ''}
+                  placeholder="e.g. 35"
+                  onChange={(e) =>
+                    setAnswers({ ...answers, asrdSubscriberAge: e.target.value ? parseInt(e.target.value) : undefined })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={16}
+                  max={110}
+                />
+              </div>
+              <div>
+                <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Start-up investment (2026, € — 20 % credit, cap €100,000)
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={answers.startupInvestment ?? ''}
+                  placeholder="0"
+                  onChange={(e) =>
+                    setAnswers({ ...answers, startupInvestment: e.target.value ? parseFloat(e.target.value) : undefined })
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  min={0}
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={answers.spouseEmployedByBusiness ?? false}
+                  onChange={(e) => setAnswers({ ...answers, spouseEmployedByBusiness: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                <span className="text-xs font-medium text-slate-800">
+                  My spouse is paid a salary by our business — Art. 48 n° 3 blocks the deduction in Class 2
+                </span>
+              </label>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={answers.rentalForfaitEligible ?? false}
+                  onChange={(e) => setAnswers({ ...answers, rentalForfaitEligible: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                <span className="text-xs font-medium text-slate-800">
+                  Rental property: private patrimoine completed ≥ 15 years ago — 35 % forfait (max €2,700)
+                </span>
+              </label>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={answers.rentalSocial ?? false}
+                  onChange={(e) => setAnswers({ ...answers, rentalSocial: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                <span className="text-xs font-medium text-slate-800">
+                  Rental managed through a conventioned social agency — 90 % exempt (Art. 115 n° 22a)
+                </span>
+              </label>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={answers.nonResidentAssimilation ?? false}
+                  onChange={(e) => setAnswers({ ...answers, nonResidentAssimilation: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                <span className="text-xs font-medium text-slate-800">
+                  I am a non-resident asking for assimilation (≥ 90 % of worldwide income in Luxembourg, or foreign net &lt; €13,000)
+                </span>
+              </label>
+            </div>
+
+            {answers.nonResidentAssimilation && (
+              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Worldwide income (€)</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={answers.worldwideIncome ?? ''}
+                    onChange={(e) =>
+                      setAnswers({ ...answers, worldwideIncome: e.target.value ? parseFloat(e.target.value) : undefined })
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                    min={0}
+                  />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Luxembourg professional income (€)
+                  </span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={answers.luxembourgProfessionalIncome ?? ''}
+                    onChange={(e) =>
+                      setAnswers({
+                        ...answers,
+                        luxembourgProfessionalIncome: e.target.value ? parseFloat(e.target.value) : undefined,
+                      })
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                    min={0}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="mt-6 border-t border-slate-100 pt-4">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-2">
+                Capital and rental (one row each)
+              </p>
+              <div className="grid gap-3 sm:grid-cols-4">
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Securities income €</span>
+                  <input type="number" step="0.01" value={answers.securitiesGrossIncome ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, securitiesGrossIncome: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Qualifying dividend?</span>
+                  <select value={answers.securitiesQualifying ? 'yes' : 'no'}
+                    onChange={(e) => setAnswers({ ...answers, securitiesQualifying: e.target.value === 'yes' })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold">
+                    <option value="no">No</option>
+                    <option value="yes">Yes (50 % exempt, Art. 115 n°15a)</option>
+                  </select>
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Foreign tax on it €</span>
+                  <input type="number" step="0.01" value={answers.securitiesForeignTax ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, securitiesForeignTax: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">RELIBI 20 % withheld €</span>
+                  <input type="number" step="0.01" value={answers.securitiesRelibiWithheld ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, securitiesRelibiWithheld: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Rent received €</span>
+                  <input type="number" step="0.01" value={answers.rentalGrossRent ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, rentalGrossRent: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Rental charges €</span>
+                  <input type="number" step="0.01" value={answers.rentalCharges ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, rentalCharges: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Purchase price €</span>
+                  <input type="number" step="0.01" value={answers.rentalPurchasePrice ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, rentalPurchasePrice: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Completion year</span>
+                  <input type="number" value={answers.rentalCompletionYear ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, rentalCompletionYear: e.target.value ? parseInt(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={1800} max={2100} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Energy renovation €</span>
+                  <input type="number" step="0.01" value={answers.rentalEnergyRenovationAmount ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, rentalEnergyRenovationAmount: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Loan interest on it €</span>
+                  <input type="number" step="0.01" value={answers.rentalInterest ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, rentalInterest: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+              </div>
+              <label className="mt-2 flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={answers.relibiFinalElective ?? false}
+                  onChange={(e) => setAnswers({ ...answers, relibiFinalElective: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
+                <span className="text-xs font-medium text-slate-800">
+                  Treat the 20 % RELIBI withholding as final (interest excluded from the base)
+                </span>
+              </label>
+            </div>
+
+            <div className="mt-6 border-t border-slate-100 pt-4">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-2">
+                Gains and foreign income (one row each)
+              </p>
+              <div className="grid gap-3 sm:grid-cols-4">
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Movable: proceeds €</span>
+                  <input type="number" step="0.01" value={answers.movableGainProceeds ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, movableGainProceeds: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Movable: cost €</span>
+                  <input type="number" step="0.01" value={answers.movableGainCost ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, movableGainCost: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Held (months)</span>
+                  <input type="number" value={answers.movableGainHoldingMonths ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, movableGainHoldingMonths: e.target.value ? parseInt(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Participation %</span>
+                  <input type="number" step="0.01" value={answers.movableGainParticipationPercent ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, movableGainParticipationPercent: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} max={100} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Real estate: proceeds €</span>
+                  <input type="number" step="0.01" value={answers.realEstateGainProceeds ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, realEstateGainProceeds: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Real estate: cost €</span>
+                  <input type="number" step="0.01" value={answers.realEstateGainCost ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, realEstateGainCost: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Held (years)</span>
+                  <input type="number" value={answers.realEstateGainHoldingYears ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, realEstateGainHoldingYears: e.target.value ? parseInt(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Principal residence?</span>
+                  <select value={answers.realEstateGainPrincipalResidence ? 'yes' : 'no'}
+                    onChange={(e) => setAnswers({ ...answers, realEstateGainPrincipalResidence: e.target.value === 'yes' })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold">
+                    <option value="no">No</option>
+                    <option value="yes">Yes (exempt)</option>
+                  </select>
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Foreign country (ISO)</span>
+                  <input type="text" maxLength={2} value={answers.foreignCountry ?? ''}
+                    placeholder="FR / DE / BE"
+                    onChange={(e) => setAnswers({ ...answers, foreignCountry: e.target.value.toUpperCase() })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Foreign amount €</span>
+                  <input type="number" step="0.01" value={answers.foreignAmount ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, foreignAmount: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">Foreign tax paid €</span>
+                  <input type="number" step="0.01" value={answers.foreignTax ?? ''}
+                    onChange={(e) => setAnswers({ ...answers, foreignTax: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold" min={0} />
+                </div>
+              </div>
+            </div>
+
+            {(answers.maritalStatus === 'MARRIED' || answers.maritalStatus === 'PACS') && (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Assessment (Art. 3 / 3bis / 3ter)
+                  </span>
+                  <select
+                    value={answers.assessmentMode ?? 'COLLECTIVE'}
+                    onChange={(e) =>
+                      setAnswers({ ...answers, assessmentMode: e.target.value as QuestionnaireAnswersDto['assessmentMode'] })
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                  >
+                    <option value="COLLECTIVE">Collective (Class 2)</option>
+                    <option value="INDIVIDUAL_PURE">Individual, pure (Class 1 each)</option>
+                    <option value="INDIVIDUAL_REALLOCATION">Individual with reallocation</option>
+                  </select>
+                </div>
+                {answers.assessmentMode === 'INDIVIDUAL_REALLOCATION' && (
+                  <div>
+                    <span className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Your share of the joint income (%)
+                    </span>
+                    <input
+                      type="number"
+                      value={answers.reallocationPercentPrimary ?? 50}
+                      onChange={(e) =>
+                        setAnswers({ ...answers, reallocationPercentPrimary: parseFloat(e.target.value) || 50 })
+                      }
+                      className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold"
+                      min={0}
+                      max={100}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Children & Dependants */}

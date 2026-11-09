@@ -16,13 +16,17 @@ import {
   MembershipStatus,
   AuditEventType,
   InvitationDetailsDto,
+  NotificationSeverity,
+  NotificationType,
 } from '@luxtax/contracts';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class HouseholdsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly notifications: NotificationsService
   ) {}
 
   private hashToken(token: string): string {
@@ -169,6 +173,31 @@ export class HouseholdsService {
         expiresAt,
       },
     });
+
+    // An existing account gets an in-app notice. A brand-new invitee has no
+    // inbox yet; the invitation link is the only channel for them.
+    try {
+      const invitedUser = await this.prisma.user.findUnique({
+        where: { email: normalizedEmail },
+        select: { id: true },
+      });
+      if (invitedUser) {
+        await this.notifications.createForUser({
+          householdId,
+          userId: invitedUser.id,
+          actorId: inviterId,
+          dedupeKey: `invitation:${invitation.id}`,
+          type: NotificationType.HOUSEHOLD_INVITATION,
+          severity: NotificationSeverity.INFO,
+          title: 'Household invitation',
+          body: `You were invited to join a household as ${dto.role}. Use the invitation link you received to accept.`,
+          entityType: 'HouseholdInvitation',
+          entityId: invitation.id,
+        });
+      }
+    } catch {
+      // A notification failure must not undo the invitation.
+    }
 
     await this.auditService.log({
       householdId,

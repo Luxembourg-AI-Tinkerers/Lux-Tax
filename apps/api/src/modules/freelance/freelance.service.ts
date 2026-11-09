@@ -11,13 +11,44 @@ import {
 } from '@luxtax/contracts';
 import { UpdateFreelanceProfileInput } from '@luxtax/validation';
 import { AuditService } from '../audit/audit.service';
+import { ReturnApprovalsService } from '../filing/return-approvals.service';
+import { canIncludeInReturn, Visibility } from '../facts/fact-visibility';
+import { selectFilerMembers } from '../calculations/class-resolution';
 import * as crypto from 'crypto';
+import { Prisma } from '@prisma/client';
+
+/**
+ * Confirmed facts that may feed the freelance metrics. A manual fact (no
+ * source document) is always eligible; a document-sourced fact only when its
+ * document was explicitly proposed for, or included in, the return. Mirrors
+ * `canIncludeInReturn` in ../facts/fact-visibility.ts so a private draft or a
+ * discussion document never shows up as freelance revenue.
+ */
+const CONFIRMED_FACT_IN_RETURN_WHERE: Prisma.ConfirmedFactWhereInput = {
+  isIncludedInReturn: true,
+  OR: [
+    { sourceDocumentId: null },
+    {
+      sourceDocument: {
+        is: {
+          visibility: {
+            in: [
+              DocumentVisibility.PROPOSED_FOR_RETURN,
+              DocumentVisibility.INCLUDED_IN_RETURN,
+            ],
+          },
+        },
+      },
+    },
+  ],
+};
 
 @Injectable()
 export class FreelanceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly returnApprovals: ReturnApprovalsService,
   ) {}
 
   async getProfiles(workspaceId: string): Promise<FreelanceBusinessProfileDto[]> {
@@ -44,10 +75,26 @@ export class FreelanceService {
 
     const profiles = [...workspace.freelanceProfiles];
 
-    // For any household member who doesn't yet have a profile, ensure a record exists
+    // Only members who actually run an independent activity get a profile.
+    // Creating one for every household member misrepresented pure employees as
+    // freelancers and polluted the AEP / CII evidence trail.
+    const independentOwnerIds = new Set(
+      (
+        await this.prisma.confirmedFact.findMany({
+          where: {
+            workspaceId,
+            category: { in: ['FREELANCE_INCOME', 'BUSINESS_EXPENSE'] },
+          },
+          select: { ownerId: true },
+        })
+      )
+        .map((f) => f.ownerId)
+        .filter((id): id is string => Boolean(id)),
+    );
+
     for (const member of workspace.household.members) {
       const existing = profiles.find((p) => p.ownerId === member.userId);
-      if (!existing) {
+      if (!existing && independentOwnerIds.has(member.userId)) {
         const defaultName = member.user?.email
           ? `${member.user.email.split('@')[0].toUpperCase()} Consulting`
           : 'Freelance & Business Activity';
@@ -135,7 +182,7 @@ export class FreelanceService {
       where: { id: workspaceId },
       include: {
         confirmedFacts: {
-          where: { isIncludedInReturn: true },
+          where: CONFIRMED_FACT_IN_RETURN_WHERE,
         },
         documents: true,
       },
@@ -225,8 +272,9 @@ export class FreelanceService {
     }
 
     const members = workspace.household.members;
-    const spouseA = members[0]?.userId || actorId;
-    const spouseB = members.length > 1 ? members[1]?.userId : null;
+    const { primaryUserId, spouseUserId } = selectFilerMembers(members, actorId);
+    const spouseA = primaryUserId || actorId;
+    const spouseB = spouseUserId;
 
     // 1. Setup profiles for spouses
     await this.prisma.freelanceBusinessProfile.upsert({
@@ -422,6 +470,12 @@ export class FreelanceService {
           },
         });
 
+        // A fact may only enter the return once its source document has been
+        // proposed for, or included in, it. The demo loader creates its own
+        // INCLUDED_IN_RETURN documents, so demo data keeps counting, while a
+        // fact from a private draft could never seed the return.
+        const isIncludedInReturn = canIncludeInReturn(doc.visibility as Visibility);
+
         await this.prisma.confirmedFact.create({
           data: {
             workspaceId,
@@ -434,7 +488,7 @@ export class FreelanceService {
             sourceDocumentId: doc.id,
             extractedFactId: fact.id,
             isSharedWithHousehold: true,
-            isIncludedInReturn: true,
+            isIncludedInReturn,
             description: entry.description,
           },
         });
@@ -452,6 +506,18 @@ export class FreelanceService {
       entityId: workspaceId,
       description: `Loaded ${count} realistic freelance documents and facts into workspace`,
     });
+
+    // Demo facts are real confirmed facts that feed the joint return, so loading
+    // them is a material change: standing approvals must be superseded exactly
+    // as they are for a manual fact edit. Only a run that wrote new facts can
+    // change the return, and the reason stays generic (no amounts, no names).
+    if (count > 0) {
+      await this.returnApprovals.invalidateForChange(
+        workspaceId,
+        actorId,
+        'Freelance demo facts loaded',
+      );
+    }
 
     return { success: true, count };
   }
