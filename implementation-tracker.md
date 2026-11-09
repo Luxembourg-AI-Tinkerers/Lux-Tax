@@ -13,7 +13,7 @@ unparks R6/R7 on publication.
 
 **Status legend:** ✅ done · 🟡 partial · ⬜ todo · ⛔ blocked by the environment (not by scope)
 
-**Last updated:** 2026-11-09 (ninth pass) · Phases 0–44 implemented · **558 tests passing** across **45 spec files** · **8 Prisma migrations applied to PostgreSQL 18.4, `migrate diff` empty (zero drift)** · `tsc -p tsconfig.test.json` and `tsc -p tsconfig.render.json` both exit 0 · 68 files syntax `ok` · **API e2e and a React Native build are NOT run** in this environment (mobile renderers are mounted through a `react-native` primitive shim — see Phase 32) · **R6/R7 blocked on projet de loi 8775** · gap check: `gap-check-2026-11-08.md`
+**Last updated:** 2026-11-09 (ninth pass) · Phases 0–44 implemented · **562 tests passing** across **46 spec files** · **8 Prisma migrations applied to PostgreSQL 18.4, `migrate diff` empty (zero drift)** · `tsc -p tsconfig.test.json` and `tsc -p tsconfig.render.json` both exit 0 · 68 files syntax `ok` · **API e2e and a React Native build are NOT run** in this environment (mobile renderers are mounted through a `react-native` primitive shim — see Phase 32) · **R6/R7 blocked on projet de loi 8775** · gap check: `gap-check-2026-11-08.md`
 
 > **Status at 2026-11-09 (end of the current run)**
 >
@@ -90,7 +90,9 @@ and `createForUser` survives a concurrent duplicate.
 relief (the research does not settle it; each child is worth EUR 922.50 at stake), and foreign income is still not
 split by nature (S/P/CM/L) because the app has no per-fact foreign nature and the 100F has no foreign sheet.
 
-**Verification (this machine):** **558 / 558 tests** across **45 spec files**; `tsc -p tsconfig.test.json`
+**Database verification (this machine).** The Prisma datasource was missing its `url` — the API could not have connected at all; it is now `env("DATABASE_URL")`. On PostgreSQL 18.4, a fresh database `luxtax_migration_check_20261109` received **all 11 migrations** (`prisma migrate deploy`: “All migrations have been successfully applied”), `prisma validate` passes, `migrate status` reports the schema up to date and `migrate diff --exit-code` returns **no difference**. That covers the three migrations this pass authored (notification dedupe, unsupported codes, outbox) and the eight earlier ones; the existing `luxtax` database predates `_prisma_migrations` and must be baselined before `migrate deploy`.
+
+**Verification (this machine):** **562 / 562 tests** across **46 spec files**; `tsc -p tsconfig.test.json`
 exit 0; `tsc -p tsconfig.render.json` exit 0 (JSX layer); `node .tools/syntax_check.cjs` exit 0 with the
 four new files added to its list.
 
@@ -99,7 +101,7 @@ four new files added to its list.
 | Item | Blocking fact |
 |---|---|
 | API e2e (`tax-lifecycle-full`, `admin-governance`, `household-collaboration`, `freelance-lifecycle`, `receipt-scanning`) | `@nestjs/*` and the generated Prisma client are absent; `pnpm install` hangs in this environment before linking. The code is transpiled and reviewed, not executed against a database. |
-| Applying `20261109140000_add_notification_dedupe`, `20261109150000_add_unsupported_codes` and `20261109160000_add_notification_outbox` | Need a running PostgreSQL and a generated client. Run `pnpm --filter @luxtax/api prisma:generate && pnpm --filter @luxtax/api prisma:migrate` before starting the API. |
+| API e2e against the migrated database | Migrations are applied and drift-free (below), but `@nestjs/*` and `@prisma/client` still cannot be installed here, so no endpoint was executed. |
 | Mobile on a device | No native build here; the MOB renderers remain mounted through the `react-native` shim. |
 | A real push provider / SMTP account | The outbox, retry and adapters are implemented; e-mail defaults to a **local JSONL sink** and push is **not configured** until a provider is wired (`useTransport`) and a device-token store exists. `NOTIFICATION_PUSH_ENABLED=true` turns the local push sink on for a smoke test. |
 | Foreign income split by nature (S/P/CM/L) | The 100F has no foreign sheet and the app has no per-fact foreign nature; the package emits an INSTRUCTION naming the relevant sheets and RD 1081/1082 rather than guessing a case. |

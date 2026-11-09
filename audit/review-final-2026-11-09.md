@@ -215,5 +215,5 @@ above. It is verified by its own suites instead:
   reschedule, dead-letter on the fifth failure, skip an unconfigured push channel, refuse a row
   already claimed by another worker, and keep going after one bad row.
 
-Gates at the tip: **558 / 558 tests** across 45 spec files, both `tsc` configurations exit 0,
+Gates at the tip: **562 / 562 tests** across 46 spec files, both `tsc` configurations exit 0,
 `node .tools/syntax_check.cjs` 0 failures.

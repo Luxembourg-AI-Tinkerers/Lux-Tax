@@ -69,6 +69,7 @@ const files = [
   "apps/api/test/notification-rules.spec.ts",
   "apps/api/test/return-version-history.spec.ts",
   "apps/api/test/assessment-dates.spec.ts",
+  "apps/api/test/prisma-schema.spec.ts",
   "apps/api/src/modules/notifications/notification-outbox.ts",
   "apps/api/test/notification-outbox.spec.ts",
   "apps/api/src/modules/notifications/notification-delivery.ts",
