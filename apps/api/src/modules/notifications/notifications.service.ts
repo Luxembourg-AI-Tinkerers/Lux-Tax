@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   HouseholdRole,
@@ -14,6 +15,8 @@ import {
   defaultNotificationPreference,
   shouldDeliverNotification,
 } from './notification-rules';
+import { channelsForNotification } from './notification-delivery';
+import { NotificationOutboxService } from './notification-outbox.service';
 
 /** Rows older than this are never returned in a single page. */
 const MAX_PAGE_SIZE = 100;
@@ -116,7 +119,12 @@ function toPreferenceDto(row: PreferenceRow): NotificationPreferenceDto {
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(NotificationsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly outbox: NotificationOutboxService,
+  ) {}
 
   /**
    * Persist one notification for one user, bypassing preferences. Used for
@@ -151,6 +159,7 @@ export class NotificationsService {
         },
       });
 
+      await this.enqueueDeliveries(notification.id, params.userId, params.householdId, params.type);
       return toNotificationDto(notification as NotificationRow);
     } catch (error) {
       // The pre-check above cannot close the race between two concurrent
@@ -164,6 +173,29 @@ export class NotificationsService {
         if (existing) return toNotificationDto(existing as NotificationRow);
       }
       throw error;
+    }
+  }
+
+  /**
+   * Enqueue the outbox rows for one notification. A delivery failure must never
+   * undo the in-app row, so any error is logged and swallowed.
+   */
+  private async enqueueDeliveries(
+    notificationId: string,
+    userId: string,
+    householdId: string,
+    type: string,
+  ): Promise<void> {
+    try {
+      const preference = await this.prisma.notificationPreference.findUnique({
+        where: { userId_householdId: { userId, householdId } },
+        select: { emailEnabled: true, pushEnabled: true },
+      });
+      await this.outbox.enqueue(notificationId, channelsForNotification(preference, type));
+    } catch (error) {
+      this.logger.warn(
+        `Outbox enqueue skipped for ${notificationId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -195,46 +227,70 @@ export class NotificationsService {
         householdId: params.householdId,
         userId: { in: recipients },
       },
-      select: { userId: true, mutedTypes: true },
+      select: { userId: true, mutedTypes: true, emailEnabled: true, pushEnabled: true },
     });
-    const mutedTypesByUser = new Map<string, string[]>(
-      preferences.map(
-        (pref): [string, string[]] => [
-          pref.userId,
-          pref.mutedTypes as string[],
-        ],
-      ),
+    const preferenceByUser = new Map<
+      string,
+      { mutedTypes: string[]; emailEnabled: boolean; pushEnabled: boolean }
+    >(
+      preferences.map((pref) => [
+        pref.userId,
+        {
+          mutedTypes: pref.mutedTypes as string[],
+          emailEnabled: pref.emailEnabled,
+          pushEnabled: pref.pushEnabled,
+        },
+      ]),
     );
 
     const deliverable = recipients.filter((userId) => {
-      const mutedTypes = mutedTypesByUser.get(userId);
-      return shouldDeliverNotification(
-        mutedTypes ? { mutedTypes } : null,
-        params.type,
-      );
+      const mutedTypes = preferenceByUser.get(userId)?.mutedTypes;
+      return shouldDeliverNotification(mutedTypes ? { mutedTypes } : null, params.type);
     });
 
     if (deliverable.length === 0) return 0;
 
-    await this.prisma.notification.createMany({
-      skipDuplicates: true,
-      data: deliverable.map((userId) => ({
-        householdId: params.householdId,
-        workspaceId: params.workspaceId ?? null,
-        userId,
-        dedupeKey: params.dedupeKey ?? null,
-        actorId: params.actorId ?? null,
-        type: params.type,
-        severity: params.severity ?? NotificationSeverity.INFO,
-        title: params.title,
-        body: params.body,
-        entityType: params.entityType ?? null,
-        entityId: params.entityId ?? null,
-        actionUrl: params.actionUrl ?? null,
-      })),
-    });
+    const rows = deliverable.map((userId) => ({
+      id: randomUUID(),
+      householdId: params.householdId,
+      workspaceId: params.workspaceId ?? null,
+      userId,
+      dedupeKey: params.dedupeKey ?? null,
+      actorId: params.actorId ?? null,
+      type: params.type,
+      severity: params.severity ?? NotificationSeverity.INFO,
+      title: params.title,
+      body: params.body,
+      entityType: params.entityType ?? null,
+      entityId: params.entityId ?? null,
+      actionUrl: params.actionUrl ?? null,
+    }));
 
-    return deliverable.length;
+    await this.prisma.notification.createMany({ data: rows, skipDuplicates: true });
+
+    // A dedupe key can make createMany skip an existing row; enqueue only ids
+    // that really exist, never a phantom row whose FK would fail.
+    const stored = params.dedupeKey
+      ? await this.prisma.notification.findMany({
+          where: { dedupeKey: params.dedupeKey, userId: { in: deliverable } },
+          select: { id: true, userId: true },
+        })
+      : rows.map((row) => ({ id: row.id, userId: row.userId }));
+
+    for (const row of stored) {
+      try {
+        await this.outbox.enqueue(
+          row.id,
+          channelsForNotification(preferenceByUser.get(row.userId) ?? null, params.type),
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Outbox enqueue skipped for ${row.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return stored.length;
   }
 
   async list(

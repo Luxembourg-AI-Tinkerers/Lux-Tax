@@ -13,7 +13,7 @@ unparks R6/R7 on publication.
 
 **Status legend:** ✅ done · 🟡 partial · ⬜ todo · ⛔ blocked by the environment (not by scope)
 
-**Last updated:** 2026-11-09 (ninth pass) · Phases 0–44 implemented · **537 tests passing** across **43 spec files** · **8 Prisma migrations applied to PostgreSQL 18.4, `migrate diff` empty (zero drift)** · `tsc -p tsconfig.test.json` and `tsc -p tsconfig.render.json` both exit 0 · 68 files syntax `ok` · **API e2e and a React Native build are NOT run** in this environment (mobile renderers are mounted through a `react-native` primitive shim — see Phase 32) · **R6/R7 blocked on projet de loi 8775** · gap check: `gap-check-2026-11-08.md`
+**Last updated:** 2026-11-09 (ninth pass) · Phases 0–44 implemented · **558 tests passing** across **45 spec files** · **8 Prisma migrations applied to PostgreSQL 18.4, `migrate diff` empty (zero drift)** · `tsc -p tsconfig.test.json` and `tsc -p tsconfig.render.json` both exit 0 · 68 files syntax `ok` · **API e2e and a React Native build are NOT run** in this environment (mobile renderers are mounted through a `react-native` primitive shim — see Phase 32) · **R6/R7 blocked on projet de loi 8775** · gap check: `gap-check-2026-11-08.md`
 
 > **Status at 2026-11-09 (end of the current run)**
 >
@@ -69,6 +69,7 @@ invented.
 | Form 100F | **DS 1553 is the covered total, not the forfait.** New `deductions.specialExpensesCovered` (Art. 111 + ASRD + 111bis + épargne-logement) feeds the case; when the Art. 113 minimum is higher it is emitted as an INSTRUCTION instead of overwriting the total. Art. 91 liberal profession is routed to **page 6 sheet I (601–651 / 6108–6110)** through the `professionalRevenue` / `professionalExpense` fact keys, with C/A 501 reserved for Art. 14 commercial profit. Bare multi-letter certificate codes (`ZZ`, `FDD`) now warn instead of vanishing. The view renders INSTRUCTION/COMPUTED badges, the person name and the unmapped-code list, and no longer offers “Copy” for an instruction. | `form100-case-map.ts`, `filing.service.ts`, `certificate160.ts`; `packages/tax-engine/test/certificate-codes.spec.ts` (4 tests) |
 | Display | 111bis clamp now warns (`2 souscripteurs, 1 assessed person`); `class2WithoutSpouse` is carried in the DTO and the calculator header says “Class 2 without spouse (Art. 119 n° 3)”; the credits card is capped at the tax due, so it no longer claims a non-refunded credit was applied; the refund banner names the CIM when nothing was withheld; the LEG-8 `comparable` comment and warning now say **married** Class 2 couple (a PACS couple is not silently called non-Class-2). | `engine.ts`, `calculations.service.ts`, `TaxCalculatorView.tsx`, `packages/contracts/src/tax.ts` |
 | Notifications | `dedupeKey` column + `20261109140000_add_notification_dedupe` migration (authored, **not applied** here); a repeat emission returns/ignores the existing row. `SECURITY_ALERT` can no longer be muted (service **and** zod). Fan-out can be restricted by role, so `APPROVAL_REQUESTED` no longer reaches a VIEWER. Return-ready and package-generated notifications exclude the actor. Household-level rows (null workspace) are listable and markable. `actionUrl` is the real `/<householdId>/dashboard`. A late preferences response after a workspace switch is dropped. New emitters: invitation (existing account), approval invalidated, document shared/confirmation required. | `notifications.service.ts`, `notification.schema.ts`, `NotificationCenter.tsx`, `ReturnApprovalsService`, `HouseholdsService`, `DocumentsService`; `notification-rules.spec.ts` still green |
+| Notifications — outbox | **Transactional outbox with retry.** `notification_deliveries` (one row per notification × channel, `20261109160000_add_notification_outbox`) is written beside every in-app row; `NotificationOutboxService` claims due rows (`PENDING` → `SENDING`, so two replicas cannot both send), calls the adapter and retries with **1 min → 5 min → 25 min → 1 h** backoff, five attempts, then `FAILED`; a channel without a transport is `SKIPPED` with a reason. `EmailAdapter` ships a local JSONL transport (swap `useTransport()` for SMTP/SES), `PushAdapter` is opt-in. The poller is off unless `NOTIFICATION_OUTBOX_ENABLED=true`. **Deadline reminders** (`NotificationRemindersService`) sweep open assessments inside a 30-day objection window and emit `DEADLINE_REMINDER` with a per-day dedupe key; off unless `NOTIFICATION_REMINDERS_ENABLED=true`. | `notification-delivery.ts`, `notification-outbox.service.ts`, `notification-reminders.service.ts`, `adapters/*`, `notifications.module.ts`; `apps/api/test/notification-delivery.spec.ts` (14 tests) |
 
 **Independent review (round 1, `audit/review-final-2026-11-09.md`).** Six must-fix findings, all fixed before
 this section was written: (1) a result stored before `credits`/`deductions` existed crashed the calculator and
@@ -89,7 +90,7 @@ and `createForUser` survives a concurrent duplicate.
 relief (the research does not settle it; each child is worth EUR 922.50 at stake), and foreign income is still not
 split by nature (S/P/CM/L) because the app has no per-fact foreign nature and the 100F has no foreign sheet.
 
-**Verification (this machine):** **537 / 537 tests** across **43 spec files**; `tsc -p tsconfig.test.json`
+**Verification (this machine):** **558 / 558 tests** across **45 spec files**; `tsc -p tsconfig.test.json`
 exit 0; `tsc -p tsconfig.render.json` exit 0 (JSX layer); `node .tools/syntax_check.cjs` exit 0 with the
 four new files added to its list.
 
@@ -98,9 +99,9 @@ four new files added to its list.
 | Item | Blocking fact |
 |---|---|
 | API e2e (`tax-lifecycle-full`, `admin-governance`, `household-collaboration`, `freelance-lifecycle`, `receipt-scanning`) | `@nestjs/*` and the generated Prisma client are absent; `pnpm install` hangs in this environment before linking. The code is transpiled and reviewed, not executed against a database. |
-| Applying `20261109140000_add_notification_dedupe` and `20261109150000_add_unsupported_codes` | Need a running PostgreSQL and a generated client. Run `pnpm --filter @luxtax/api prisma:generate && pnpm --filter @luxtax/api prisma:migrate` before starting the API. |
+| Applying `20261109140000_add_notification_dedupe`, `20261109150000_add_unsupported_codes` and `20261109160000_add_notification_outbox` | Need a running PostgreSQL and a generated client. Run `pnpm --filter @luxtax/api prisma:generate && pnpm --filter @luxtax/api prisma:migrate` before starting the API. |
 | Mobile on a device | No native build here; the MOB renderers remain mounted through the `react-native` shim. |
-| Email / push delivery, deadline scheduler | Product scope: preferences persist and in-app rows exist, but no outbox, sender or cron is implemented. |
+| A real push provider / SMTP account | The outbox, retry and adapters are implemented; e-mail defaults to a **local JSONL sink** and push is **not configured** until a provider is wired (`useTransport`) and a device-token store exists. `NOTIFICATION_PUSH_ENABLED=true` turns the local push sink on for a smoke test. |
 | Foreign income split by nature (S/P/CM/L) | The 100F has no foreign sheet and the app has no per-fact foreign nature; the package emits an INSTRUCTION naming the relevant sheets and RD 1081/1082 rather than guessing a case. |
 | Legacy snapshots / audit rows | No database here; stored results written before this pass keep their old shape (`specialExpensesCovered` absent, no `class2WithoutSpouse`). |
 

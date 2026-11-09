@@ -202,3 +202,18 @@ instruction naming the relevant sheets and RD 1081/1082 instead of guessing a ca
 
 Migration `20261109140000_add_notification_dedupe` and `20261109150000_add_unsupported_codes` are
 authored but **not applied**: this environment has no generated Prisma client and no running database.
+
+### Addendum — delivery layer added after this review
+
+The notification outbox was built after this review closed, so it is not covered by the six findings
+above. It is verified by its own suites instead:
+
+* `apps/api/test/notification-delivery.spec.ts` — backoff sequence (1 min, 5 min, 25 min, 1 h cap),
+  retry budget, due/reminder-window predicates, channel selection (including security alerts
+  ignoring preferences), and the e-mail/push adapters writing a JSONL sink.
+* `apps/api/test/notification-outbox.spec.ts` — a real pass against an in-memory store: send,
+  reschedule, dead-letter on the fifth failure, skip an unconfigured push channel, refuse a row
+  already claimed by another worker, and keep going after one bad row.
+
+Gates at the tip: **558 / 558 tests** across 45 spec files, both `tsc` configurations exit 0,
+`node .tools/syntax_check.cjs` 0 failures.

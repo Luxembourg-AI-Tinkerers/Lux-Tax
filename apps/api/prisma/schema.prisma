@@ -697,11 +697,47 @@ model Notification {
   actor       User?             @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
   household   Household         @relation(fields: [householdId], references: [id], onDelete: Cascade)
   workspace   TaxYearWorkspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  deliveries  NotificationDelivery[]
 
   @@unique([userId, dedupeKey])
   @@index([userId, isRead, createdAt])
   @@index([workspaceId, createdAt])
   @@map("notifications")
+}
+
+enum NotificationChannel {
+  EMAIL
+  PUSH
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+/// Transactional outbox: one row per notification and channel. The worker
+/// claims due rows, calls the channel adapter, and reschedules with exponential
+/// backoff until the attempt budget is exhausted.
+model NotificationDelivery {
+  id             String                     @id @default(uuid()) @db.Uuid
+  notificationId String                     @db.Uuid
+  channel        NotificationChannel
+  status         NotificationDeliveryStatus @default(PENDING)
+  attempts       Int                        @default(0)
+  nextAttemptAt  DateTime                   @default(now())
+  lastError      String?
+  sentAt         DateTime?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, channel])
+  @@index([status, nextAttemptAt])
+  @@map("notification_deliveries")
 }
 
 model NotificationPreference {
