@@ -213,7 +213,7 @@ above. It is verified by its own suites instead:
   ignoring preferences), and the e-mail/push adapters writing a JSONL sink.
 * `apps/api/test/notification-outbox.spec.ts` — a real pass against an in-memory store: send,
   reschedule, dead-letter on the fifth failure, skip an unconfigured push channel, refuse a row
-  already claimed by another worker, and keep going after one bad row.
+  already claimed by another worker, recover a claim orphaned by a crash, and keep going after one bad row.
 
-Gates at the tip: **562 / 562 tests** across 46 spec files, both `tsc` configurations exit 0,
+Gates at the tip: **563 / 563 tests** across 46 spec files, both `tsc` configurations exit 0,
 `node .tools/syntax_check.cjs` 0 failures.

@@ -2,6 +2,7 @@ import type { DeliveryAdapter } from './adapters/delivery-adapter';
 import {
   isRetryable,
   nextAttemptAt,
+  staleClaimCutoff,
   type DeliveryChannel,
 } from './notification-delivery';
 
@@ -28,8 +29,11 @@ export interface OutboxDeliveryRow {
  */
 export interface OutboxStore {
   findDue(limit: number, now: Date): Promise<OutboxDeliveryRow[]>;
-  /** Returns false when another worker already claimed the row. */
-  claim(id: string): Promise<boolean>;
+  /**
+   * Returns false when another worker holds a fresh claim. A claim older than
+   * `staleBefore` is presumed orphaned and may be taken over.
+   */
+  claim(id: string, staleBefore: Date): Promise<boolean>;
   markSent(id: string, sentAt: Date): Promise<void>;
   markSkipped(id: string, reason: string): Promise<void>;
   markRetry(id: string, attempts: number, error: string, next: Date): Promise<void>;
@@ -70,8 +74,9 @@ export async function runOutboxPass(
   const due = await store.findDue(Math.min(Math.max(limit, 1), 100), now);
   result.scanned = due.length;
 
+  const staleBefore = staleClaimCutoff(now);
   for (const row of due) {
-    if (!(await store.claim(row.id))) continue;
+    if (!(await store.claim(row.id, staleBefore))) continue;
 
     const adapter = byChannel.get(row.channel as DeliveryChannel);
     if (!adapter) {

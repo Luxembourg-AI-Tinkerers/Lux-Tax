@@ -67,6 +67,18 @@ export function channelsForNotification(
   return channels;
 }
 
+/**
+ * A row left in SENDING longer than this is presumed orphaned by a crashed
+ * worker and may be claimed again. Without it, a crash between claim and send
+ * would strand the delivery forever.
+ */
+export const STALE_CLAIM_MS = 10 * 60_000;
+
+/** Rows claimed before this instant are reclaimable. */
+export function staleClaimCutoff(now: Date = new Date()): Date {
+  return new Date(now.getTime() - STALE_CLAIM_MS);
+}
+
 /** Default forward window for an objection-deadline reminder. */
 export const REMINDER_WINDOW_DAYS = 30;
 

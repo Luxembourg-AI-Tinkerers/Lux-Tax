@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import type { DeliveryAdapter } from './adapters/delivery-adapter';
 import { EmailAdapter } from './adapters/email.adapter';
 import { PushAdapter } from './adapters/push.adapter';
+import { staleClaimCutoff } from './notification-delivery';
 import {
   runOutboxPass,
   type OutboxDeliveryRow,
@@ -81,16 +82,28 @@ export class NotificationOutboxService implements OnModuleInit, OnModuleDestroy 
     return {
       async findDue(limit: number, now: Date): Promise<OutboxDeliveryRow[]> {
         const rows = await this.prisma.notificationDelivery.findMany({
-          where: { status: 'PENDING', nextAttemptAt: { lte: now } },
+          where: {
+            OR: [
+              { status: 'PENDING', nextAttemptAt: { lte: now } },
+              // A claim older than the stale window belongs to a dead worker.
+              { status: 'SENDING', updatedAt: { lte: staleClaimCutoff(now) } },
+            ],
+          },
           orderBy: { nextAttemptAt: 'asc' },
           take: limit,
           include: { notification: { include: { user: { select: { email: true } } } } },
         });
         return rows as unknown as OutboxDeliveryRow[];
       },
-      async claim(id: string): Promise<boolean> {
+      async claim(id: string, staleBefore: Date): Promise<boolean> {
         const claimed = await this.prisma.notificationDelivery.updateMany({
-          where: { id, status: 'PENDING' },
+          where: {
+            id,
+            OR: [
+              { status: 'PENDING' },
+              { status: 'SENDING', updatedAt: { lte: staleBefore } },
+            ],
+          },
           data: { status: 'SENDING' },
         });
         return claimed.count > 0;

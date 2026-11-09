@@ -13,20 +13,34 @@ interface Row extends OutboxDeliveryRow {
   nextAttemptAt: Date;
   lastError: string | null;
   sentAt: Date | null;
+  updatedAt: Date;
 }
 
 function fakeStore(rows: Row[]): OutboxStore {
   return {
     async findDue(limit, now) {
+      const stale = now.getTime() - 10 * 60_000;
       return rows
-        .filter((row) => row.status === 'PENDING' && row.nextAttemptAt.getTime() <= now.getTime())
+        .filter(
+          (row) =>
+            (row.status === 'PENDING' && row.nextAttemptAt.getTime() <= now.getTime()) ||
+            (row.status === 'SENDING' && row.updatedAt.getTime() <= stale),
+        )
         .slice(0, limit);
     },
-    async claim(id) {
+    async claim(id, staleBefore) {
       const row = rows.find((candidate) => candidate.id === id);
-      if (!row || row.status !== 'PENDING') return false;
-      row.status = 'SENDING';
-      return true;
+      if (!row) return false;
+      if (row.status === 'PENDING') {
+        row.status = 'SENDING';
+        row.updatedAt = new Date();
+        return true;
+      }
+      if (row.status === 'SENDING' && row.updatedAt.getTime() <= staleBefore.getTime()) {
+        row.updatedAt = new Date();
+        return true;
+      }
+      return false;
     },
     async markSent(id, sentAt) {
       Object.assign(rows.find((row) => row.id === id)!, { status: 'SENT', sentAt });
@@ -62,6 +76,7 @@ function row(overrides: Partial<Row> = {}): Row {
     nextAttemptAt: new Date(Date.now() - 1_000),
     lastError: null,
     sentAt: null,
+    updatedAt: new Date(Date.now() - 20 * 60_000),
     notification: {
       userId: 'u1',
       type: 'APPROVAL_REQUESTED',
@@ -148,12 +163,23 @@ describe('Notification outbox pass', () => {
     }
   });
 
-  test('a row already claimed by another worker is not sent twice', async () => {
-    const rows = [row({ status: 'SENDING' })];
+  test('a fresh claim held by another worker is not sent twice', async () => {
+    const rows = [row({ status: 'SENDING', updatedAt: new Date() })];
     const result = await runOutboxPass(fakeStore(rows), [email(okTransport), new PushAdapter()]);
 
     assert.strictEqual(result.scanned, 0);
     assert.strictEqual(result.sent, 0);
+  });
+
+  test('a claim orphaned by a crashed worker is recovered', async () => {
+    const rows = [
+      row({ status: 'SENDING', updatedAt: new Date(Date.now() - 15 * 60_000) }),
+    ];
+    const result = await runOutboxPass(fakeStore(rows), [email(okTransport), new PushAdapter()]);
+
+    assert.strictEqual(result.scanned, 1);
+    assert.strictEqual(result.sent, 1);
+    assert.strictEqual(rows[0].status, 'SENT');
   });
 
   test('a missing adapter skips the row instead of throwing', async () => {
