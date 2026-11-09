@@ -178,3 +178,27 @@ The existing `foreign-credit.spec.ts` asserts the same marginal formula and only
 * The official 100F page/sheet/case numbers were not re-extracted from `100f-2025.pdf`; the map constants were treated as data and checked for internal consistency. The 160 code table was checked against the local notes, not the ACD list.
 * Mobile device behaviour was not run (outside this review's scope and no device available).
 
+## 6. Resolution after this review
+
+All six must-fix findings were fixed in the same session, and the four worth-considering items
+W1/W3/W4/W5 were fixed too. Re-verification after the fixes: **537 / 537 tests** across 43 spec files,
+`tsc -p tsconfig.test.json` exit 0, `tsc -p tsconfig.render.json` exit 0, `node .tools/syntax_check.cjs`
+72 files / 0 failures. The tracker section “2026-11-09 — ninth pass” records each fix.
+
+| Finding | Resolution |
+|---|---|
+| MF-1 | `TaxCalculatorView` detects a result without `credits`/`deductions`/`assessmentMode` and offers a recalculation instead of dereferencing it; the package emits a DS 1553 INSTRUCTION when the snapshot has no breakdown. |
+| MF-2 | The engine uses `moderationCount` for the CIM gate, the mortgage/ASRD multiplier and the Class 1a check; `CalculationsService` derives the count from `childReliefHistory` before class resolution. New engine tests cover CIM-on and CIM-off. |
+| MF-3 | Each country is capped at the Art. 134bis fraction `cote × country income / taxable`; the LEG-4 test was corrected to the fraction. |
+| MF-4 | A non-assimilated non-resident’s itemised foreign income is ignored with an explicit warning; a test asserts the base and cote are unchanged. |
+| MF-5 | `buildForWorkspace(workspaceId, actorId)` and the controller pass the acting user; annex and package now select the same taxpayer. |
+| MF-6 | `unsupportedCodesJson` (migration `20261109150000`) persists the list and `getLatestFilingPackage` returns it. |
+
+**Open by decision, not by defect:** W2 (imputation order between the refundable CIM and the
+non-refundable Art. 122/123bis relief) is left as recorded — the research does not settle it and the
+ACD text must be checked before changing a figure worth EUR 922.50 per child. Foreign income is still
+not split by nature (S/P/CM/L) because the app has no per-fact foreign nature; the package emits an
+instruction naming the relevant sheets and RD 1081/1082 instead of guessing a case.
+
+Migration `20261109140000_add_notification_dedupe` and `20261109150000_add_unsupported_codes` are
+authored but **not applied**: this environment has no generated Prisma client and no running database.
