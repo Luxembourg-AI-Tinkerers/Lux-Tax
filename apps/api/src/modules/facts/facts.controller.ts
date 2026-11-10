@@ -43,7 +43,7 @@ export class FactsController {
   ): Promise<ConfirmedFactDto> {
     const parseResult = confirmFactSchema.safeParse(body);
     if (!parseResult.success) {
-      throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
+      throw new BadRequestException(parseResult.error.issues[0]?.message || 'Validation failed');
     }
     return this.factsService.confirmFact(workspaceId, userId, parseResult.data, req.ip);
   }
@@ -59,7 +59,7 @@ export class FactsController {
   ): Promise<ConfirmedFactDto> {
     const parseResult = updateFactSchema.safeParse(body);
     if (!parseResult.success) {
-      throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
+      throw new BadRequestException(parseResult.error.issues[0]?.message || 'Validation failed');
     }
     return this.factsService.updateFact(workspaceId, factId, userId, parseResult.data, req.ip);
   }

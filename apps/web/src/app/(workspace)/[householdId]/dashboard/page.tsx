@@ -445,7 +445,9 @@ export default function DashboardPage() {
                       <div>
                         <p className="text-xs font-semibold text-slate-800">{event.description}</p>
                         <span className="text-[10px] text-slate-400">
-                          Actor: {event.actorEmail || event.actorId.substring(0, 8)} •{' '}
+                          {/* A USER_LOGIN_FAILED event has no actor: the address matched no
+                              account. Falling back to "system" keeps the feed renderable. */}
+                          Actor: {event.actorEmail || event.actorId?.slice(0, 8) || 'system'} •{' '}
                           {new Date(event.createdAt).toLocaleString()}
                         </span>
                       </div>

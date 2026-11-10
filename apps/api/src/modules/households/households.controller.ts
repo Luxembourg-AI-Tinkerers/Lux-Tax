@@ -39,7 +39,7 @@ export class HouseholdsController {
   ): Promise<HouseholdDto> {
     const parseResult = createHouseholdSchema.safeParse(body);
     if (!parseResult.success) {
-      throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
+      throw new BadRequestException(parseResult.error.issues[0]?.message || 'Validation failed');
     }
     return this.householdsService.createHousehold(userId, parseResult.data);
   }
@@ -66,7 +66,7 @@ export class HouseholdsController {
   ) {
     const parseResult = inviteMemberSchema.safeParse(body);
     if (!parseResult.success) {
-      throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
+      throw new BadRequestException(parseResult.error.issues[0]?.message || 'Validation failed');
     }
     return this.householdsService.inviteMember(householdId, inviterId, parseResult.data);
   }
@@ -84,7 +84,7 @@ export class HouseholdsController {
   ): Promise<HouseholdDto> {
     const parseResult = acceptInvitationSchema.safeParse(body);
     if (!parseResult.success) {
-      throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
+      throw new BadRequestException(parseResult.error.issues[0]?.message || 'Validation failed');
     }
     return this.householdsService.acceptInvitation(userId, parseResult.data.token);
   }

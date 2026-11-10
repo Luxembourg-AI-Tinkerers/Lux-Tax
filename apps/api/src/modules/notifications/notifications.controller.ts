@@ -102,7 +102,7 @@ export class NotificationsController {
     const parseResult = updateNotificationPreferencesSchema.safeParse(body);
     if (!parseResult.success) {
       throw new BadRequestException(
-        parseResult.error.errors[0]?.message || 'Validation failed',
+        parseResult.error.issues[0]?.message || 'Validation failed',
       );
     }
 

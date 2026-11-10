@@ -31,7 +31,7 @@ export class AuthController {
   async register(@Body() body: RegisterRequestDto, @Req() req: any): Promise<AuthResponseDto> {
     const parseResult = registerSchema.safeParse(body);
     if (!parseResult.success) {
-      throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
+      throw new BadRequestException(parseResult.error.issues[0]?.message || 'Validation failed');
     }
     return this.authService.register(parseResult.data, {
       // L6: the adapter decides whether the header is trusted; never read it here.
@@ -45,7 +45,7 @@ export class AuthController {
   async login(@Body() body: LoginRequestDto, @Req() req: any): Promise<AuthResponseDto> {
     const parseResult = loginSchema.safeParse(body);
     if (!parseResult.success) {
-      throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
+      throw new BadRequestException(parseResult.error.issues[0]?.message || 'Validation failed');
     }
     const totpCode =
       typeof (body as unknown as { totpCode?: unknown })?.totpCode === 'string'
@@ -74,7 +74,7 @@ export class AuthController {
   ): Promise<AuthResponseDto> {
     const parseResult = refreshTokenSchema.safeParse(body);
     if (!parseResult.success) {
-      throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
+      throw new BadRequestException(parseResult.error.issues[0]?.message || 'Validation failed');
     }
     return this.authService.refresh(parseResult.data, {
       ipAddress: req.ip,

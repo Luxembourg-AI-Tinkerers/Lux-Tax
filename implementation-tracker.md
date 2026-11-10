@@ -1,5 +1,29 @@
 # Lux-Tax implementation tracker
 
+## 2026-11-10 — dependency security: 71 vulnerable copies → 5
+
+GitHub reported **28 Dependabot vulnerabilities** on the default branch (4 critical, 7 high,
+10 moderate, 7 low) after the review closure. A lockfile audit found **71 vulnerable copies
+across 19 packages** — Dependabot counts a package once, the audit counts every installed copy.
+
+`next` 16.3.5 → **16.4.6**, `postcss` → **8.5.32**, `zod` 3.25 → **4.6.7**, `fastify` →
+**5.12.8**, plus 14 pinned transitive copies (`tar`, `@xmldom/xmldom`, `image-size`, `uuid` ×2,
+`handlebars`, `mysql2`, `deepmerge-ts`, `fast-uri` ×2, `qs`, `ip-address`, `sharp`,
+`source-map-js`, `fastify@5.12.5`). Every critical and high is gone; what remains is `glob`
+10/13 and `minimatch` 9/10 (pinned by expo and `@fastify/static`) and `deepmerge` (the advisory
+names 4.3.2 as patched, but that version is not published).
+
+**Verification.** 826 / 826 unit tests, three typechecks at 0, `next build` green on six routes
+with Next 16.4.6, `pnpm audit` → 3 (the documented residuals). The mobile bundle could **not**
+be re-verified: Metro 0.81 follows pnpm's store symlink and then cannot resolve the next bare
+import, and the app's hand-built flat `node_modules` is what made it bundle before. Full record
+and reasons: [`docs/dependency-security.md`](docs/dependency-security.md).
+
+**Two defects the rebuild surfaced,** both fixed: the dashboard activity feed called
+`event.actorId.substring()` on an optional value (`USER_LOGIN_FAILED` has no actor), and
+`apps/web` inherited `declaration: true` from the shared tsconfig, which fails the build
+(`TS2742`) once types resolve through the store.
+
 **GOAL STATUS: `PARKED`** — 2026-11-09
 R6 (2026 CIC bands) and R7 (épargne-logement age limit) are **deferred to the backlog**, not queued as
 the current task. They need the Mémorial publication of projet de loi 8775, which does not exist yet:

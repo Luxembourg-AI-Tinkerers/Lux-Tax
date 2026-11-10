@@ -51,7 +51,7 @@ export class WorkspacesController {
   ): Promise<TaxYearWorkspaceDto> {
     const parseResult = initWorkspaceSchema.safeParse(body);
     if (!parseResult.success) {
-      throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
+      throw new BadRequestException(parseResult.error.issues[0]?.message || 'Validation failed');
     }
     return this.workspacesService.initWorkspace(householdId, userId, parseResult.data);
   }

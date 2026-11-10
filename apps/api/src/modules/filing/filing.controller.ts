@@ -61,7 +61,7 @@ export class FilingController {
   ): Promise<FilingRecordDto> {
     const parseResult = createFilingRecordSchema.safeParse(body);
     if (!parseResult.success) {
-      throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
+      throw new BadRequestException(parseResult.error.issues[0]?.message || 'Validation failed');
     }
     return this.filingService.recordFiling(workspaceId, userId, parseResult.data, req.ip);
   }
@@ -76,7 +76,7 @@ export class FilingController {
   ): Promise<AssessmentDto> {
     const parseResult = importAssessmentSchema.safeParse(body);
     if (!parseResult.success) {
-      throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
+      throw new BadRequestException(parseResult.error.issues[0]?.message || 'Validation failed');
     }
     return this.filingService.importAssessment(workspaceId, userId, parseResult.data, req.ip);
   }
@@ -92,7 +92,7 @@ export class FilingController {
   ): Promise<AssessmentDto> {
     const parseResult = updateAssessmentFollowUpSchema.safeParse(body);
     if (!parseResult.success) {
-      throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
+      throw new BadRequestException(parseResult.error.issues[0]?.message || 'Validation failed');
     }
     return this.filingService.updateAssessmentFollowUp(
       workspaceId,

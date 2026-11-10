@@ -75,7 +75,7 @@ export class AdminController {
   ): Promise<ModelDefinitionDto> {
     const parse = createModelSchema.safeParse(body);
     if (!parse.success) {
-      throw new BadRequestException(parse.error.errors[0]?.message || 'Invalid model definition');
+      throw new BadRequestException(parse.error.issues[0]?.message || 'Invalid model definition');
     }
     return this.adminService.createModel(
       parse.data as CreateModelDto,
@@ -92,7 +92,7 @@ export class AdminController {
   ): Promise<ModelDefinitionDto> {
     const parse = updateModelSchema.safeParse(body);
     if (!parse.success) {
-      throw new BadRequestException(parse.error.errors[0]?.message || 'Invalid update data');
+      throw new BadRequestException(parse.error.issues[0]?.message || 'Invalid update data');
     }
     return this.adminService.updateModel(
       id,
@@ -120,7 +120,7 @@ export class AdminController {
   ): Promise<TestModelConnectionResultDto> {
     const parse = testModelConnectionSchema.safeParse(body);
     if (!parse.success) {
-      throw new BadRequestException(parse.error.errors[0]?.message || 'Invalid connection test payload');
+      throw new BadRequestException(parse.error.issues[0]?.message || 'Invalid connection test payload');
     }
     return this.adminService.testModelConnection(parse.data);
   }
@@ -138,7 +138,7 @@ export class AdminController {
   ): Promise<ModelRouteDto> {
     const parse = updateModelRouteSchema.safeParse(body);
     if (!parse.success) {
-      throw new BadRequestException(parse.error.errors[0]?.message || 'Invalid route update data');
+      throw new BadRequestException(parse.error.issues[0]?.message || 'Invalid route update data');
     }
     return this.adminService.updateModelRoute(
       id,

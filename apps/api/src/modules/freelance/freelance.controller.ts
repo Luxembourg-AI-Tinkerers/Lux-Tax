@@ -43,7 +43,7 @@ export class FreelanceController {
   ): Promise<FreelanceBusinessProfileDto> {
     const parseResult = updateFreelanceProfileSchema.safeParse(body);
     if (!parseResult.success) {
-      throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
+      throw new BadRequestException(parseResult.error.issues[0]?.message || 'Validation failed');
     }
     return this.freelanceService.updateProfile(workspaceId, ownerId, parseResult.data);
   }
