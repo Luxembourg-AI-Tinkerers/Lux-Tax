@@ -12,7 +12,6 @@ import { ReturnApprovalsService } from '../filing/return-approvals.service';
 import {
   AuditEventType,
   ConfirmedFactDto,
-  DocumentVisibility,
   ExtractedFactDto,
   FactCategory,
   NotificationSeverity,
@@ -23,20 +22,15 @@ import { Prisma } from '@prisma/client';
 import {
   canIncludeInReturn,
   canReadDocument,
+  canStoreInReturn,
   shouldRedactFactAudit,
   Visibility,
 } from './fact-visibility';
-
-/**
- * Document states every active household member may read. Mirrors the shared
- * branch of `canReadDocument` in ./fact-visibility.ts.
- */
-const HOUSEHOLD_VISIBLE_DOCUMENT_STATES = [
-  DocumentVisibility.SHARED_FOR_DISCUSSION,
-  DocumentVisibility.PROPOSED_FOR_RETURN,
-  DocumentVisibility.INCLUDED_IN_RETURN,
-  DocumentVisibility.ARCHIVED,
-];
+import {
+  householdVisibleConfirmedFactWhere,
+  householdVisibleDocumentWhere,
+} from './fact-visibility-query';
+import { assertActiveHouseholdMember } from './household-owner';
 
 /** Audit description used instead of a private fact's field key and amount. */
 function redactedFactAuditDescription(
@@ -109,39 +103,16 @@ export class FactsService {
           workspaceId,
           // Only facts from documents this user may read: their own uploads,
           // documents they own, or documents shared with the household.
-          document: {
-            OR: [
-              { uploaderId: userId },
-              { ownerId: userId },
-              { visibility: { in: HOUSEHOLD_VISIBLE_DOCUMENT_STATES } },
-            ],
-          },
+          document: householdVisibleDocumentWhere(userId),
         },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.confirmedFact.findMany({
         where: {
           workspaceId,
-          OR: [
-            // Manual facts: visible when shared with the household or owned by
-            // the reader.
-            {
-              sourceDocumentId: null,
-              OR: [{ ownerId: userId }, { isSharedWithHousehold: true }],
-            },
-            // Document-sourced facts follow the document visibility policy.
-            {
-              sourceDocument: {
-                is: {
-                  OR: [
-                    { uploaderId: userId },
-                    { ownerId: userId },
-                    { visibility: { in: HOUSEHOLD_VISIBLE_DOCUMENT_STATES } },
-                  ],
-                },
-              },
-            },
-          ],
+          // Manual facts are visible when shared with the household or owned by
+          // the reader; document-sourced facts follow the document policy.
+          ...householdVisibleConfirmedFactWhere(userId),
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -233,7 +204,27 @@ export class FactsService {
 
       sourceDocumentId = extracted.documentId;
       sourceVisibility = extracted.document.visibility as Visibility;
+    }
 
+    // A fact confirmed from a private draft belongs to its author alone: it is
+    // never shared with the household and never re-attributed, so deleting the
+    // source document (sourceDocumentId becomes null) cannot turn it into a
+    // shared manual fact.
+    const isPrivateSource = sourceVisibility === 'PRIVATE_DRAFT';
+
+    // Recording a fact on behalf of the spouse is legitimate; attributing it to
+    // an arbitrary user id is not. Checked before the first write, so a
+    // rejected owner leaves nothing half-written.
+    if (!isPrivateSource && input.ownerId && input.ownerId !== userId) {
+      await assertActiveHouseholdMember(
+        this.prisma,
+        workspace.householdId,
+        input.ownerId,
+        'Fact owner must be an active member of this household',
+      );
+    }
+
+    if (input.extractedFactId) {
       await this.prisma.extractedFact.update({
         where: { id: input.extractedFactId },
         data: {
@@ -242,23 +233,44 @@ export class FactsService {
           confirmedById: userId,
         },
       });
+
+      // M10 data minimisation: the extracted snippet and the model's raw JSON are
+      // held only so the user can check what was recognised. Once every fact of
+      // this document is confirmed they are redundant, so they are cleared —
+      // a health-insurance certificate must not leave its text in the database
+      // for the lifetime of the workspace.
+      if (sourceDocumentId) {
+        const remaining = await this.prisma.extractedFact.count({
+          where: { documentId: sourceDocumentId, isConfirmed: false },
+        });
+        if (remaining === 0) {
+          await this.prisma.documentExtraction.updateMany({
+            where: { documentId: sourceDocumentId },
+            data: { extractedText: null, rawJson: Prisma.JsonNull },
+          });
+        }
+      }
     }
 
-    // A fact may only enter the joint return when its source document has been
-    // proposed for, or included in, the return. The body cannot override this.
-    const isIncludedInReturn =
-      (input.isIncludedInReturn ?? true) && canIncludeInReturn(sourceVisibility);
+    const ownerId = isPrivateSource ? userId : input.ownerId || userId;
 
-    // A fact confirmed from a private draft belongs to its author alone: it is
-    // never shared with the household and never re-attributed, so deleting the
-    // source document (sourceDocumentId becomes null) cannot turn it into a
-    // shared manual fact.
-    const isPrivateSource = sourceVisibility === 'PRIVATE_DRAFT';
+    const isSharedWithHousehold = isPrivateSource
+      ? false
+      : input.isSharedWithHousehold ?? true;
+
+    // A fact may only enter the joint return when it is shared with the
+    // household and its source document has been proposed for, or included in,
+    // the return. The body cannot override either condition.
+    const isIncludedInReturn = canStoreInReturn(
+      isSharedWithHousehold,
+      input.isIncludedInReturn ?? true,
+      sourceVisibility,
+    );
 
     const confirmed = await this.prisma.confirmedFact.create({
       data: {
         workspaceId,
-        ownerId: isPrivateSource ? userId : input.ownerId || userId,
+        ownerId,
         category: input.category,
         fieldKey: input.fieldKey,
         amount: new Prisma.Decimal(input.amount),
@@ -266,9 +278,7 @@ export class FactsService {
         taxYear: workspace.taxYear,
         sourceDocumentId,
         extractedFactId: input.extractedFactId,
-        isSharedWithHousehold: isPrivateSource
-          ? false
-          : input.isSharedWithHousehold ?? true,
+        isSharedWithHousehold,
         isIncludedInReturn,
         description: input.description,
       },
@@ -388,11 +398,40 @@ export class FactsService {
       );
     }
 
+    if (input.ownerId) {
+      await assertActiveHouseholdMember(
+        this.prisma,
+        fact.workspace.householdId,
+        input.ownerId,
+        'Fact owner must be an active member of this household',
+      );
+    }
+
     if (input.isIncludedInReturn === true && !canIncludeInReturn(sourceVisibility)) {
       throw new BadRequestException(
         'Only facts from a document proposed for, or included in, the return can be included',
       );
     }
+
+    // A fact cannot be kept from the household and counted in the joint return
+    // at the same time: GET /facts hides it from every other member, so the
+    // return snapshot must not contain it either.
+    const isSharedWithHousehold =
+      input.isSharedWithHousehold !== undefined
+        ? input.isSharedWithHousehold
+        : fact.isSharedWithHousehold;
+
+    if (input.isIncludedInReturn === true && !isSharedWithHousehold) {
+      throw new BadRequestException(
+        'A fact that is not shared with the household cannot be included in the return',
+      );
+    }
+
+    // Un-sharing a fact that was in the return takes it back out, so the stored
+    // flags never contradict each other.
+    const isIncludedInReturn = isSharedWithHousehold
+      ? input.isIncludedInReturn
+      : false;
 
     const previousAmount = fact.amount.toString();
     const updated = await this.prisma.confirmedFact.update({
@@ -402,7 +441,7 @@ export class FactsService {
         ownerId: input.ownerId !== undefined ? input.ownerId : undefined,
         category: input.category,
         isSharedWithHousehold: input.isSharedWithHousehold,
-        isIncludedInReturn: input.isIncludedInReturn,
+        isIncludedInReturn,
         description: input.description,
       },
     });

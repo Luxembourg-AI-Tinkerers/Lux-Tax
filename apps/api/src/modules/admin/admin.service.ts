@@ -17,11 +17,49 @@ import {
   UpdateModelRouteDto,
 } from '@luxtax/contracts';
 import * as crypto from 'crypto';
+import {
+  MODEL_KEY_ENCRYPTION_ENV,
+  ModelKeyStorageUnavailableError,
+  decryptModelApiKey,
+  encryptModelApiKey,
+  isEncryptedModelKey,
+} from './model-key-cipher';
+import { assertEndpointUrlAllowed } from './outbound-url-policy';
+import {
+  routeAssignmentViolations,
+  routeDataClassViolation,
+  type RouteModelRef,
+  type RouteModelRole,
+} from './data-class-policy';
+
+/** Shown for an encrypted key: the plaintext never leaves the call path. */
+const MASKED_API_KEY = '••••••••';
 
 function maskApiKey(key?: string | null): string | undefined {
   if (!key) return undefined;
-  if (key.length <= 8) return '••••••••';
+  if (key.length <= 8) return MASKED_API_KEY;
   return `${key.slice(0, 4)}...${key.slice(-4)}`;
+}
+
+/** Masks whatever is stored: `v1:` ciphertext is never partially revealed. */
+function maskStoredApiKey(stored?: string | null): string | undefined {
+  if (!stored) return undefined;
+  if (isEncryptedModelKey(stored)) return MASKED_API_KEY;
+  return maskApiKey(stored);
+}
+
+/** AES-256-GCM envelope for a submitted key; fail closed when the key is missing. */
+function encryptForStorage(plaintext: string): string {
+  try {
+    return encryptModelApiKey(plaintext);
+  } catch (err) {
+    if (err instanceof ModelKeyStorageUnavailableError) {
+      throw new BadRequestException(
+        `${err.message}. Configure ${MODEL_KEY_ENCRYPTION_ENV} before registering a model with an API key.`,
+      );
+    }
+    throw err;
+  }
 }
 
 const BUILT_IN_MODELS: readonly ModelDefinitionDto[] = [
@@ -362,7 +400,7 @@ export class AdminService implements OnModuleInit {
         status: row.status,
         healthy: Boolean(row.healthy),
         endpointUrl: row.endpoint_url || undefined,
-        apiKeyMasked: maskApiKey(row.api_key),
+        apiKeyMasked: maskStoredApiKey(row.api_key),
         isCustom: true,
         latencyMs: row.latency_ms || undefined,
         lastTestedAt: row.last_tested_at ? new Date(row.last_tested_at).toISOString() : undefined,
@@ -382,6 +420,8 @@ export class AdminService implements OnModuleInit {
   ): Promise<ModelDefinitionDto> {
     const slug = dto.displayName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 20);
     const id = `mdl-${slug}-${crypto.randomBytes(3).toString('hex')}`;
+    // Fail closed: without MODEL_KEY_ENCRYPTION_KEY the key is refused, not stored raw.
+    const storedApiKey = dto.apiKey ? encryptForStorage(dto.apiKey) : null;
 
     await this.prisma.$executeRawUnsafe(
       `INSERT INTO custom_ai_models (
@@ -392,7 +432,7 @@ export class AdminService implements OnModuleInit {
       dto.providerType,
       dto.modelIdentifier,
       dto.endpointUrl || null,
-      dto.apiKey || null,
+      storedApiKey,
       JSON.stringify(dto.capabilities),
       dto.permittedDataClass,
       dto.hostingRegion,
@@ -436,7 +476,7 @@ export class AdminService implements OnModuleInit {
       status: dto.status || 'ACTIVE',
       healthy: true,
       endpointUrl: dto.endpointUrl,
-      apiKeyMasked: maskApiKey(dto.apiKey),
+      apiKeyMasked: maskStoredApiKey(storedApiKey),
       isCustom: true,
     };
   }
@@ -461,12 +501,24 @@ export class AdminService implements OnModuleInit {
     const providerType = dto.providerType ?? current.provider_type;
     const modelIdentifier = dto.modelIdentifier ?? current.model_identifier;
     const endpointUrl = dto.endpointUrl !== undefined ? dto.endpointUrl : current.endpoint_url;
-    const apiKey = dto.apiKey !== undefined ? dto.apiKey : current.api_key;
+    const apiKey = dto.apiKey === undefined ? current.api_key :
+      dto.apiKey === '' ? '' : encryptForStorage(dto.apiKey);
     const capabilities = dto.capabilities ? JSON.stringify(dto.capabilities) : JSON.stringify(current.capabilities);
     const permittedDataClass = dto.permittedDataClass ?? current.permitted_data_class;
     const hostingRegion = dto.hostingRegion ?? current.hosting_region;
     const status = dto.status ?? current.status;
     const healthy = dto.healthy !== undefined ? dto.healthy : current.healthy;
+
+    // M3: lowering the declared data class must not leave the model wired into a
+    // route that it may no longer serve.
+    if (permittedDataClass !== current.permitted_data_class) {
+      const conflict = await this.findRouteDataClassConflict(id, permittedDataClass);
+      if (conflict) {
+        throw new BadRequestException(
+          `${conflict} Reassign those routes before changing the model's permitted data class.`,
+        );
+      }
+    }
 
     await this.prisma.$executeRawUnsafe(
       `UPDATE custom_ai_models SET
@@ -522,7 +574,7 @@ export class AdminService implements OnModuleInit {
       status,
       healthy,
       endpointUrl: endpointUrl || undefined,
-      apiKeyMasked: maskApiKey(apiKey),
+      apiKeyMasked: maskStoredApiKey(apiKey),
       isCustom: true,
     };
   }
@@ -594,6 +646,7 @@ export class AdminService implements OnModuleInit {
     let endpointUrl = dto.endpointUrl?.trim();
     let apiKey = dto.apiKey?.trim();
     let modelIdentifier = dto.modelIdentifier?.trim();
+    let storedModel: any | undefined;
 
     if (dto.modelId) {
       const rows = await this.prisma.$queryRawUnsafe<any[]>(
@@ -601,10 +654,22 @@ export class AdminService implements OnModuleInit {
         dto.modelId
       );
       if (rows && rows.length > 0) {
-        const model = rows[0];
-        endpointUrl = endpointUrl || model.endpoint_url;
-        apiKey = apiKey || model.api_key;
-        modelIdentifier = modelIdentifier || model.model_identifier;
+        storedModel = rows[0];
+        endpointUrl = endpointUrl || storedModel.endpoint_url;
+        modelIdentifier = modelIdentifier || storedModel.model_identifier;
+        // The stored key is a v1: envelope; decrypt it only here, where it is
+        // about to be sent, and never fall back to "no credential".
+        if (!apiKey && storedModel.api_key) {
+          const decrypted = decryptModelApiKey(storedModel.api_key);
+          if (decrypted === null) {
+            return this.probeFailure(
+              400,
+              `The stored API key for model ${storedModel.id} cannot be decrypted: ${MODEL_KEY_ENCRYPTION_ENV} is missing or does not match. Re-save the key, then probe again.`,
+              modelIdentifier,
+            );
+          }
+          apiKey = decrypted;
+        }
       }
     }
 
@@ -616,6 +681,16 @@ export class AdminService implements OnModuleInit {
         message: 'No endpoint URL configured for this model.',
         timestamp: new Date().toISOString(),
       };
+    }
+
+    // A model that may not serve the data of a route it is wired into must not be
+    // certified healthy: a successful probe is what makes it selectable again.
+    if (storedModel) {
+      const conflict = await this.findRouteDataClassConflict(
+        storedModel.id,
+        storedModel.permitted_data_class,
+      );
+      if (conflict) return this.probeFailure(400, conflict, modelIdentifier);
     }
 
     const startTime = Date.now();
@@ -630,6 +705,16 @@ export class AdminService implements OnModuleInit {
 
     if (isOpenAiCompatible && !probeUrl.includes('/models') && !probeUrl.includes('/chat/completions')) {
       probeUrl = `${probeUrl.replace(/\/+$/, '')}/models`;
+    }
+
+    // SSRF gate: every admin-controlled fetch passes the outbound URL policy first.
+    const probePolicy = await assertEndpointUrlAllowed(probeUrl);
+    if (!probePolicy.allowed) {
+      return this.probeFailure(
+        400,
+        `Endpoint blocked by the outbound URL policy: ${probePolicy.reason}.`,
+        modelIdentifier,
+      );
     }
 
     try {
@@ -652,9 +737,19 @@ export class AdminService implements OnModuleInit {
         method: 'GET',
         headers,
         signal: controller.signal,
+        // Redirects are a policy escape hatch (a 302 can point at 169.254.169.254).
+        redirect: 'manual',
       }).finally(() => clearTimeout(timeoutId));
 
       const latencyMs = Date.now() - startTime;
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location') ?? 'an unstated location';
+        return this.probeFailure(
+          response.status,
+          `Endpoint answered with a redirect (HTTP ${response.status} to ${location}); the probe does not follow redirects. Point the model at its final URL.`,
+          modelIdentifier,
+        );
+      }
       const isOk = response.ok;
       let message = '';
       let sampleResponse = '';
@@ -671,6 +766,14 @@ export class AdminService implements OnModuleInit {
         message = `Endpoint reached, but authorization failed (${response.status} ${response.statusText}). Check API key.`;
       } else if (response.status === 404 && probeUrl.endsWith('/models')) {
         const postUrl = probeUrl.replace(/\/models$/, '/chat/completions');
+        const postPolicy = await assertEndpointUrlAllowed(postUrl);
+        if (!postPolicy.allowed) {
+          return this.probeFailure(
+            400,
+            `Endpoint blocked by the outbound URL policy: ${postPolicy.reason}.`,
+            modelIdentifier,
+          );
+        }
         try {
           const pingResponse = await fetch(postUrl, {
             method: 'POST',
@@ -681,9 +784,11 @@ export class AdminService implements OnModuleInit {
               max_tokens: 1,
             }),
             signal: AbortSignal.timeout(5000),
+            redirect: 'manual',
           });
           const pingLatency = Date.now() - startTime;
-          if (pingResponse.ok || pingResponse.status === 400 || pingResponse.status === 401) {
+          const pingRedirected = pingResponse.status >= 300 && pingResponse.status < 400;
+          if (!pingRedirected && (pingResponse.ok || pingResponse.status === 400 || pingResponse.status === 401)) {
             return {
               success: pingResponse.ok,
               latencyMs: pingLatency,
@@ -751,6 +856,44 @@ export class AdminService implements OnModuleInit {
     }
   }
 
+  private probeFailure(
+    statusCode: number,
+    message: string,
+    modelIdentifier?: string,
+  ): TestModelConnectionResultDto {
+    return {
+      success: false,
+      latencyMs: 0,
+      statusCode,
+      message,
+      resolvedModel: modelIdentifier,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * M3: a model may only be probed — and thereby certified healthy, i.e. made
+   * selectable — while every route it is wired into accepts its declared data
+   * class.
+   */
+  private async findRouteDataClassConflict(
+    modelId: string,
+    permittedDataClass: string,
+  ): Promise<string | null> {
+    for (const route of await this.getModelRoutes()) {
+      const role: RouteModelRole | null = route.primaryModelId === modelId
+        ? 'primary'
+        : route.fallbackModelIds.includes(modelId) ? 'fallback' : null;
+      if (!role) continue;
+      const violation = routeDataClassViolation(
+        { taskName: route.taskName, maxDataClass: route.maxDataClass },
+        { modelId, permittedDataClass, role },
+      );
+      if (violation) return violation;
+    }
+    return null;
+  }
+
   async getModelRoutes(): Promise<readonly ModelRouteDto[]> {
     try {
       const routeRows = await this.prisma.$queryRawUnsafe<any[]>(
@@ -795,12 +938,48 @@ export class AdminService implements OnModuleInit {
 
     const existing = routes[0];
     const primaryModelId = dto.primaryModelId;
-    const fallbackModelIds = JSON.stringify(dto.fallbackModelIds || []);
+    const fallbackIds = dto.fallbackModelIds || [];
+    const fallbackModelIds = JSON.stringify(fallbackIds);
     const promptVersion = dto.promptVersion ?? existing.prompt_version;
     const outputSchemaVersion = dto.outputSchemaVersion ?? existing.output_schema_version;
     const timeoutMs = dto.timeoutMs ?? existing.timeout_ms;
     const maxDataClass = dto.maxDataClass ?? existing.max_data_class;
     const activeRolloutPercentage = dto.activeRolloutPercentage ?? existing.active_rollout_percentage;
+
+    // M3: the declared data classes are enforced here, where a route is written.
+    // A route that requires CUSTOMER_DOCUMENT may only be served by a model that
+    // permits it, and no PUBLIC/SYNTHETIC model may ever be wired into a route
+    // that carries customer data.
+    const models = await this.getModels();
+    const modelsById = new Map(models.map((model) => [model.id, model] as const));
+    const primaryModel = modelsById.get(primaryModelId);
+    if (!primaryModel) {
+      throw new BadRequestException(
+        `Unknown model ${primaryModelId}: register the model before assigning it to a route.`,
+      );
+    }
+    const fallbackRefs: RouteModelRef[] = [];
+    for (const fallbackId of fallbackIds) {
+      const fallback = modelsById.get(fallbackId);
+      if (!fallback) {
+        throw new BadRequestException(
+          `Unknown fallback model ${fallbackId}: register the model before assigning it to a route.`,
+        );
+      }
+      fallbackRefs.push({
+        modelId: fallbackId,
+        permittedDataClass: fallback.permittedDataClass,
+        role: 'fallback',
+      });
+    }
+    const violations = routeAssignmentViolations(
+      { taskName: existing.task_name, maxDataClass },
+      { modelId: primaryModelId, permittedDataClass: primaryModel.permittedDataClass, role: 'primary' },
+      fallbackRefs,
+    );
+    if (violations.length > 0) {
+      throw new BadRequestException(violations.join(' '));
+    }
 
     await this.prisma.$executeRawUnsafe(
       `UPDATE custom_ai_routes SET
@@ -831,11 +1010,11 @@ export class AdminService implements OnModuleInit {
           eventType: AuditEventType.FACT_UPDATED,
           entityType: 'AI_ROUTE',
           entityId: existing.id,
-          description: `Updated AI route ${existing.task_name}: Primary -> ${primaryModelId}, Fallbacks -> ${dto.fallbackModelIds.join(', ') || 'None'} (${activeRolloutPercentage}% rollout)`,
+          description: `Updated AI route ${existing.task_name}: Primary -> ${primaryModelId}, Fallbacks -> ${fallbackIds.join(', ') || 'None'} (${activeRolloutPercentage}% rollout)`,
           newValue: {
             taskName: existing.task_name,
             primaryModelId,
-            fallbackModelIds: dto.fallbackModelIds,
+            fallbackModelIds: fallbackIds,
             activeRolloutPercentage,
           },
         },
@@ -848,7 +1027,7 @@ export class AdminService implements OnModuleInit {
       id: existing.id,
       taskName: existing.task_name,
       primaryModelId,
-      fallbackModelIds: dto.fallbackModelIds,
+      fallbackModelIds: fallbackIds,
       promptVersion,
       outputSchemaVersion,
       timeoutMs,
@@ -909,7 +1088,7 @@ export class AdminService implements OnModuleInit {
       id: e.id,
       householdId: e.householdId || undefined,
       workspaceId: e.workspaceId || undefined,
-      actorId: e.actorId,
+      actorId: e.actorId || undefined,
       actorEmail: e.actorEmail || undefined,
       eventType: e.eventType as unknown as AuditEventType,
       entityType: e.entityType,

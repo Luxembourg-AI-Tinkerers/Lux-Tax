@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { normalizeStoredCalculation } from './calculation-snapshot';
 import { AuditService } from '../audit/audit.service';
 import { ReturnApprovalsService } from '../filing/return-approvals.service';
 import {
@@ -484,6 +485,11 @@ export class CalculationsService {
       return null;
     }
 
-    return workspace.calculationResult as unknown as TaxCalculationResultDto;
+    // A snapshot stored by an earlier model version may predate
+    // `specialExpensesCovered` or the CIM split. Reconstruct only what the
+    // stored numbers determine, and leave the rest for the UI to label as a
+    // stale estimate — never invent a line the result does not support.
+    const normalized = normalizeStoredCalculation(workspace.calculationResult);
+    return normalized ? normalized.calculation : null;
   }
 }

@@ -2,10 +2,13 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { jwtAccessSecret } from '../../config/runtime-config';
 
 export interface JwtPayload {
   sub: string;
   email: string;
+  /** Revocation counter; a mismatch with the database means the token is dead. */
+  tv?: number;
 }
 
 @Injectable()
@@ -14,8 +17,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey:
-        process.env.JWT_ACCESS_SECRET || 'dev_luxembourg_tax_jwt_access_secret_32chars_min_2026',
+      secretOrKey: jwtAccessSecret(),
+      // Pin the algorithm: with a symmetric secret this is defence in depth, and
+      // it is what stops a future PEM migration from enabling key confusion.
+      algorithms: ['HS256'],
     });
   }
 
@@ -27,6 +32,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         email: true,
         isActive: true,
         isEmailVerified: true,
+        tokenVersion: true,
         profile: {
           select: {
             firstName: true,
@@ -39,6 +45,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     if (!user || !user.isActive) {
       throw new UnauthorizedException('User is inactive or not found');
+    }
+
+    // A logout bumps the counter, which invalidates every access token already
+    // issued — otherwise a "signed out" token keeps working for up to 15 min.
+    const presented = typeof payload.tv === 'number' ? payload.tv : 0;
+    if (presented !== user.tokenVersion) {
+      throw new UnauthorizedException('Session has been revoked');
     }
 
     return {

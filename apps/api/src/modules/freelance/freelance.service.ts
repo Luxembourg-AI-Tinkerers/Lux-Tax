@@ -14,34 +14,13 @@ import { AuditService } from '../audit/audit.service';
 import { ReturnApprovalsService } from '../filing/return-approvals.service';
 import { canIncludeInReturn, Visibility } from '../facts/fact-visibility';
 import { selectFilerMembers } from '../calculations/class-resolution';
+import {
+  CONFIRMED_FACT_IN_RETURN_WHERE,
+  householdVisibleConfirmedFactWhere,
+  householdVisibleDocumentWhere,
+} from '../facts/fact-visibility-query';
+import { assertActiveHouseholdMember } from '../facts/household-owner';
 import * as crypto from 'crypto';
-import { Prisma } from '@prisma/client';
-
-/**
- * Confirmed facts that may feed the freelance metrics. A manual fact (no
- * source document) is always eligible; a document-sourced fact only when its
- * document was explicitly proposed for, or included in, the return. Mirrors
- * `canIncludeInReturn` in ../facts/fact-visibility.ts so a private draft or a
- * discussion document never shows up as freelance revenue.
- */
-const CONFIRMED_FACT_IN_RETURN_WHERE: Prisma.ConfirmedFactWhereInput = {
-  isIncludedInReturn: true,
-  OR: [
-    { sourceDocumentId: null },
-    {
-      sourceDocument: {
-        is: {
-          visibility: {
-            in: [
-              DocumentVisibility.PROPOSED_FOR_RETURN,
-              DocumentVisibility.INCLUDED_IN_RETURN,
-            ],
-          },
-        },
-      },
-    },
-  ],
-};
 
 @Injectable()
 export class FreelanceService {
@@ -139,6 +118,15 @@ export class FreelanceService {
       throw new NotFoundException('Workspace not found');
     }
 
+    // `ownerId` arrives in the path: it must name an active member of this
+    // household, never an arbitrary user id.
+    await assertActiveHouseholdMember(
+      this.prisma,
+      workspace.householdId,
+      ownerId,
+      'Freelance profile owner must be an active member of this household',
+    );
+
     const updated = await this.prisma.freelanceBusinessProfile.upsert({
       where: {
         workspaceId_ownerId: {
@@ -177,14 +165,27 @@ export class FreelanceService {
     };
   }
 
-  async getMetrics(workspaceId: string, ownerId?: string): Promise<FreelanceMetricsDto> {
+  async getMetrics(
+    workspaceId: string,
+    viewerId: string,
+    ownerId?: string,
+  ): Promise<FreelanceMetricsDto> {
     const workspace = await this.prisma.taxYearWorkspace.findUnique({
       where: { id: workspaceId },
       include: {
+        // Only what this member may read: another member's private-draft
+        // invoice or unshared fact must not reach these totals, exactly as
+        // GET /facts and GET /documents hide them. The return filter on top
+        // keeps a discussion-only document out of the revenue figures.
         confirmedFacts: {
-          where: CONFIRMED_FACT_IN_RETURN_WHERE,
+          where: {
+            AND: [
+              CONFIRMED_FACT_IN_RETURN_WHERE,
+              householdVisibleConfirmedFactWhere(viewerId),
+            ],
+          },
         },
-        documents: true,
+        documents: { where: householdVisibleDocumentWhere(viewerId) },
       },
     });
 

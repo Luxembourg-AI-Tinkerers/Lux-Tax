@@ -9,6 +9,8 @@ import {
 } from '@nestjs/common';
 import { CalculationsService } from './calculations.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { HouseholdRole } from '@luxtax/contracts';
 import { HouseholdGuard } from '../../common/guards/household.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TaxCalculationResultDto, ScenarioComparisonDto } from '@luxtax/contracts';
@@ -19,6 +21,7 @@ import { FastifyRequest } from 'fastify';
 export class CalculationsController {
   constructor(private readonly calculationsService: CalculationsService) {}
 
+  @Roles(HouseholdRole.PRIMARY_FILER, HouseholdRole.CO_FILER)
   @Post('calculate')
   async calculate(
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,

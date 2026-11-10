@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import type { DeliveryChannel } from './notification-delivery';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { DeliveryAdapter } from './adapters/delivery-adapter';
 import { EmailAdapter } from './adapters/email.adapter';
@@ -67,7 +68,7 @@ export class NotificationOutboxService implements OnModuleInit, OnModuleDestroy 
   }
 
   /** Create one PENDING delivery per channel; duplicates are ignored. */
-  async enqueue(notificationId: string, channels: readonly string[]): Promise<number> {
+  async enqueue(notificationId: string, channels: readonly DeliveryChannel[]): Promise<number> {
     if (channels.length === 0) return 0;
 
     const result = await this.prisma.notificationDelivery.createMany({
@@ -79,9 +80,13 @@ export class NotificationOutboxService implements OnModuleInit, OnModuleDestroy 
 
   /** Prisma implementation of the pass's storage contract. */
   private get store(): OutboxStore {
+    // Captured here on purpose: inside the object literal below `this` is the
+    // literal, not the service, so `this.prisma` was undefined and every
+    // delivery attempt failed with a TypeError before reaching the database.
+    const prisma = this.prisma;
     return {
       async findDue(limit: number, now: Date): Promise<OutboxDeliveryRow[]> {
-        const rows = await this.prisma.notificationDelivery.findMany({
+        const rows = await prisma.notificationDelivery.findMany({
           where: {
             OR: [
               { status: 'PENDING', nextAttemptAt: { lte: now } },
@@ -96,7 +101,7 @@ export class NotificationOutboxService implements OnModuleInit, OnModuleDestroy 
         return rows as unknown as OutboxDeliveryRow[];
       },
       async claim(id: string, staleBefore: Date): Promise<boolean> {
-        const claimed = await this.prisma.notificationDelivery.updateMany({
+        const claimed = await prisma.notificationDelivery.updateMany({
           where: {
             id,
             OR: [
@@ -109,25 +114,25 @@ export class NotificationOutboxService implements OnModuleInit, OnModuleDestroy 
         return claimed.count > 0;
       },
       async markSent(id: string, sentAt: Date): Promise<void> {
-        await this.prisma.notificationDelivery.update({
+        await prisma.notificationDelivery.update({
           where: { id },
           data: { status: 'SENT', sentAt, lastError: null },
         });
       },
       async markSkipped(id: string, reason: string): Promise<void> {
-        await this.prisma.notificationDelivery.update({
+        await prisma.notificationDelivery.update({
           where: { id },
           data: { status: 'SKIPPED', lastError: reason.slice(0, 500) },
         });
       },
       async markRetry(id: string, attempts: number, error: string, next: Date): Promise<void> {
-        await this.prisma.notificationDelivery.update({
+        await prisma.notificationDelivery.update({
           where: { id },
           data: { status: 'PENDING', attempts, lastError: error, nextAttemptAt: next },
         });
       },
       async markFailed(id: string, attempts: number, error: string): Promise<void> {
-        await this.prisma.notificationDelivery.update({
+        await prisma.notificationDelivery.update({
           where: { id },
           data: { status: 'FAILED', attempts, lastError: error },
         });

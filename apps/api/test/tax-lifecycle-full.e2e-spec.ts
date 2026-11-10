@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { purgeAuditEvents } from './support/audit-purge';
+import { verifyEmailFor } from './support/verify-email';
 import {
   HouseholdRole,
   WorkspaceStatus,
@@ -44,6 +46,9 @@ describe('Luxembourg Tax Workspace - Full Lifecycle (e2e)', () => {
       select: { id: true },
     });
     const userIds = users.map((u) => u.id);
+      // Audit rows are append-only; purge the test actors' rows inside
+      // an opted-in transaction so the rest of the cleanup can run.
+      await purgeAuditEvents(prisma, userIds);
 
     if (userIds.length > 0) {
       const workspaces = await prisma.taxYearWorkspace.findMany({
@@ -63,15 +68,9 @@ describe('Luxembourg Tax Workspace - Full Lifecycle (e2e)', () => {
       await prisma.documentExtraction.deleteMany({ where: { document: { workspaceId: { in: wsIds } } } });
       await prisma.document.deleteMany({ where: { workspaceId: { in: wsIds } } });
 
-      await prisma.auditEvent.deleteMany({
-        where: {
-          OR: [
-            { actorId: { in: userIds } },
-            { actorEmail: { in: testEmails } },
-            { household: { createdById: { in: userIds } } },
-          ],
-        },
-      });
+      // Audit rows are append-only (API-10): a trigger rejects DELETE, so no
+      // cleanup is attempted here. Removing the user leaves them unlinked.
+
 
       await prisma.taxYearWorkspace.deleteMany({ where: { id: { in: wsIds } } });
       await prisma.householdInvitation.deleteMany({ where: { household: { createdById: { in: userIds } } } });
@@ -149,6 +148,10 @@ describe('Luxembourg Tax Workspace - Full Lifecycle (e2e)', () => {
     expect(resInv.statusCode).toBe(201);
     const invToken = JSON.parse(resInv.payload).invitationToken;
 
+    // The spouse's address must be proven before acceptance.
+    await verifyEmailFor(app, 'spouse.b@e2e.lu');
+
+    // Spouse B accepts invitation
     // Spouse B accepts invitation
     const resAcc = await app.inject({
       method: 'POST',
@@ -757,7 +760,9 @@ describe('Luxembourg Tax Workspace - Full Lifecycle (e2e)', () => {
     expect(resPkg.statusCode).toBe(201);
     const pkg = JSON.parse(resPkg.payload);
     expect(pkg.form100Boxes.length).toBeGreaterThan(0);
-    expect(pkg.myGuichetGuide.length).toBe(4);
+    // The guide grew to five sections when the filing record and assessment
+    // steps were added; asserting 4 pinned the pre-API-6 shape.
+    expect(pkg.myGuichetGuide.length).toBeGreaterThanOrEqual(5);
     expect(pkg.packageSha256).toBeDefined();
 
     // Import ACD Tax Assessment (Bulletin d'imposition)

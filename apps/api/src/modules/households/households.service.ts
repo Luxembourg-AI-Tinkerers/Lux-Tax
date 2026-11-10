@@ -276,12 +276,44 @@ export class HouseholdsService {
       throw new BadRequestException('Invitation has already been accepted');
     }
 
+    if (invitation.revokedAt) {
+      throw new BadRequestException('Invitation was revoked');
+    }
+
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    // Upsert membership
+    // The token names a recipient. Without this check ANY signed-in user holding
+    // the link could join the household, and — because the upsert below used to
+    // rewrite the role — an existing PRIMARY_FILER who opened a CO_FILER
+    // invitation was silently demoted.
+    if (user.email.toLowerCase() !== invitation.invitedEmail.toLowerCase()) {
+      throw new ForbiddenException(
+        'This invitation was issued to a different e-mail address. Sign in with the invited account.',
+      );
+    }
+
+    // Matching an address proves nothing unless the account proved it owns that
+    // address. Without this, an invitation is claimed by whoever registers the
+    // invited address first, and joins the household with full co-filer rights.
+    if (!user.isEmailVerified) {
+      throw new ForbiddenException(
+        'Verify your e-mail address before accepting an invitation.',
+      );
+    }
+
+    // Upsert membership. A member who is already ACTIVE keeps the role they have,
+    // so an invitation can never downgrade a primary filer. A returning member
+    // (status REMOVED) takes the role this invitation grants — otherwise a
+    // removed CO_FILER re-invited as VIEWER would come back with co-filer rights
+    // while the audit log said "joined as VIEWER".
+    const existing = await this.prisma.householdMembership.findUnique({
+      where: { householdId_userId: { householdId: invitation.householdId, userId } },
+      select: { status: true },
+    });
+
     await this.prisma.householdMembership.upsert({
       where: {
         householdId_userId: {
@@ -295,10 +327,10 @@ export class HouseholdsService {
         role: invitation.invitedRole,
         status: MembershipStatus.ACTIVE,
       },
-      update: {
-        role: invitation.invitedRole,
-        status: MembershipStatus.ACTIVE,
-      },
+      update:
+        existing?.status === MembershipStatus.ACTIVE
+          ? { status: MembershipStatus.ACTIVE }
+          : { status: MembershipStatus.ACTIVE, role: invitation.invitedRole },
     });
 
     // Mark invitation accepted

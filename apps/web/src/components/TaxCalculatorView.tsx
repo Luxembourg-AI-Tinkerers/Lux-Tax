@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '../lib/api';
+import { formatEuro } from '../lib/money';
 import { TaxCalculationResultDto, ScenarioComparisonDto } from '@luxtax/contracts';
 
 interface TaxCalculatorViewProps {
@@ -20,6 +21,7 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [comparison, setComparison] = useState<ScenarioComparisonDto | null>(null);
   const [comparing, setComparing] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const showFeedback = (type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
@@ -29,8 +31,15 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
   const loadCalculation = async () => {
     setLoading(true);
     const res = await apiClient.getCalculation(workspaceId);
-    if (res.data) {
-      setCalc(res.data);
+    // A stored result belongs to the workspace that was asked for: a failed or
+    // empty read clears it, so the previous year's figures are never shown as
+    // if they were the current ones.
+    if (res.error) {
+      setCalc(null);
+      setLoadError(res.error);
+    } else {
+      setCalc(res.data ?? null);
+      setLoadError('');
     }
     setLoading(false);
   };
@@ -104,9 +113,8 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
 
   const isRefund = calc ? calc.balancePayableOrRefund < 0 : false;
   const balanceAbs = calc ? Math.abs(calc.balancePayableOrRefund) : 0;
-  const eur = (value: number) =>
-    `€${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const signedEur = (value: number) => `${value >= 0 ? '+' : '−'}${eur(Math.abs(value))}`;
+  const eur = (value: number) => formatEuro(value);
+  const signedEur = (value: number) => `${value >= 0 ? '+' : '−'}${formatEuro(Math.abs(value))}`;
 
   return (
     <div className="space-y-6">
@@ -176,6 +184,15 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
         </div>
       </div>
 
+      {loadError && (
+        <div
+          role="alert"
+          className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold text-rose-800"
+        >
+          The stored calculation could not be loaded: {loadError}
+        </div>
+      )}
+
       {calc ? (
         <>
           {/* Hero Result Banner */}
@@ -191,9 +208,7 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-200">
                   {isRefund ? 'Estimated Tax Refund' : 'Estimated Tax Due to ACD'}
                 </span>
-                <div className="mt-1 text-4xl font-black">
-                  €{balanceAbs.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                </div>
+                <div className="mt-1 text-4xl font-black">{formatEuro(balanceAbs)}</div>
                 <p className="mt-1 text-xs text-white/80">
                   {isRefund
                     ? calc.taxWithheldAtSource > 0 && (calc.credits.cimRefund ?? 0) > 0
@@ -212,15 +227,13 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                 </div>
                 <div>
                   <span className="text-white/70">Taxable Income:</span>{' '}
-                  <strong className="text-white font-bold">
-                    €{calc.taxableIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </strong>
+                  <strong className="text-white font-bold">{formatEuro(calc.taxableIncome)}</strong>
                 </div>
                 <div>
                   <span className="text-white/70">Solidarity Surcharge:</span>{' '}
                   <strong className="text-white font-bold">
-                    {(calc.solidaritySurchargeRate * 100).toFixed(0)}% (€
-                    {calc.solidaritySurchargeAmount.toFixed(2)})
+                    {(calc.solidaritySurchargeRate * 100).toFixed(0)}% (
+                    {formatEuro(calc.solidaritySurchargeAmount)})
                   </strong>
                 </div>
               </div>
@@ -234,7 +247,7 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                 Gross Salary Income
               </span>
               <div className="mt-1 text-xl font-bold text-slate-900">
-                €{calc.grossIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                {formatEuro(calc.grossIncome)}
               </div>
               <span className="text-[11px] text-slate-400">Total household salary</span>
             </div>
@@ -244,7 +257,7 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                 Total Deductions
               </span>
               <div className="mt-1 text-xl font-bold text-emerald-600">
-                -€{calc.totalDeductions.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                -{formatEuro(calc.totalDeductions)}
               </div>
               <span className="text-[11px] text-slate-400">Expenses & special deductions</span>
             </div>
@@ -254,13 +267,13 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                 Tax Credits (CIS/CIM)
               </span>
               <div className="mt-1 text-xl font-bold text-sky-600">
-                -€
-                {Math.min(
-                  calc.totalTaxCredits - (calc.credits.cimRefund ?? 0),
-                  Math.max(0, calc.totalTaxBeforeCredits),
-                ).toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                })}
+                -
+                {formatEuro(
+                  Math.min(
+                    calc.totalTaxCredits - (calc.credits.cimRefund ?? 0),
+                    Math.max(0, calc.totalTaxBeforeCredits),
+                  ),
+                )}
               </div>
               <span className="text-[11px] text-slate-400">
                 Credited against base tax, capped at the tax due; the refundable CIM excess is paid out separately
@@ -272,7 +285,7 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                 Withheld at Source
               </span>
               <div className="mt-1 text-xl font-bold text-amber-600">
-                €{calc.taxWithheldAtSource.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                {formatEuro(calc.taxWithheldAtSource)}
               </div>
               <span className="text-[11px] text-slate-400">Code 105 on salary slips</span>
             </div>
@@ -296,9 +309,7 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                   <div className="text-right">
                     <span className="text-xs text-indigo-600 font-semibold block">Total Net Profit</span>
                     <span className="text-lg font-black text-indigo-900">
-                      €{calc.freelanceIncomeBreakdown.totalFreelanceNetProfit.toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                      })}
+                      {formatEuro(calc.freelanceIncomeBreakdown.totalFreelanceNetProfit)}
                     </span>
                   </div>
                 </div>
@@ -309,22 +320,20 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                     <div className="flex items-center justify-between text-xs font-bold text-slate-800 mb-1.5">
                       <span>Primary Filer (Case 21/23)</span>
                       <span className="text-emerald-600 font-extrabold">
-                        €{calc.freelanceIncomeBreakdown.primaryNetProfit.toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                        })}
+                        {formatEuro(calc.freelanceIncomeBreakdown.primaryNetProfit)}
                       </span>
                     </div>
                     <div className="text-[11px] text-slate-500 space-y-0.5">
                       <div className="flex justify-between">
                         <span>Gross Invoiced:</span>
                         <span className="font-semibold text-slate-700">
-                          €{calc.freelanceIncomeBreakdown.primaryGrossRevenue.toFixed(2)}
+                          {formatEuro(calc.freelanceIncomeBreakdown.primaryGrossRevenue)}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span>Operating Expenses:</span>
                         <span className="font-semibold text-rose-600">
-                          -€{calc.freelanceIncomeBreakdown.primaryBusinessExpenses.toFixed(2)}
+                          -{formatEuro(calc.freelanceIncomeBreakdown.primaryBusinessExpenses)}
                         </span>
                       </div>
                     </div>
@@ -335,22 +344,20 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                     <div className="flex items-center justify-between text-xs font-bold text-slate-800 mb-1.5">
                       <span>Co-Filer Spouse (Case 22/24)</span>
                       <span className="text-emerald-600 font-extrabold">
-                        €{calc.freelanceIncomeBreakdown.spouseNetProfit.toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                        })}
+                        {formatEuro(calc.freelanceIncomeBreakdown.spouseNetProfit)}
                       </span>
                     </div>
                     <div className="text-[11px] text-slate-500 space-y-0.5">
                       <div className="flex justify-between">
                         <span>Gross Invoiced:</span>
                         <span className="font-semibold text-slate-700">
-                          €{calc.freelanceIncomeBreakdown.spouseGrossRevenue.toFixed(2)}
+                          {formatEuro(calc.freelanceIncomeBreakdown.spouseGrossRevenue)}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span>Operating Expenses:</span>
                         <span className="font-semibold text-rose-600">
-                          -€{calc.freelanceIncomeBreakdown.spouseBusinessExpenses.toFixed(2)}
+                          -{formatEuro(calc.freelanceIncomeBreakdown.spouseBusinessExpenses)}
                         </span>
                       </div>
                     </div>
@@ -373,87 +380,87 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
             <div className="grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2">
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">Net income (all categories)</span>
-                <span className="font-semibold">€{calc.netIncome.toFixed(2)}</span>
+                <span className="font-semibold">{formatEuro(calc.netIncome)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">Frais d'obtention (Art. 105/107)</span>
-                <span className="font-semibold">-€{calc.deductions.fraisObtention.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.deductions.fraisObtention)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">Déplacement (Art. 105bis)</span>
-                <span className="font-semibold">-€{calc.deductions.travel.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.deductions.travel)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">Owner-occupier interest (Art. 98 n°5 / 105)</span>
-                <span className="font-semibold">-€{calc.deductions.mortgageInterest.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.deductions.mortgageInterest)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">Art. 111 insurance envelope (€672)</span>
-                <span className="font-semibold">-€{calc.deductions.art111.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.deductions.art111)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">ASRD single premium (Art. 111 al. 3/4)</span>
-                <span className="font-semibold">-€{calc.deductions.asrd.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.deductions.asrd)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">Art. 111bis third pillar</span>
-                <span className="font-semibold">-€{calc.deductions.art111bis.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.deductions.art111bis)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">Épargne-logement</span>
-                <span className="font-semibold">-€{calc.deductions.savingsHousing.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.deductions.savingsHousing)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">LRCP (Art. 110 n°3)</span>
-                <span className="font-semibold">-€{calc.deductions.lrcp.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.deductions.lrcp)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">Dépenses spéciales (forfait {calc.deductions.specialExpensesForfait}€)</span>
-                <span className="font-semibold">-€{calc.deductions.specialExpensesTotal.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.deductions.specialExpensesTotal)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">Charges extraordinaires (Art. 127)</span>
-                <span className="font-semibold">-€{calc.deductions.extraordinaryCharges.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.deductions.extraordinaryCharges)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">AEP (Art. 129b)</span>
-                <span className="font-semibold">-€{calc.deductions.aep.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.deductions.aep)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">Prior losses (Art. 114)</span>
-                <span className="font-semibold">-€{calc.deductions.priorLosses.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.deductions.priorLosses)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">CIS</span>
-                <span className="font-semibold">-€{calc.credits.cis.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.credits.cis)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">CI-CO2 salarié</span>
-                <span className="font-semibold">-€{calc.credits.ciCo2Salary.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.credits.ciCo2Salary)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">CII (independent)</span>
-                <span className="font-semibold">-€{calc.credits.cii.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.credits.cii)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">CIC (crédit d'impôt conjoncture)</span>
-                <span className="font-semibold">-€{calc.credits.cic.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.credits.cic)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">Prime jeune salarié (exempt, Art. 115 n°13d)</span>
-                <span className="font-semibold">€{(calc.youngEmployeePrimeExemption ?? 0).toFixed(2)}</span>
+                <span className="font-semibold">{formatEuro(calc.youngEmployeePrimeExemption ?? 0)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">CISSM (salaire social minimum)</span>
-                <span className="font-semibold">-€{calc.credits.cissm.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.credits.cissm)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">Foreign tax credit</span>
-                <span className="font-semibold">-€{calc.credits.foreignTaxCredit.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.credits.foreignTaxCredit)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">CIM applied (single parent)</span>
-                <span className="font-semibold">-€{(calc.credits.cimApplied ?? 0).toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.credits.cimApplied ?? 0)}</span>
               </div>
               {calc.credits.cimRefund > 0 && (
                 <div className="flex justify-between border-b border-slate-100 py-1">
@@ -463,24 +470,24 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                       Refundable excess paid out — increases your refund
                     </span>
                   </span>
-                  <span className="font-semibold text-emerald-600">+€{calc.credits.cimRefund.toFixed(2)}</span>
+                  <span className="font-semibold text-emerald-600">+{formatEuro(calc.credits.cimRefund)}</span>
                 </div>
               )}
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">Start-up credit (2026)</span>
-                <span className="font-semibold">-€{calc.credits.startup.toFixed(2)}</span>
+                <span className="font-semibold">-{formatEuro(calc.credits.startup)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">Rental net (Art. 98)</span>
-                <span className="font-semibold">€{(calc.rental?.net ?? 0).toFixed(2)}</span>
+                <span className="font-semibold">{formatEuro(calc.rental?.net ?? 0)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
                 <span className="text-slate-600">Plus-values taxed at the demi-taux</span>
-                <span className="font-semibold">€{(calc.plusValues?.taxableExtraordinary ?? 0).toFixed(2)}</span>
+                <span className="font-semibold">{formatEuro(calc.plusValues?.taxableExtraordinary ?? 0)}</span>
               </div>
               <div className="flex justify-between py-1 font-bold text-slate-900">
                 <span>Taxable income</span>
-                <span>€{calc.taxableIncome.toFixed(2)}</span>
+                <span>{formatEuro(calc.taxableIncome)}</span>
               </div>
               <div className="flex justify-between py-1 font-bold text-slate-900">
                 <span>Marginal / effective rate</span>
@@ -497,15 +504,15 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                 </div>
                 <div className="flex justify-between border-b border-slate-100 py-1">
                   <span className="text-slate-600">Dégrèvement (Art. 122)</span>
-                  <span className="font-semibold">-€{calc.childRelief.degrevement.toFixed(2)}</span>
+                  <span className="font-semibold">-{formatEuro(calc.childRelief.degrevement)}</span>
                 </div>
                 <div className="flex justify-between border-b border-slate-100 py-1">
                   <span className="text-slate-600">Bonification (Art. 123bis)</span>
-                  <span className="font-semibold">-€{calc.childRelief.bonification.toFixed(2)}</span>
+                  <span className="font-semibold">-{formatEuro(calc.childRelief.bonification)}</span>
                 </div>
                 <div className="flex justify-between py-1 font-bold text-slate-900">
                   <span>Total child relief</span>
-                  <span>-€{calc.childRelief.total.toFixed(2)}</span>
+                  <span>-{formatEuro(calc.childRelief.total)}</span>
                 </div>
                 {calc.childRelief.bonificationPhaseOut && (
                   <p className="mt-1 text-[11px] text-amber-700">Bonification phased out at your RIA</p>
@@ -549,7 +556,7 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                         {item.ruleCode}
                       </span>
                       <strong className="text-slate-900 font-bold text-sm">
-                        €{item.outputAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        {formatEuro(item.outputAmount)}
                       </strong>
                     </div>
                     <p className="text-slate-700 font-medium">{item.description}</p>

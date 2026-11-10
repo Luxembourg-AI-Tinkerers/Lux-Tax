@@ -30,7 +30,6 @@ import {
   MyGuichetStepGuide,
   AnnexRequestDto,
   AssessmentComparisonDiscrepancy,
-  DocumentVisibility,
   NotificationSeverity,
   NotificationType,
 } from '@luxtax/contracts';
@@ -42,37 +41,24 @@ import {
   lookupCertificate160Code,
   normalizeCertificate160Code,
 } from '@luxtax/tax-engine';
-import { FORM100_CASES, FORM100_INSTRUCTIONS, RECAP } from './form100-case-map';
+import {
+  FORM100_CASES,
+  FORM100_INSTRUCTIONS,
+  RECAP,
+  foreignNatureSheet,
+  foreignSheetPointer,
+} from './form100-case-map';
 import type { Form100CaseRef } from './form100-case-map';
 import { defaultAssessmentFollowUp } from './assessment-dates';
 import { selectFilerMembers } from '../calculations/class-resolution';
-
-/**
- * Confirmed facts that may appear in the filed return. A manual fact (no
- * source document) is always eligible; a document-sourced fact only when its
- * document was explicitly proposed for, or included in, the return. Mirrors
- * `canIncludeInReturn` in ../facts/fact-visibility.ts so a private draft or a
- * discussion document can never reach the return snapshot, the Form 100 box
- * map or the certificate-import control list.
- */
-const CONFIRMED_FACT_IN_RETURN_WHERE: Prisma.ConfirmedFactWhereInput = {
-  isIncludedInReturn: true,
-  OR: [
-    { sourceDocumentId: null },
-    {
-      sourceDocument: {
-        is: {
-          visibility: {
-            in: [
-              DocumentVisibility.PROPOSED_FOR_RETURN,
-              DocumentVisibility.INCLUDED_IN_RETURN,
-            ],
-          },
-        },
-      },
-    },
-  ],
-};
+import { requiredApproverIds } from './return-version-history';
+import { CONFIRMED_FACT_IN_RETURN_WHERE } from '../facts/fact-visibility-query';
+import { stripUnsharedSnapshotFacts } from '../facts/fact-snapshot';
+import {
+  factAmountRole,
+  RD_WITHHOLDING_CREDIT,
+  RENTAL_CHARGES_DEDUCTION,
+} from './form100-fact-lines';
 
 /**
  * The approval rule shared by `approveReturn` and `recordFiling`: a joint
@@ -201,7 +187,7 @@ export class FilingService {
     });
 
     // Check if all required household members have approved
-    const requiredMemberIds = workspace.household.members.map((m) => m.userId);
+    const requiredMemberIds = requiredApproverIds(workspace.household.members);
     const approvedMemberIds = activeApprovals.map((a) => a.userId);
     const isJointFiling = workspace.taxClass === TaxClass.CLASS_2;
 
@@ -435,6 +421,10 @@ export class FilingService {
     // 501 taxpayer, 502 spouse), never as a gross revenue line plus a positive
     // expense line. Revenue and expenses are accumulated here and emitted after
     // the loop.
+    // Keyed by owner AND nature: a filer can carry an Art. 14 commercial profit
+    // and an Art. 91 liberal profit in the same year. Netted together they would
+    // produce one wrong line, and the liberal flag would drag the commercial
+    // profit onto sheet I with it.
     const freelanceByOwner = new Map<
       string,
       { ownerId: string | null; revenue: number; expenses: number; liberal: boolean }
@@ -565,66 +555,123 @@ export class FilingService {
           break;
 
         case "CAPITAL_INCOME":
-          addBox(
-            FORM100_CASES.capital,
-            FORM100_CASES.capitalSpouse,
-            owner,
-            "Feuille CM - revenus de capitaux mobiliers (Art. 97)",
-            "Blatt CM - Kapitaleinkuenfte",
-            amount,
-            fact.id,
-          );
-          break;
+        case "RENTAL_INCOME": {
+          // The engine branches on the field key: a capital withholding is a
+          // credit it deducts, rental charges an expense it subtracts from the
+          // gross rent. Printing either at CM 901 / L 1001 as a positive amount
+          // declared the tax already paid, or the expense, as income.
+          const role = factAmountRole(category, fieldKey);
 
-        case "RENTAL_INCOME":
-          addBox(
-            FORM100_CASES.rental,
-            FORM100_CASES.rentalSpouse,
-            owner,
-            "Feuille L - revenus de location (Art. 98)",
-            "Blatt L - Mieteinkuenfte",
-            amount,
-            fact.id,
-          );
+          if (role === "CREDIT") {
+            this.logger.warn(
+              `Fact ${fact.id}: capital withholding is a credit, not income; mapped to the RD credit pointer instead of CM 901`,
+            );
+            addBox(
+              RD_WITHHOLDING_CREDIT,
+              undefined,
+              owner,
+              "Feuille RD - retenue d impot sur revenus de capitaux mobiliers : credit a imputer, ne pas declarer comme revenu en case 901",
+              "Blatt RD - Quellensteuer auf Kapitaleinkuenfte: anrechenbare Steuer, kein Ertrag in Fall 901",
+              amount,
+              fact.id,
+              "COMPUTED",
+            );
+          } else if (role === "DEDUCTION") {
+            this.logger.warn(
+              `Fact ${fact.id}: rental charges are a deduction, not rental income; emitted as a labelled deduction pointer on sheet L`,
+            );
+            addBox(
+              RENTAL_CHARGES_DEDUCTION,
+              undefined,
+              owner,
+              "Feuille L - charges deductibles a soustraire du loyer brut (ne pas declarer comme revenu en case 1001)",
+              "Blatt L - abziehbare Werbungskosten vom Bruttomietertrag (kein Ertrag in Fall 1001)",
+              amount,
+              fact.id,
+              "INSTRUCTION",
+            );
+          } else if (category === "CAPITAL_INCOME") {
+            addBox(
+              FORM100_CASES.capital,
+              FORM100_CASES.capitalSpouse,
+              owner,
+              "Feuille CM - revenus de capitaux mobiliers (Art. 97)",
+              "Blatt CM - Kapitaleinkuenfte",
+              amount,
+              fact.id,
+            );
+          } else {
+            addBox(
+              FORM100_CASES.rental,
+              FORM100_CASES.rentalSpouse,
+              owner,
+              "Feuille L - revenus de location (Art. 98)",
+              "Blatt L - Mieteinkuenfte",
+              amount,
+              fact.id,
+            );
+          }
           break;
+        }
 
-        case "FOREIGN_INCOME":
+        case "FOREIGN_INCOME": {
           // The 100F has no foreign-income sheet: 1101 is the substantial-
           // participation capital-gains line. Point at the exempt column of the
           // category sheet and at the RD 1081/1082 credit instead of emitting a
-          // wrong box. The amount and the fact id stay for traceability.
-          addBox(
-            FORM100_INSTRUCTIONS.foreignCredit,
-            undefined,
-            owner,
-            "Foreign income — declare in the exempt column of the relevant category sheet (S/P/CM/L); claim the foreign tax credit on RD 1081/1082.",
-            "Auslaendische Einkuenfte — in der Spalte der befreiten Einkuenfte des betreffenden Blattes (S/P/CM/L) angeben; die auslaendische Steuer auf RD 1081/1082 anrechnen.",
-            amount,
-            fact.id,
-            "INSTRUCTION",
-          );
+          // wrong box. When the fact's field key names a nature, the sheet is
+          // named precisely; otherwise the generic S/P/CM/L sentence stands —
+          // guessing a sheet would be worse than naming all four. The amount and
+          // the fact id stay for traceability.
+          const nature = foreignNatureSheet(fact.fieldKey);
+          if (nature) {
+            addBox(
+              foreignSheetPointer(nature),
+              undefined,
+              owner,
+              `Foreign ${nature.label} — declare in the exempt-income column of sheet ${nature.sheet}; claim the foreign tax credit on RD 1081/1082.`,
+              `Auslaendische ${nature.label} — in der Spalte der befreiten Einkuenfte des Blattes ${nature.sheet} angeben; die auslaendische Steuer auf RD 1081/1082 anrechnen.`,
+              amount,
+              fact.id,
+              "INSTRUCTION",
+            );
+          } else {
+            addBox(
+              FORM100_INSTRUCTIONS.foreignCredit,
+              undefined,
+              owner,
+              "Foreign income — declare in the exempt column of the relevant category sheet (S/P/CM/L); claim the foreign tax credit on RD 1081/1082.",
+              "Auslaendische Einkuenfte — in der Spalte der befreiten Einkuenfte des betreffenden Blattes (S/P/CM/L) angeben; die auslaendische Steuer auf RD 1081/1082 anrechnen.",
+              amount,
+              fact.id,
+              "INSTRUCTION",
+            );
+          }
           break;
+        }
 
         case "FREELANCE_INCOME":
         case "BUSINESS_EXPENSE": {
           // Net profit is one line per owner, emitted after the loop; an
           // expense must never become a positive case amount.
-          const key = !fact.ownerId || fact.ownerId === primaryUserId ? "__primary__" : fact.ownerId;
+          // Art. 91 (profession libérale) is page 6 sheet I, not C/A 501. The
+          // distinction is carried by the fact's field key because the activity
+          // type in the profile is free text and cannot be relied on.
+          const liberal =
+            fact.fieldKey === "professionalRevenue" || fact.fieldKey === "professionalExpense";
+          const ownerKey =
+            !fact.ownerId || fact.ownerId === primaryUserId ? "__primary__" : fact.ownerId;
+          // Owner *and* nature: Art. 14 and Art. 91 profits are separate lines
+          // and must never be netted against each other.
+          const key = `${ownerKey}::${liberal ? "art91" : "art14"}`;
           const entry =
             freelanceByOwner.get(key) ?? {
               ownerId: fact.ownerId,
               revenue: 0,
               expenses: 0,
-              liberal: false,
+              liberal,
             };
           if (category === "FREELANCE_INCOME") entry.revenue += Number(amount) || 0;
           else entry.expenses += Number(amount) || 0;
-          // Art. 91 (profession libérale) is page 6 sheet I, not C/A 501. The
-          // distinction is carried by the fact's field key because the activity
-          // type in the profile is free text and cannot be relied on.
-          if (fact.fieldKey === "professionalRevenue" || fact.fieldKey === "professionalExpense") {
-            entry.liberal = true;
-          }
           freelanceByOwner.set(key, entry);
           break;
         }
@@ -1170,7 +1217,9 @@ export class FilingService {
       throw new BadRequestException('The return must be approved before it can be filed');
     }
 
-    const requiredMemberIds = workspace.household.members.map((member) => member.userId);
+    // A VIEWER cannot approve, so counting one here would make the return
+    // permanently unfilable. Same helper as approval and history.
+    const requiredMemberIds = requiredApproverIds(workspace.household.members);
     if (
       !requiredApprovalsMet(
         workspace.taxClass === TaxClass.CLASS_2,
@@ -1491,17 +1540,22 @@ export class FilingService {
     if (!returnVersion) return null;
 
     const activeApprovals = returnVersion.approvals.filter((a) => !a.isSuperseded);
-    const requiredApprovers = workspace.household.members;
+    const requiredApprovers = requiredApproverIds(workspace.household.members);
     const bothApproved =
       requiredApprovers.length > 0 &&
-      requiredApprovers.every((m) => activeApprovals.some((a) => a.userId === m.userId));
+      requiredApprovers.every((id) => activeApprovals.some((a) => a.userId === id));
 
     return {
       id: returnVersion.id,
       workspaceId,
       versionNumber: returnVersion.versionNumber,
       isFrozen: returnVersion.isFrozen,
-      factsSnapshot: returnVersion.factsSnapshotJson as any,
+      // A snapshot written before the predicate also required sharing may still
+      // carry a fact its owner kept private; this endpoint is readable by every
+      // member, so those entries are not served. New snapshots never hold one.
+      factsSnapshot: stripUnsharedSnapshotFacts(
+        returnVersion.factsSnapshotJson,
+      ) as any,
       calculationSnapshot: returnVersion.calculationSnapshotJson as any,
       approvals: activeApprovals.map((a) => ({
         id: a.id,

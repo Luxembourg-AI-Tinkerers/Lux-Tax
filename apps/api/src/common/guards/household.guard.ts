@@ -36,7 +36,16 @@ export class HouseholdGuard implements CanActivate {
     // The request body is never consulted: a body-supplied householdId would let
     // the caller choose which household its membership is checked against while
     // the handler still operates on the workspace named in the path (API-3 M1).
-    let householdId: string | undefined = request.params.id || request.params.householdId;
+    const rawHouseholdId = request.params.id ?? request.params.householdId;
+
+    // Same reason as the workspace branch below: guards run before pipes, so a
+    // malformed id would reach Prisma as a 22P02/P2023 and surface as a 500.
+    // `GET /api/households/not-a-uuid` returned exactly that.
+    if (rawHouseholdId !== undefined && !isUuid(rawHouseholdId)) {
+      throw new ForbiddenException('Invalid household id');
+    }
+
+    let householdId: string | undefined = rawHouseholdId;
 
     if (!householdId && request.params.workspaceId !== undefined) {
       const workspaceId = request.params.workspaceId;

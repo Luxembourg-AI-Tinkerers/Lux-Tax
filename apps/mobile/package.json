@@ -4,19 +4,22 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "start": "expo start",
     "android": "expo start --android",
+    "build": "expo export --platform ios --platform android --output-dir dist",
     "ios": "expo start --ios",
-    "web": "expo start --web",
+    "lint": "echo 'Linting mobile...'",
+    "start": "expo start",
     "typecheck": "tsc --noEmit",
-    "lint": "echo 'Linting mobile...'"
+    "web": "expo start --web"
   },
   "dependencies": {
-    "@luxtax/api-client": "*",
-    "@luxtax/contracts": "*",
-    "@luxtax/design-tokens": "*",
-    "@luxtax/validation": "*",
+    "@babel/runtime": "^7.25.0",
+    "@luxtax/api-client": "workspace:*",
+    "@luxtax/contracts": "workspace:*",
+    "@luxtax/design-tokens": "workspace:*",
+    "@luxtax/validation": "workspace:*",
     "expo": "~52.0.36",
+    "expo-asset": "~11.0.5",
     "expo-constants": "~17.0.7",
     "expo-document-picker": "~13.0.3",
     "expo-image-picker": "~16.0.5",
@@ -31,8 +34,8 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "@luxtax/config": "*",
+    "@luxtax/config": "workspace:*",
     "@types/react": "~18.3.12",
     "typescript": "^5.8.2"
   }
-}
+}

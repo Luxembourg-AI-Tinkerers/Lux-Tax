@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth-context';
 import { apiClient } from '../../../lib/api';
+import { resolvePostAuthPath } from '../../../lib/auth-redirect';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -30,6 +31,18 @@ export default function LoginPage() {
     if (res.data) {
       login(res.data.tokens, res.data.user);
 
+      // An invitation link asks for a specific destination
+      // (`/login?redirect=/invite/<token>`); honour it before the household
+      // default, so the invitation is not lost on the way in.
+      const redirect = resolvePostAuthPath(
+        typeof window !== 'undefined' ? window.location.search : '',
+        '',
+      );
+      if (redirect) {
+        router.push(redirect);
+        return;
+      }
+
       // Check households and redirect
       const hhRes = await apiClient.getHouseholds();
       if (hhRes.data && hhRes.data.length > 0) {
@@ -52,17 +65,24 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-sm">
+          <div
+            role="alert"
+            className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-sm"
+          >
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+            <label
+              htmlFor="login-email"
+              className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+            >
               Email Address
             </label>
             <input
+              id="login-email"
               type="email"
               required
               value={email}
@@ -73,10 +93,14 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+            <label
+              htmlFor="login-password"
+              className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+            >
               Password
             </label>
             <input
+              id="login-password"
               type="password"
               required
               value={password}

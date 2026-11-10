@@ -105,3 +105,24 @@ export function canIncludeInReturn(
     visibility === 'PROPOSED_FOR_RETURN' || visibility === 'INCLUDED_IN_RETURN'
   );
 }
+
+/**
+ * The `isIncludedInReturn` value a fact may actually be stored with.
+ *
+ * A fact its owner kept to themselves never enters the joint return: GET /facts
+ * hides it from every other member, and the return snapshot (GET
+ * /return-version) is served to all of them — so `isIncludedInReturn: true` on
+ * an unshared fact would be a leak waiting for the next approval. The document
+ * rule of `canIncludeInReturn` applies on top of the sharing decision.
+ */
+export function canStoreInReturn(
+  isSharedWithHousehold: boolean,
+  requestedInclusion: boolean,
+  visibility: Visibility | null | undefined,
+): boolean {
+  return (
+    isSharedWithHousehold &&
+    requestedInclusion &&
+    canIncludeInReturn(visibility)
+  );
+}

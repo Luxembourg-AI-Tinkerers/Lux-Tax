@@ -51,9 +51,10 @@ export class FreelanceController {
   @Get('metrics')
   async getMetrics(
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @CurrentUser('id') userId: string,
     @Query('ownerId') ownerId?: string,
   ): Promise<FreelanceMetricsDto> {
-    return this.freelanceService.getMetrics(workspaceId, ownerId);
+    return this.freelanceService.getMetrics(workspaceId, userId, ownerId);
   }
 
   @Roles(HouseholdRole.PRIMARY_FILER, HouseholdRole.CO_FILER)

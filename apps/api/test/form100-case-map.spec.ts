@@ -1,6 +1,14 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
-import { FORM100_CASES, FORM100_INSTRUCTIONS, RECAP } from '../src/modules/filing/form100-case-map';
+import {
+  FORM100_CASES,
+  FORM100_INSTRUCTIONS,
+  RECAP,
+  foreignNatureSheet,
+  foreignSheetPointer,
+} from '../src/modules/filing/form100-case-map';
+import { TaxClass, TaxResidence } from '@luxtax/contracts';
+import { LuxembourgTaxEngine } from '@luxtax/tax-engine';
 
 describe('Form 100F page / sheet / case map', () => {
   test('every entry has a page in 1-20, a non-empty sheet and a numeric case number', () => {
@@ -69,5 +77,99 @@ describe('Form 100F page / sheet / case map', () => {
   test('the net-profit line is 501 for the taxpayer and 502 for the spouse', () => {
     assert.deepStrictEqual(FORM100_CASES.freelance, { page: 5, sheet: 'C/A', caseNumber: '501' });
     assert.deepStrictEqual(FORM100_CASES.freelanceSpouse, { page: 5, sheet: 'C/A', caseNumber: '502' });
+  });
+});
+
+describe('foreignNatureSheet', () => {
+  test('maps each known foreign nature to its own sheet and page', () => {
+    assert.deepStrictEqual(foreignNatureSheet('foreignSalary'), {
+      sheet: 'S',
+      page: 9,
+      label: 'salary / employment income',
+    });
+    assert.strictEqual(foreignNatureSheet('foreignPension')?.sheet, 'P');
+    assert.strictEqual(foreignNatureSheet('foreignCapital')?.sheet, 'CM');
+    assert.strictEqual(foreignNatureSheet('foreignRental')?.sheet, 'L');
+  });
+
+  test('an unknown or absent nature returns null instead of guessing a sheet', () => {
+    assert.strictEqual(foreignNatureSheet('foreignIncome'), null);
+    assert.strictEqual(foreignNatureSheet(''), null);
+    assert.strictEqual(foreignNatureSheet(null), null);
+    assert.strictEqual(foreignNatureSheet(undefined), null);
+  });
+
+  test('the sheet-specific pointer keeps the RD credit page reachable', () => {
+    const pointer = foreignSheetPointer({ sheet: 'CM', page: 12 });
+    assert.strictEqual(pointer.sheet, 'CM');
+    assert.strictEqual(pointer.page, 12);
+    assert.strictEqual(pointer.kind, 'INSTRUCTION');
+    // The credit itself stays on RD 1081/1082, independently of the income sheet.
+    assert.strictEqual(FORM100_INSTRUCTIONS.foreignCredit.caseNumber, '1081/1082');
+    assert.strictEqual(FORM100_INSTRUCTIONS.foreignCredit.page, 19);
+  });
+});
+
+/**
+ * DS 1553 was reported as "EUR 3,200 while the engine deducted EUR 3,700 - one of
+ * the two is wrong". Neither is: 1553 carries the expenses covered by the
+ * statutory minimum (cases 1301-1552), and Art. 112 donations sit on their own
+ * case 1611 "in addition to the forfait". The package's DS lines therefore
+ * reconcile to the engine's special-expenses total, and this test pins that
+ * arithmetic so a later change cannot fold the donation into 1553.
+ */
+describe('Form 100 - the DS special-expense cases reconcile to the engine total', () => {
+  const facts = [
+    { id: 'f1', category: 'EMPLOYMENT_INCOME', fieldKey: 'grossSalary', amount: 60_000 },
+    { id: 'f2', category: 'PENSION_SAVINGS_111BIS', fieldKey: 'pensionSavings', amount: 3_200 },
+    { id: 'f3', category: 'DONATION_DEDUCTION', fieldKey: 'donations', amount: 500 },
+  ];
+
+  const deductionsOf = (input: typeof facts | Array<{ id: string; category: string; amount: number }>) =>
+    (
+      LuxembourgTaxEngine.calculate({
+        taxYear: 2025,
+        taxClass: TaxClass.CLASS_1,
+        residence: TaxResidence.RESIDENT,
+        primaryUserId: 'u1',
+        facts: input,
+      } as never) as unknown as { deductions: Record<string, number> }
+    ).deductions;
+
+  test('1553 is the covered total, not the forfait, and 1611 is separate', () => {
+    const d = deductionsOf(facts);
+    assert.strictEqual(d.specialExpensesCovered, 3_200);
+    assert.strictEqual(d.specialExpensesForfait, 480);
+    assert.strictEqual(d.donations, 500);
+    // The aggregate the report compared against a single case.
+    assert.strictEqual(d.specialExpensesTotal, 3_700);
+  });
+
+  test('1553 + 1609 + 1611 equals the engine total', () => {
+    const d = deductionsOf(facts);
+    assert.strictEqual(
+      d.specialExpensesCovered + d.lrcp + d.donations,
+      d.specialExpensesTotal,
+    );
+  });
+
+  test('the three amounts are mapped to the cases that carry them', () => {
+    assert.deepStrictEqual(FORM100_CASES.specialExpensesForfait, {
+      page: 15,
+      sheet: 'DS',
+      caseNumber: '1553',
+    });
+    assert.strictEqual(FORM100_CASES.lrcp.caseNumber, '1609');
+    assert.strictEqual(FORM100_CASES.donations.caseNumber, '1611');
+    // Donations must not be routed to 1553: that would double-count them.
+    assert.notStrictEqual(FORM100_CASES.donations.caseNumber, '1553');
+  });
+
+  test('a forfait above the covered total is an instruction, never a silent overwrite', () => {
+    const d = deductionsOf([{ id: 'f1', category: 'EMPLOYMENT_INCOME', fieldKey: 'grossSalary', amount: 60_000 }]);
+    assert.strictEqual(d.specialExpensesCovered, 0);
+    assert.strictEqual(d.specialExpensesTotal, 480);
+    assert.strictEqual(FORM100_INSTRUCTIONS.specialExpensesMinimum.caseNumber, '1553');
+    assert.strictEqual(FORM100_INSTRUCTIONS.specialExpensesMinimum.kind, 'INSTRUCTION');
   });
 });

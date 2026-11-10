@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import { FastifyRequest } from 'fastify';
 import { NotificationsService } from './notifications.service';
+import { NotificationDevicesService } from './notification-devices.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { HouseholdGuard } from '../../common/guards/household.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -32,7 +33,10 @@ interface HouseholdRequest extends FastifyRequest {
 @Controller('api/workspaces/:workspaceId/notifications')
 @UseGuards(JwtAuthGuard, HouseholdGuard)
 export class NotificationsController {
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly devicesService: NotificationDevicesService,
+  ) {}
 
   @Get()
   async list(
@@ -107,6 +111,43 @@ export class NotificationsController {
       userId,
       parseResult.data,
     );
+  }
+
+  /**
+   * Register a mobile install for push. The token is per install, so the same
+   * account may register several; re-registering is idempotent and re-activates
+   * a previously revoked token.
+   */
+  @Post('devices')
+  async registerDevice(
+    @CurrentUser('id') userId: string,
+    @Body() body: { token?: unknown; platform?: unknown },
+  ): Promise<{ registered: true }> {
+    const token = typeof body?.token === 'string' ? body.token.trim() : '';
+    const platform = typeof body?.platform === 'string' ? body.platform.trim() : '';
+    if (!token || !platform) {
+      throw new BadRequestException('token and platform are required');
+    }
+    if (!/^[A-Za-z0-9\[\]_-]{20,200}$/.test(token)) {
+      throw new BadRequestException('token is not a push token');
+    }
+    if (!/^(ios|android|web)$/i.test(platform)) {
+      throw new BadRequestException('platform must be ios, android or web');
+    }
+    await this.devicesService.register(userId, token, platform.toLowerCase());
+    return { registered: true };
+  }
+
+  /** Revoke one install (sign-out, device lost). */
+  @Post('devices/revoke')
+  async revokeDevice(
+    @CurrentUser('id') userId: string,
+    @Body() body: { token?: unknown },
+  ): Promise<{ revoked: true }> {
+    const token = typeof body?.token === 'string' ? body.token.trim() : '';
+    if (!token) throw new BadRequestException('token is required');
+    await this.devicesService.revoke(userId, token);
+    return { revoked: true };
   }
 
   private householdIdOf(req: HouseholdRequest): string {

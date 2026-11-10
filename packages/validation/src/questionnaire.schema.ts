@@ -7,6 +7,12 @@ import { z } from 'zod';
  * legal rule (class assignment, plafond multipliers, AEP route, CIM gate, …).
  */
 export const questionnaireSchema = z.object({
+  /**
+   * Tax year the answers apply to. When supplied, no dated answer may be later
+   * than it: a future fixation / completion / loss year makes the engine
+   * compute a negative age and pick the wrong deduction or amortisation band.
+   */
+  taxYear: z.number().int().min(2020).max(2035).optional(),
   maritalStatus: z.enum(['SINGLE', 'MARRIED', 'PACS', 'DIVORCED', 'WIDOWED']),
   hasEmploymentIncome: z.boolean(),
   hasPensionIncome: z.boolean(),
@@ -141,6 +147,33 @@ export const questionnaireSchema = z.object({
   foreignNetIncome: z.number().min(0).max(100_000_000).optional(),
   notes: z.string().max(1000).optional(),
 }).superRefine((answers, ctx) => {
+  // A dated answer that lies after the tax year is not a future entitlement: the
+  // engine would compute a negative age (completion year → 4 % amortisation band,
+  // fixation year → unlimited interest, loss year → a negative 17-year distance)
+  // and derive a deduction from a date that cannot exist yet. Refuse it here so
+  // the user sees which field to correct.
+  const rejectFutureYear = (
+    year: number | undefined,
+    path: (string | number)[],
+    label: string,
+  ): void => {
+    if (answers.taxYear === undefined || year === undefined) return;
+    if (year <= answers.taxYear) return;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path,
+      message:
+        `${label} (${year}) is after the tax year ${answers.taxYear}. A year that has not ` +
+        'happened yet cannot place the entry in the right band, so it must be corrected.',
+    });
+  };
+
+  rejectFutureYear(answers.mortgageOccupancyYear, ['mortgageOccupancyYear'], 'The year the valeur locative was fixed');
+  rejectFutureYear(answers.rentalCompletionYear, ['rentalCompletionYear'], 'The rental building completion year');
+  answers.lossCarryForward?.forEach((entry, index) =>
+    rejectFutureYear(entry.year, ['lossCarryForward', index, 'year'], 'The loss year'),
+  );
+
   // Art. 105 habit_pers: the deduction depends on how many years have passed since the year the
   // valeur locative was fixed (years 1-2 unlimited, 3-6 EUR 4 000, 7-11 EUR 3 000, 12+ EUR 2 000).
   // Without that year the engine refuses the interest and warns, so the questionnaire must not

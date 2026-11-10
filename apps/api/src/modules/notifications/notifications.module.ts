@@ -3,6 +3,7 @@ import { NotificationsService } from './notifications.service';
 import { NotificationsController } from './notifications.controller';
 import { NotificationOutboxService } from './notification-outbox.service';
 import { NotificationRemindersService } from './notification-reminders.service';
+import { NotificationDevicesService } from './notification-devices.service';
 import { EmailAdapter } from './adapters/email.adapter';
 import { PushAdapter } from './adapters/push.adapter';
 import { PrismaModule } from '../../prisma/prisma.module';
@@ -14,9 +15,10 @@ import { PrismaModule } from '../../prisma/prisma.module';
     NotificationsService,
     NotificationOutboxService,
     NotificationRemindersService,
+    NotificationDevicesService,
     EmailAdapter,
     PushAdapter,
   ],
-  exports: [NotificationsService, NotificationOutboxService],
+  exports: [NotificationsService, NotificationOutboxService, NotificationDevicesService],
 })
 export class NotificationsModule {}

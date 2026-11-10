@@ -2,6 +2,10 @@ packages:
   - 'packages/*'
   - 'apps/api'
   - 'apps/web'
+  # The mobile client was never in the workspace, so `pnpm install` never tried
+  # to resolve it and its tree could only be assembled by hand. It uses the same
+  # workspace packages and the same TypeScript version as the web app.
+  - 'apps/mobile'
 allowBuilds:
   '@prisma/engines': true
   argon2: true

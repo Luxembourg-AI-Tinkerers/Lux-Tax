@@ -51,6 +51,7 @@ export class QuestionnaireController {
     );
   }
 
+  @Roles(HouseholdRole.PRIMARY_FILER, HouseholdRole.CO_FILER)
   @Post('tasks/:taskId/resolve')
   async resolveTask(
     @Param('workspaceId', ParseUUIDPipe) workspaceId: string,

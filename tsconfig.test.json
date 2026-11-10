@@ -9,15 +9,37 @@
     "skipLibCheck": true,
     "noEmit": true,
     "baseUrl": ".",
-    "typeRoots": ["./.tools/node_modules/@types"],
-    "types": ["node"],
+    "typeRoots": [
+      "./.tools/node_modules/@types"
+    ],
+    "types": [
+      "node"
+    ],
     "paths": {
-      "@luxtax/contracts": ["packages/contracts/src/index.ts"],
-      "@luxtax/tax-engine": ["packages/tax-engine/src/index.ts"],
-      "@luxtax/api-client": ["packages/api-client/src/index.ts"],
-      "@luxtax/design-tokens": ["packages/design-tokens/src/index.ts"],
-      "react-native": [".tools/rn-shim/index.js"],
-      "zod": [".tools/node_modules/zod"]
+      "@luxtax/contracts": [
+        "packages/contracts/src/index.ts"
+      ],
+      "@luxtax/tax-engine": [
+        "packages/tax-engine/src/index.ts"
+      ],
+      "@luxtax/api-client": [
+        "packages/api-client/src/index.ts"
+      ],
+      "@luxtax/design-tokens": [
+        "packages/design-tokens/src/index.ts"
+      ],
+      "react-native": [
+        ".tools/rn-shim/index.js"
+      ],
+      "zod": [
+        ".tools/node_modules/zod"
+      ],
+      "react": [
+        ".tools/node_modules/react"
+      ],
+      "react-test-renderer": [
+        ".tools/node_modules/react-test-renderer"
+      ]
     }
   },
   "include": [
@@ -72,8 +94,19 @@
     "apps/api/test/platform-admin.spec.ts",
     "apps/api/test/fact-visibility.spec.ts",
     "apps/api/test/form100-case-map.spec.ts",
+    "apps/api/test/prod2-source-invariant.spec.ts",
+    "apps/api/src/config/proxy-trust.ts",
+    "apps/api/test/proxy-trust.spec.ts",
     "apps/api/test/notification-rules.spec.ts",
     "apps/api/test/return-version-history.spec.ts",
-    "apps/api/test/assessment-dates.spec.ts"
+    "apps/api/test/assessment-dates.spec.ts",
+    "apps/api/src/modules/calculations/calculation-snapshot.ts",
+    "apps/api/test/calculation-snapshot.spec.ts",
+    "apps/api/src/modules/notifications/adapters/smtp-email.transport.ts",
+    "apps/api/test/smtp-transport.spec.ts",
+    "apps/api/src/modules/notifications/notification-devices.ts",
+    "apps/api/test/notification-devices-rules.spec.ts",
+    "apps/api/src/modules/notifications/adapters/expo-push.transport.ts",
+    "apps/api/test/expo-push-transport.spec.ts"
   ]
 }

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { purgeAuditEvents } from './support/audit-purge';
 import { randomUUID } from 'node:crypto';
 
 describe('Cross-Household Isolation & Security (e2e)', () => {
@@ -85,17 +86,14 @@ describe('Cross-Household Isolation & Security (e2e)', () => {
         select: { id: true },
       });
       const userIds = users.map((u) => u.id);
+      // Audit rows are append-only; purge the test actors' rows inside
+      // an opted-in transaction so the rest of the cleanup can run.
+      await purgeAuditEvents(prisma, userIds);
 
       if (userIds.length > 0) {
-        await prisma.auditEvent.deleteMany({
-          where: {
-            OR: [
-              { actorId: { in: userIds } },
-              { actorEmail: { in: testEmails } },
-              { household: { createdById: { in: userIds } } },
-            ],
-          },
-        });
+        // Audit rows are append-only (API-10): a trigger rejects DELETE, so no
+        // cleanup is attempted here. Removing the user leaves them unlinked.
+
         await prisma.taxYearWorkspace.deleteMany({
           where: { household: { createdById: { in: userIds } } },
         });

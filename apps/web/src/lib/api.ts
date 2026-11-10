@@ -1,21 +1,71 @@
 import { LuxTaxApiClient } from '@luxtax/api-client';
+import type { AuthResponseDto } from '@luxtax/contracts';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+/** One base URL for every call the web client makes, logout included. */
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+export const ACCESS_TOKEN_KEY = 'luxtax_access_token';
+export const REFRESH_TOKEN_KEY = 'luxtax_refresh_token';
+export const LOGOUT_URL = `${API_BASE_URL}/api/auth/logout`;
+
+const hasWindow = () => typeof window !== 'undefined';
+
+export function readStoredToken(key: string): string | null {
+  return hasWindow() ? localStorage.getItem(key) : null;
+}
+
+export function storeSession(tokens: AuthResponseDto['tokens']): void {
+  if (!hasWindow()) return;
+  localStorage.setItem(ACCESS_TOKEN_KEY, tokens.accessToken);
+  localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
+}
+
+export function clearSession(): void {
+  if (!hasWindow()) return;
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
+/**
+ * Renews the access token from the stored refresh token, one call at a time:
+ * the dashboard loads several endpoints in parallel and they all see the same
+ * 401. Returns the new access token, or null when the session is gone.
+ */
+let renewal: Promise<string | null> | null = null;
+
+async function renewSession(): Promise<string | null> {
+  const refreshToken = readStoredToken(REFRESH_TOKEN_KEY);
+  if (!refreshToken) return null;
+
+  // Drop the expired access token before calling the refresh endpoint: it must
+  // not be sent as a bearer, and the 401 that endpoint may answer must not
+  // re-enter this path (the client only renews authenticated requests).
+  if (hasWindow()) localStorage.removeItem(ACCESS_TOKEN_KEY);
+
+  const res = await apiClient.refreshToken({ refreshToken });
+  if (!res.data) return null;
+  storeSession(res.data.tokens);
+  return res.data.tokens.accessToken;
+}
 
 export const apiClient = new LuxTaxApiClient({
   baseUrl: API_BASE_URL,
-  getAccessToken: () => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('luxtax_access_token');
+  getAccessToken: () => readStoredToken(ACCESS_TOKEN_KEY),
+  refreshAccessToken: () => {
+    if (!renewal) {
+      renewal = renewSession().finally(() => {
+        renewal = null;
+      });
     }
-    return null;
+    return renewal;
   },
+  // Reached only after a renewal attempt failed (or no refresh token exists):
+  // the client never reports an unauthenticated request here, so a wrong
+  // password stays on the login page.
   onUnauthorized: () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('luxtax_access_token');
-      localStorage.removeItem('luxtax_refresh_token');
-      window.location.href = '/login';
-    }
+    if (!hasWindow()) return;
+    clearSession();
+    window.location.href = '/login';
   },
 });
 
@@ -24,7 +74,7 @@ export const apiClient = new LuxTaxApiClient({
  * Uses a blob download because the endpoint is JWT-protected.
  */
 export async function downloadAnnexPdf(workspaceId: string): Promise<void> {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('luxtax_access_token') : null;
+  const token = readStoredToken(ACCESS_TOKEN_KEY);
   const response = await fetch(
     `${API_BASE_URL}/api/workspaces/${workspaceId}/filing-package/annexes.pdf`,
     { headers: token ? { Authorization: `Bearer ${token}` } : {} },

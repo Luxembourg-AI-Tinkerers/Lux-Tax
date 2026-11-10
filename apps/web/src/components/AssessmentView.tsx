@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '../lib/api';
+import { formatEuro } from '../lib/money';
 import {
   AssessmentDto,
   CreateFilingRecordDto,
@@ -107,6 +108,11 @@ export function AssessmentView({ workspace, onRefresh }: AssessmentViewProps) {
       showFeedback('error', res.error);
     } else if (res.data) {
       setAssessment(res.data);
+      // The follow-up fields are separate state, filled only by the initial
+      // load. Without this the freshly computed objection deadline and
+      // follow-up date stayed blank until the page was reloaded.
+      setObjectionDeadline(toDateInputValue(res.data.objectionDeadline));
+      setFollowUpAt(toDateInputValue(res.data.followUpAt));
       showFeedback('success', 'Official ACD Bulletin imported & discrepancy reconciliation generated!');
       onRefresh();
     }
@@ -469,7 +475,7 @@ export function AssessmentView({ workspace, onRefresh }: AssessmentViewProps) {
                 Bulletin Notice Date: {new Date(assessment.bulletinDate).toLocaleDateString()}
               </span>
               <h4 className="text-lg font-bold text-slate-900 mt-0.5">
-                Assessment Variance: €{Math.abs(assessment.differenceWithDeclared).toFixed(2)}{' '}
+                Assessment Variance: {formatEuro(Math.abs(assessment.differenceWithDeclared))}{' '}
                 {assessment.differenceWithDeclared > 0
                   ? '(ACD Tax Due Higher)'
                   : assessment.differenceWithDeclared < 0
@@ -503,15 +509,16 @@ export function AssessmentView({ workspace, onRefresh }: AssessmentViewProps) {
                     </div>
                     <div className="text-right space-y-0.5">
                       <div>
-                        <span className="text-slate-400">Declared:</span> €{d.declaredValue.toFixed(2)} |{' '}
-                        <span className="text-slate-400">ACD:</span> €{d.assessedValue.toFixed(2)}
+                        <span className="text-slate-400">Declared:</span> {formatEuro(d.declaredValue)} |{' '}
+                        <span className="text-slate-400">ACD:</span> {formatEuro(d.assessedValue)}
                       </div>
                       <span
                         className={`font-bold ${
                           d.difference > 0 ? 'text-rose-600' : 'text-emerald-600'
                         }`}
                       >
-                        Variance: {d.difference > 0 ? '+' : ''}€{d.difference.toFixed(2)}
+                        Variance: {d.difference > 0 ? '+' : ''}
+                        {formatEuro(d.difference)}
                       </span>
                     </div>
                   </div>

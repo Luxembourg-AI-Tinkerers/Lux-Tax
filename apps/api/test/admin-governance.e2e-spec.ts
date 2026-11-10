@@ -2,6 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { purgeAuditEvents } from './support/audit-purge';
+import { verifyEmailFor } from './support/verify-email';
+
+// M2: model API keys are stored as AES-256-GCM envelopes, so registering a
+// model with a key needs the encryption key. A fixed test key is enough here;
+// the value never leaves this process.
+process.env.MODEL_KEY_ENCRYPTION_KEY ??= 'ab'.repeat(32);
 
 describe('Admin Governance & Model Registry (e2e)', () => {
   let app: NestFastifyApplication;
@@ -43,6 +50,10 @@ describe('Admin Governance & Model Registry (e2e)', () => {
     // so the registered administrator must be allowlisted before the first admin call.
     process.env.ADMIN_EMAILS = uniqueEmail;
 
+    // Platform administration now also requires a verified address: the allowlist
+    // matches an e-mail, so the account must prove it owns that address.
+    await verifyEmailFor(app, uniqueEmail);
+
     // A second, ordinary taxpayer: registered, authenticated, no platform grant.
     const ordinaryEmail = `user-${Date.now()}@e2e.lu`;
     const ordinaryRes = await app.inject({
@@ -50,7 +61,7 @@ describe('Admin Governance & Model Registry (e2e)', () => {
       url: '/api/auth/register',
       payload: {
         email: ordinaryEmail,
-        password: 'E2e-Password-1',
+        password: 'Password123!',
         firstName: 'Ordinary',
         lastName: 'Taxpayer',
       },
@@ -60,17 +71,26 @@ describe('Admin Governance & Model Registry (e2e)', () => {
     const ordinaryBody = JSON.parse(ordinaryRes.payload);
     ordinaryToken = ordinaryBody.tokens.accessToken;
     ordinaryUserId = ordinaryBody.user.id;
+
+    // Verified too, so the 403 below is about the allowlist and not about the
+    // missing proof of address.
+    await verifyEmailFor(app, ordinaryEmail);
   });
 
   afterAll(async () => {
     if (prisma && adminUserId) {
-      await prisma.auditEvent.deleteMany({ where: { actorId: adminUserId } });
+      // Audit rows are append-only (API-10). They also hold a foreign key to the
+      // actor, so the user cannot be deleted until its own rows are purged —
+      // inside the transaction that opts the trigger out.
+      await purgeAuditEvents(prisma, [adminUserId]);
+
       await prisma.session.deleteMany({ where: { userId: adminUserId } });
       await prisma.personProfile.deleteMany({ where: { userId: adminUserId } });
       await prisma.user.deleteMany({ where: { id: adminUserId } });
     }
     if (prisma && ordinaryUserId) {
-      await prisma.auditEvent.deleteMany({ where: { actorId: ordinaryUserId } });
+      await purgeAuditEvents(prisma, [ordinaryUserId]);
+
       await prisma.session.deleteMany({ where: { userId: ordinaryUserId } });
       await prisma.personProfile.deleteMany({ where: { userId: ordinaryUserId } });
       await prisma.user.deleteMany({ where: { id: ordinaryUserId } });

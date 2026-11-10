@@ -54,7 +54,7 @@ export interface AuditChainEntry {
   id: string;
   householdId?: string | null;
   workspaceId?: string | null;
-  actorId: string;
+  actorId?: string | null;
   eventType: string;
   entityType: string;
   entityId: string;
@@ -94,7 +94,7 @@ export function hashAuditEvent(prevHash: string | null, entry: Omit<AuditChainEn
     id: entry.id,
     householdId: entry.householdId ?? null,
     workspaceId: entry.workspaceId ?? null,
-    actorId: entry.actorId,
+    actorId: entry.actorId ?? null,
     eventType: entry.eventType,
     entityType: entry.entityType,
     entityId: entry.entityId,

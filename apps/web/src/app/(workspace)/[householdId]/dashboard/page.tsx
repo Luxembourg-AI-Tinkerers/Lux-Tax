@@ -21,6 +21,7 @@ import { FilingPackageView } from '../../../../components/FilingPackageView';
 import { AssessmentView } from '../../../../components/AssessmentView';
 import { AdminConsoleView } from '../../../../components/AdminConsoleView';
 import { NotificationCenter } from '../../../../components/NotificationCenter';
+import { NO_AMOUNT, formatEuro } from '../../../../lib/money';
 
 type TabKey =
   | 'overview'
@@ -48,9 +49,18 @@ export default function DashboardPage() {
   const [activity, setActivity] = useState<readonly AuditEventDto[]>([]);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
+  const [pageError, setPageError] = useState('');
 
   const loadData = useCallback(async () => {
-    if (!householdId) return;
+    if (!householdId) {
+      // Nothing can be loaded without a household: say so instead of leaving
+      // the page on its loading spinner forever.
+      setPageError('This URL carries no household identifier, so no tax workspace could be loaded.');
+      setPageLoading(false);
+      return;
+    }
+
+    setPageError('');
 
     const [hhRes, actRes, wsListRes] = await Promise.all([
       apiClient.getHousehold(householdId),
@@ -58,12 +68,25 @@ export default function DashboardPage() {
       apiClient.getWorkspaces(householdId),
     ]);
 
+    // A failed read clears what it used to show: the previous household, its
+    // activity trail or the previous year's workspace must not stay mounted
+    // behind an error.
     if (hhRes.data) {
       setHousehold(hhRes.data);
+    } else {
+      setHousehold(null);
     }
 
     if (wsListRes.data) {
       setWorkspaces(wsListRes.data);
+    } else {
+      setWorkspaces([]);
+    }
+
+    if (actRes.data) {
+      setActivity(actRes.data);
+    } else {
+      setActivity([]);
     }
 
     const wsRes = await apiClient.getWorkspace(householdId, selectedYear);
@@ -72,12 +95,21 @@ export default function DashboardPage() {
       const readRes = await apiClient.getWorkspaceReadiness(householdId, selectedYear);
       if (readRes.data) {
         setReadiness(readRes.data);
+      } else {
+        setReadiness(null);
+        if (readRes.error) setPageError(readRes.error);
       }
+    } else {
+      setWorkspace(null);
+      setReadiness(null);
     }
 
-    if (actRes.data) {
-      setActivity(actRes.data);
+    // The workspace read decides whether the tabs have anything to render.
+    const firstError = wsRes.error || hhRes.error || wsListRes.error || actRes.error;
+    if (firstError) {
+      setPageError(firstError);
     }
+
     setPageLoading(false);
   }, [householdId, selectedYear]);
 
@@ -104,6 +136,24 @@ export default function DashboardPage() {
   const members = household?.members || [];
   const primaryFiler = members.find((m) => m.role === HouseholdRole.PRIMARY_FILER);
   const coFiler = members.find((m) => m.role === HouseholdRole.CO_FILER);
+
+  const balance = workspace?.estimatedTaxBalance;
+  // A missing balance is not a zero: show a dash until the engine has produced
+  // a figure.
+  const balanceLabel =
+    balance === undefined || balance === null || balance === ''
+      ? NO_AMOUNT
+      : Number(balance) < 0
+        ? `Refund: ${formatEuro(Math.abs(Number(balance)))}`
+        : `Due: ${formatEuro(Number(balance))}`;
+
+  /** Keyboard activation for the cards that behave like buttons. */
+  const cardKeyboard = (tab: TabKey) => (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      setActiveTab(tab);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -187,6 +237,15 @@ export default function DashboardPage() {
 
       {/* Main Content Area */}
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 space-y-8">
+        {pageError && (
+          <div
+            role="alert"
+            className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-800"
+          >
+            {pageError}
+          </div>
+        )}
+
         {activeTab === 'overview' && (
           <>
             {/* Top Metrics Grid */}
@@ -227,13 +286,7 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <div className="flex items-baseline gap-2 mb-2">
-                  <span className="text-3xl font-extrabold text-slate-900">
-                    {workspace?.estimatedTaxBalance
-                      ? Number(workspace.estimatedTaxBalance) < 0
-                        ? `Refund: €${Math.abs(Number(workspace.estimatedTaxBalance)).toFixed(2)}`
-                        : `Due: €${Number(workspace.estimatedTaxBalance).toFixed(2)}`
-                      : '€0.00'}
-                  </span>
+                  <span className="text-3xl font-extrabold text-slate-900">{balanceLabel}</span>
                 </div>
                 <button
                   onClick={() => setActiveTab('calculator')}
@@ -310,7 +363,10 @@ export default function DashboardPage() {
             {/* Quick Feature Cards */}
             <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setActiveTab('documents')}
+                onKeyDown={cardKeyboard('documents')}
                 className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-sky-300 transition cursor-pointer"
               >
                 <div className="h-10 w-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center font-bold text-lg mb-4">
@@ -324,7 +380,10 @@ export default function DashboardPage() {
               </div>
 
               <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setActiveTab('freelance')}
+                onKeyDown={cardKeyboard('freelance')}
                 className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-indigo-300 transition cursor-pointer"
               >
                 <div className="h-10 w-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-lg mb-4">
@@ -338,7 +397,10 @@ export default function DashboardPage() {
               </div>
 
               <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setActiveTab('questionnaire')}
+                onKeyDown={cardKeyboard('questionnaire')}
                 className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-purple-300 transition cursor-pointer"
               >
                 <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-lg mb-4">
@@ -352,7 +414,10 @@ export default function DashboardPage() {
               </div>
 
               <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setActiveTab('filing')}
+                onKeyDown={cardKeyboard('filing')}
                 className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-emerald-300 transition cursor-pointer"
               >
                 <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg mb-4">

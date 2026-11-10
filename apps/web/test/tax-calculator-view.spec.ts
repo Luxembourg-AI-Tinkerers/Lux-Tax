@@ -28,6 +28,7 @@ const TestRenderer = require('react-test-renderer') as {
   create: (el: React.ReactElement) => {
     toJSON: () => unknown;
     unmount: () => void;
+    update: (el: React.ReactElement) => void;
   };
   act: (cb: () => void | Promise<void>) => Promise<void> | void;
 };
@@ -157,5 +158,49 @@ describe('TaxCalculatorView — mounts and renders engine output', () => {
     assert.ok(!joined.includes('NaN'), 'a failed fetch must not leak NaN into the view');
     assert.ok(!joined.includes('undefined'), 'a failed fetch must not leak undefined');
     view.unmount();
+  });
+
+  it('surfaces the load failure instead of an unexplained empty panel', async () => {
+    stubFetch(null, false, 500);
+    const view = await mount();
+    const joined = view.text.join('');
+    assert.match(joined, /The stored calculation could not be loaded/);
+    assert.match(joined, /Calculation failed upstream/);
+    view.unmount();
+  });
+
+  it('clears the previous workspace result when the new one has none stored', async () => {
+    let reply: unknown = dto;
+    (globalThis as { fetch: unknown }).fetch = async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => reply,
+    });
+
+    let renderer: ReturnType<typeof TestRenderer.create> | undefined;
+    await TestRenderer.act(async () => {
+      renderer = TestRenderer.create(
+        React.createElement(TaxCalculatorView, { workspaceId: 'ws-1', taxYear: 2025 }),
+      );
+    });
+    assert.match(textOf(renderer!.toJSON()).join(''), /Deterministic Tax Engine/);
+
+    // The next year has no stored calculation: its panel must be empty rather
+    // than showing the previous year's figures as if they were current.
+    reply = null;
+    await TestRenderer.act(async () => {
+      renderer!.update(
+        React.createElement(TaxCalculatorView, { workspaceId: 'ws-2', taxYear: 2026 }),
+      );
+    });
+
+    const joined = textOf(renderer!.toJSON()).join(' | ');
+    assert.match(joined, /Run First Tax Calculation/);
+    assert.ok(
+      !joined.includes(dto.rulePackageVersion),
+      'the previous result must not stay on screen',
+    );
+    renderer!.unmount();
   });
 });

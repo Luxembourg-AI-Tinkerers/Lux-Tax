@@ -369,5 +369,9 @@ export function calculateDeductions(ctx: DeductionContext): DeductionsBreakdown 
 }
 
 export function round2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  // One rounding rule for the whole engine: snap through integer cents.
+  // `Math.round((v + EPSILON) * 100) / 100` disagreed with `toCents` on exact
+  // halves (1.005 → 1.01 here, 1.00 through the cents helpers), so the same
+  // figure could land a cent apart depending on which path produced it.
+  return fromCents(toCents(value));
 }

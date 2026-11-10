@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { apiClient } from '../lib/api';
 import { ConfirmedFactDto, FactCategory } from '@luxtax/contracts';
 import { FACT_INCLUSION_DOWNGRADE_MESSAGE, factInclusionWarning } from '../lib/fact-inclusion';
+import { splitNewFacts } from '../lib/fact-dedup';
+import { formatEuro } from '../lib/money';
 
 interface FactsViewProps {
   workspaceId: string;
@@ -43,6 +45,16 @@ const PRESET_FIELDS = [
   { category: FactCategory.DONATION_DEDUCTION, fieldKey: 'donations', label: 'Donations — Art. 112 (additive to the forfait)' },
   { category: FactCategory.CHILDCARE_EXPENSE, fieldKey: 'childcare', label: 'Childcare — Art. 127 (forfait €5,400)' },
   { category: FactCategory.HOUSEHOLD_HELP_EXPENSE, fieldKey: 'householdHelp', label: 'Household help — Art. 127' },
+];
+
+/** The demo set, at module scope so the button can tell whether it is fully loaded. */
+const DEMO_FACTS = [
+  { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'grossSalary', amount: '75000.00', description: '2025 Annual Employment Gross Salary' },
+  { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'socialSecurity', amount: '9375.00', description: 'CCSS Statutory Health & Pension Contributions (12.5%)' },
+  { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'withholdingTax', amount: '12800.00', description: "Employer Tax Withheld at Source (Retenue d'impôt)" },
+  { category: FactCategory.MORTGAGE_INTEREST, fieldKey: 'mortgageInterest', amount: '3500.00', description: 'BCEE Mortgage Debit Interest (Habitation personnelle)' },
+  { category: FactCategory.PENSION_SAVINGS_111BIS, fieldKey: 'art111bis', amount: '3200.00', description: 'Foyer Prévoyance-Vieillesse Private Pension Contract' },
+  { category: FactCategory.DONATION_DEDUCTION, fieldKey: 'donations', amount: '500.00', description: 'Donation to Croix-Rouge Luxembourgeoise' },
 ];
 
 export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
@@ -168,17 +180,22 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
 
   const handleQuickLoadDemo = async () => {
     setLoadingDemo(true);
-    const demoItems = [
-      { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'grossSalary', amount: '75000.00', description: '2025 Annual Employment Gross Salary' },
-      { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'socialSecurity', amount: '9375.00', description: 'CCSS Statutory Health & Pension Contributions (12.5%)' },
-      { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'withholdingTax', amount: '12800.00', description: 'Employer Tax Withheld at Source (Retenue d\'impôt)' },
-      { category: FactCategory.MORTGAGE_INTEREST, fieldKey: 'mortgageInterest', amount: '3500.00', description: 'BCEE Mortgage Debit Interest (Habitation personnelle)' },
-      { category: FactCategory.PENSION_SAVINGS_111BIS, fieldKey: 'art111bis', amount: '3200.00', description: 'Foyer Prévoyance-Vieillesse Private Pension Contract' },
-      { category: FactCategory.DONATION_DEDUCTION, fieldKey: 'donations', amount: '500.00', description: 'Donation to Croix-Rouge Luxembourgeoise' },
-    ];
+
+    // The engine sums every confirmed fact, so a second click must not insert
+    // the same figures again: facts already recorded on the same category +
+    // box are skipped and reported, not duplicated.
+    const factsRes = await apiClient.getFacts(workspaceId);
+    if (factsRes.error) {
+      setLoadingDemo(false);
+      showFeedback('error', `Could not check the facts already recorded: ${factsRes.error}`);
+      return;
+    }
+    const existingFacts = factsRes.data?.confirmedFacts ?? [];
+    const { missing, present } = splitNewFacts(DEMO_FACTS, existingFacts);
 
     let inclusionDowngraded = false;
-    for (const item of demoItems) {
+    let demoError: string | null = null;
+    for (const item of missing) {
       const demoRes = await apiClient.confirmFact(workspaceId, {
         category: item.category,
         fieldKey: item.fieldKey,
@@ -188,21 +205,37 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
         isSharedWithHousehold: true,
         description: item.description,
       });
+      if (demoRes.error) {
+        demoError = demoRes.error;
+        break;
+      }
       if (factInclusionWarning(true, demoRes.data?.isIncludedInReturn)) {
         inclusionDowngraded = true;
       }
     }
 
     setLoadingDemo(false);
-    showFeedback(
-      inclusionDowngraded ? 'error' : 'success',
-      inclusionDowngraded
-        ? FACT_INCLUSION_DOWNGRADE_MESSAGE
-        : 'Loaded 6 realistic 2025 Luxembourg tax facts into workspace!',
-    );
+    if (demoError) {
+      showFeedback('error', `Loading the demo facts failed: ${demoError}`);
+    } else if (inclusionDowngraded) {
+      showFeedback('error', FACT_INCLUSION_DOWNGRADE_MESSAGE);
+    } else if (missing.length === 0) {
+      showFeedback('success', `All ${DEMO_FACTS.length} demo facts are already recorded — nothing was added.`);
+    } else {
+      showFeedback(
+        'success',
+        present.length === 0
+          ? `Loaded ${missing.length} realistic 2025 Luxembourg tax facts into workspace!`
+          : `Loaded ${missing.length} demo facts; ${present.length} were already recorded and left untouched.`,
+      );
+    }
     await refresh();
     onFactsChanged();
   };
+
+  // A demo set that is fully recorded disables the button: it would only report
+  // that there is nothing left to add.
+  const demoAlreadyLoaded = splitNewFacts(DEMO_FACTS, confirmedFacts).missing.length === 0;
 
   const totalDeductions = confirmedFacts
     .filter((f) => f.category !== FactCategory.EMPLOYMENT_INCOME && f.isIncludedInReturn)
@@ -228,7 +261,11 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
           }`}
         >
           <span>{feedback.message}</span>
-          <button onClick={() => setFeedback(null)} className="text-xs opacity-60 hover:opacity-100">
+          <button
+            onClick={() => setFeedback(null)}
+            aria-label="Dismiss notification"
+            className="text-xs opacity-60 hover:opacity-100"
+          >
             ✕
           </button>
         </div>
@@ -240,9 +277,7 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Total Confirmed Gross Salary
           </span>
-          <div className="mt-2 text-2xl font-black text-slate-900">
-            €{totalGrossSalary.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </div>
+          <div className="mt-2 text-2xl font-black text-slate-900">{formatEuro(totalGrossSalary)}</div>
           <p className="mt-1 text-xs text-slate-500">Case 101 - Base for Luxembourg PIT</p>
         </div>
 
@@ -250,9 +285,7 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Tax Withheld at Source
           </span>
-          <div className="mt-2 text-2xl font-black text-amber-600">
-            €{totalWithholdingTax.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </div>
+          <div className="mt-2 text-2xl font-black text-amber-600">{formatEuro(totalWithholdingTax)}</div>
           <p className="mt-1 text-xs text-slate-500">Case 105 - Prepaid tax deducted on salary slips</p>
         </div>
 
@@ -260,9 +293,7 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Confirmed Deductible Expenses
           </span>
-          <div className="mt-2 text-2xl font-black text-emerald-600">
-            €{totalDeductions.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </div>
+          <div className="mt-2 text-2xl font-black text-emerald-600">{formatEuro(totalDeductions)}</div>
           <p className="mt-1 text-xs text-slate-500">Mortgage interest, insurance, and donations</p>
         </div>
       </div>
@@ -281,10 +312,19 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
           <div className="flex items-center gap-2">
             <button
               onClick={handleQuickLoadDemo}
-              disabled={loadingDemo}
+              disabled={loadingDemo || demoAlreadyLoaded}
+              title={
+                demoAlreadyLoaded
+                  ? 'Every demo fact is already recorded in this workspace'
+                  : 'Insert the demo facts that are not recorded yet'
+              }
               className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-700 hover:bg-sky-100 transition disabled:opacity-50"
             >
-              {loadingDemo ? 'Populating...' : '⚡ Quick Load 2025 Demo Facts'}
+              {loadingDemo
+                ? 'Populating...'
+                : demoAlreadyLoaded
+                  ? '✓ Demo Facts Loaded'
+                  : '⚡ Quick Load 2025 Demo Facts'}
             </button>
             <button
               onClick={() => setIsAddModalOpen(true)}
@@ -292,7 +332,11 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
             >
               + Add Fact
             </button>
-            <button onClick={refresh} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 font-semibold">
+            <button
+              onClick={refresh}
+              aria-label="Refresh confirmed facts"
+              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 font-semibold"
+            >
               ↻
             </button>
           </div>
@@ -321,7 +365,7 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
                 disabled={loadingDemo}
                 className="rounded-lg border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-bold text-sky-700 hover:bg-sky-100"
               >
-                ⚡ Load 2025 Demo Facts
+                {loadingDemo ? 'Populating...' : '⚡ Load 2025 Demo Facts'}
               </button>
             </div>
           </div>
@@ -376,9 +420,7 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
                           </button>
                         </div>
                       ) : (
-                        `€${parseFloat(fact.amount).toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                        })}`
+                        formatEuro(fact.amount)
                       )}
                     </td>
                     <td className="px-6 py-4">
@@ -421,6 +463,7 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
               <h3 className="font-bold text-slate-900 text-base">Add Confirmed Tax Fact</h3>
               <button
                 onClick={() => setIsAddModalOpen(false)}
+                aria-label="Close add-fact dialog"
                 className="text-slate-400 hover:text-slate-600 text-lg font-bold"
               >
                 ✕

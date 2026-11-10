@@ -80,6 +80,55 @@ export const RECAP = { page: 20, sheet: 'Recap', caseNumber: 'computed' } as con
  * `lossCarryForward`: a negative freelance net profit is written as 0, not as
  * a negative case amount; the loss is carried forward under LIR Art. 114.
  */
+/**
+ * Which Form 100 sheet carries treaty-exempt foreign income of a given nature.
+ *
+ * The 100F has no foreign-income sheet: exempt foreign income is declared in the
+ * "revenus exonérés" column of the category sheet matching its nature, and the
+ * credit is claimed on RD 1081/1082. The nature travels on the fact's field key
+ * because the app has no per-fact foreign nature field — but a wrong sheet is
+ * worse than no sheet, so an unknown key returns `null` and the caller falls
+ * back to the generic "S/P/CM/L" sentence.
+ *
+ * S = salary / employment income, P = pension, CM = capital (movable),
+ * L = rental (immovable).
+ */
+const FOREIGN_NATURE_SHEETS: Record<
+  string,
+  { sheet: string; page: number; label: string }
+> = {
+  foreignSalary: { sheet: 'S', page: 9, label: 'salary / employment income' },
+  foreignPension: { sheet: 'P', page: 11, label: 'pension' },
+  foreignCapital: { sheet: 'CM', page: 12, label: 'capital (movable) income' },
+  foreignRental: { sheet: 'L', page: 13, label: 'rental (immovable) income' },
+};
+
+export function foreignNatureSheet(
+  fieldKey: string | null | undefined,
+): { sheet: string; page: number; label: string } | null {
+  if (!fieldKey) return null;
+  return FOREIGN_NATURE_SHEETS[fieldKey] ?? null;
+}
+
+/**
+ * The exempt-income pointer for a known foreign nature: the sheet where the
+ * income belongs, while the credit itself stays on RD 1081/1082.
+ *
+ * Kept outside `FORM100_INSTRUCTIONS` so that map stays pure data — an existing
+ * test asserts every entry there carries `kind: 'INSTRUCTION'`, and a function
+ * member would break that invariant for no benefit.
+ */
+export function foreignSheetPointer(
+  nature: { sheet: string; page: number },
+): { page: number; sheet: string; caseNumber: string; kind: 'INSTRUCTION' } {
+  return {
+    page: nature.page,
+    sheet: nature.sheet,
+    caseNumber: 'exempt income column',
+    kind: 'INSTRUCTION',
+  };
+}
+
 export const FORM100_INSTRUCTIONS = {
   /**
    * Art. 91 liberal profession: page 6, sheet I. The sheet has several sections

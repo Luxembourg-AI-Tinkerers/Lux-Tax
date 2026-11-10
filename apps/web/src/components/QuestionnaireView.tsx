@@ -10,6 +10,7 @@ import {
   FactCategory,
 } from '@luxtax/contracts';
 import { FACT_INCLUSION_DOWNGRADE_MESSAGE, factInclusionWarning } from '../lib/fact-inclusion';
+import { findFact } from '../lib/fact-dedup';
 
 interface QuestionnaireViewProps {
   workspaceId: string;
@@ -17,17 +18,9 @@ interface QuestionnaireViewProps {
 }
 
 export function QuestionnaireView({ workspaceId, onProfileUpdated }: QuestionnaireViewProps) {
-  const [answers, setAnswers] = useState<QuestionnaireAnswersDto>({
-    maritalStatus: 'SINGLE',
-    hasEmploymentIncome: true,
-    hasFreelanceIncome: false,
-    hasPensionIncome: false,
-    hasPrimaryResidenceMortgage: false,
-    mortgageOccupancyYear: 2020,
-    hasLifeInsuranceOrPensionPlan: false,
-    hasDonations: false,
-    childrenCount: 0,
-  });
+  // No seeded object: until the saved answers arrive there is nothing to edit
+  // or to save, so the form must not exist yet.
+  const [answers, setAnswers] = useState<QuestionnaireAnswersDto | null>(null);
 
   // Optional quick estimates
   const [quickSalary, setQuickSalary] = useState('');
@@ -36,17 +29,20 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
 
   const [readiness, setReadiness] = useState<ReadinessDetailsDto | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [saving, setSaving] = useState(false);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const updateChildRelief = (index: number, patch: Partial<ChildReliefHistoryEntry>) => {
+    if (!answers) return;
     const list = [...(answers.childReliefHistory ?? [])];
     list[index] = { ...list[index], ...patch };
     setAnswers({ ...answers, childReliefHistory: list });
   };
 
   const removeChildRelief = (index: number) => {
+    if (!answers) return;
     const list = (answers.childReliefHistory ?? []).filter((_, i) => i !== index);
     setAnswers({ ...answers, childReliefHistory: list.length > 0 ? list : undefined });
   };
@@ -59,9 +55,16 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
   const refresh = async () => {
     setLoading(true);
     const res = await apiClient.getQuestionnaire(workspaceId);
-    if (res.data) {
+    if (res.error || !res.data) {
+      // Never fall back to a default profile: it would show answers the
+      // taxpayer never gave and save them over the real ones.
+      setAnswers(null);
+      setReadiness(null);
+      setLoadError(res.error || 'The tax profile questionnaire could not be loaded.');
+    } else {
       setAnswers(res.data.answers);
       setReadiness(res.data.readiness);
+      setLoadError('');
     }
     setLoading(false);
   };
@@ -72,6 +75,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!answers) return;
     setSaving(true);
 
     const res = await apiClient.saveQuestionnaire(workspaceId, answers);
@@ -87,52 +91,73 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
       setReadiness(res.data.readiness);
 
       let inclusionDowngraded = false;
+      let factsError: string | null = null;
 
-      // If user entered quick financial estimates, save them as confirmed facts
-      if (quickSalary && parseFloat(quickSalary) > 0) {
-        const salaryFact = await apiClient.confirmFact(workspaceId, {
+      // If the user entered quick financial estimates, save them as confirmed
+      // facts. Saving the same questionnaire twice must not stack a second copy
+      // of a figure the engine would then sum: an existing fact on the same
+      // category + box is updated in place (or left alone when the amount is
+      // already right).
+      const quickEstimates = [
+        {
           category: FactCategory.EMPLOYMENT_INCOME,
           fieldKey: 'grossSalary',
-          amount: parseFloat(quickSalary).toFixed(2),
-          currency: 'EUR',
+          amount: quickSalary,
           description: 'Estimated Annual Gross Salary',
-          isIncludedInReturn: true,
-          isSharedWithHousehold: true,
-        });
-        if (factInclusionWarning(true, salaryFact.data?.isIncludedInReturn)) {
-          inclusionDowngraded = true;
-        }
-      }
-      if (quickWithholding && parseFloat(quickWithholding) > 0) {
-        const withholdingFact = await apiClient.confirmFact(workspaceId, {
+        },
+        {
           category: FactCategory.EMPLOYMENT_INCOME,
           fieldKey: 'withholdingTax',
-          amount: parseFloat(quickWithholding).toFixed(2),
-          currency: 'EUR',
+          amount: quickWithholding,
           description: 'Tax Withheld at Source',
-          isIncludedInReturn: true,
-          isSharedWithHousehold: true,
-        });
-        if (factInclusionWarning(true, withholdingFact.data?.isIncludedInReturn)) {
-          inclusionDowngraded = true;
-        }
-      }
-      if (quickMortgage && parseFloat(quickMortgage) > 0) {
-        const mortgageFact = await apiClient.confirmFact(workspaceId, {
+        },
+        {
           category: FactCategory.MORTGAGE_DEDUCTION,
           fieldKey: 'mortgageInterest',
-          amount: parseFloat(quickMortgage).toFixed(2),
-          currency: 'EUR',
+          amount: quickMortgage,
           description: 'Primary Residence Mortgage Interest',
-          isIncludedInReturn: true,
-          isSharedWithHousehold: true,
-        });
-        if (factInclusionWarning(true, mortgageFact.data?.isIncludedInReturn)) {
-          inclusionDowngraded = true;
+        },
+      ].filter((estimate) => estimate.amount && parseFloat(estimate.amount) > 0);
+
+      if (quickEstimates.length > 0) {
+        const factsRes = await apiClient.getFacts(workspaceId);
+        const existingFacts = factsRes.data?.confirmedFacts ?? [];
+
+        if (factsRes.error) {
+          factsError = factsRes.error;
+        } else {
+          for (const estimate of quickEstimates) {
+            const amount = parseFloat(estimate.amount).toFixed(2);
+            const existing = findFact(existingFacts, estimate);
+            const saved =
+              existing && Number(existing.amount) === Number(amount)
+                ? null
+                : existing
+                  ? await apiClient.updateFact(workspaceId, existing.id, { amount })
+                  : await apiClient.confirmFact(workspaceId, {
+                      category: estimate.category,
+                      fieldKey: estimate.fieldKey,
+                      amount,
+                      currency: 'EUR',
+                      description: estimate.description,
+                      isIncludedInReturn: true,
+                      isSharedWithHousehold: true,
+                    });
+
+            if (saved?.error) {
+              factsError = saved.error;
+              break;
+            }
+            if (saved && factInclusionWarning(true, saved.data?.isIncludedInReturn)) {
+              inclusionDowngraded = true;
+            }
+          }
         }
       }
 
-      if (inclusionDowngraded) {
+      if (factsError) {
+        showFeedback('error', `Profile saved, but the quick estimates were not stored: ${factsError}`);
+      } else if (inclusionDowngraded) {
         showFeedback('error', FACT_INCLUSION_DOWNGRADE_MESSAGE);
       } else {
         showFeedback('success', 'Tax profile questionnaire & readiness saved successfully!');
@@ -159,6 +184,26 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
 
   if (loading) {
     return <div className="p-8 text-center text-sm text-slate-500">Loading tax profile questionnaire...</div>;
+  }
+
+  // The form only exists once the saved answers are in hand: saving it writes
+  // confirmed facts, so an editable form seeded with defaults would present
+  // invented answers and then overwrite the real ones.
+  if (!answers) {
+    return (
+      <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-6">
+        <h3 className="text-sm font-bold text-rose-900">The tax profile could not be loaded</h3>
+        <p className="mt-1 text-xs text-rose-800">
+          {loadError || 'The questionnaire is unavailable, so no answers are shown or saved.'}
+        </p>
+        <button
+          onClick={() => refresh()}
+          className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white"
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
 
   const unresolvedTasks = readiness?.tasks.filter((t) => !t.isResolved) || [];

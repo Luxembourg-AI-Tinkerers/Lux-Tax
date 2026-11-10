@@ -5,9 +5,13 @@ R6 (2026 CIC bands) and R7 (épargne-logement age limit) are **deferred to the b
 the current task. They need the Mémorial publication of projet de loi 8775, which does not exist yet:
 `impotsdirects.public.lu/fr/legislation/legi26.html` still ends at the *loi du 16 juillet 2026*
 (Mémorial A N° 360) and `chd.lu/fr/dossier/8775` still shows *22.06.2026 — Déposé*.
-Everything else is implemented and evidenced (488 tests, 8 migrations, zero drift). Active work
-continues on the rest of the repository; the daily watch `861a3eef-273d-470c-a1de-475e4448138b`
-unparks R6/R7 on publication.
+Everything else is implemented and evidenced (**826 unit tests across 81 spec files, 67 API e2e
+tests across 8 suites, 19 migrations, zero drift** — re-measured 2026-11-10). The web app now
+also **builds and runs**: `next build` produces six routes and a real browser pass covers
+register → facts → calculate → approve → package → assessment → invite (see the site-e2e section). The daily-watch task this tracker recorded
+(`861a3eef-273d-470c-a1de-475e4448138b`) is **no longer present** in the scheduler: `schedule_task
+list` returns only an unrelated, disabled school-library follow-up. Nothing will therefore report
+the publication of 8775; re-creating the watch is a separate, explicit step.
 
 **Goal:** implement the Luxembourg resident-tax findings into the app, incrementally and in phases.
 
@@ -52,6 +56,377 @@ unparks R6/R7 on publication.
 - `docs/lir-118-121-bareme-2025-2026.md` — scale + Art. 120bis
 - `lux-deductions-2025-2026-research.md` — FO/DS/CE
 - `research-filing-2025-2026.md` — Form 100
+
+---
+
+### The API actually runs — and the first e2e run found four defects
+
+The ninth pass recorded the API as unrunnable here. It was worse than that: the API **did not
+compile**, and the reason the suite had never caught it was that `tsc -p tsconfig.api.json` was
+dismissed as "107 pre-existing errors from missing packages".
+
+| # | Defect | Fix |
+|---|---|---|
+| Prisma 7 | `schema.prisma` still carried `url = env("DATABASE_URL")`. Prisma 7 rejects it outright — `prisma generate` failed, so there was no client and the API could never boot. | The URL lives in `apps/api/prisma.config.ts`, where Prisma 7 requires it. `prisma generate` now succeeds. |
+| Outbox | `NotificationOutboxService`'s `store` getter returned an object literal whose methods used `this.prisma`; inside a literal `this` is the literal, so every delivery attempt threw before touching the database. | The client is captured before the literal. Typed `enqueue` channels as `DeliveryChannel`. |
+| Rate limit | `request.raw?.res?.setHeader` does not exist on Fastify's `IncomingMessage` and did not typecheck. | Resolved through the reply object. |
+| PROD-2 helper | `requiredApproverCount` took `string` while `taxClass` is nullable. | Accepts `string \| null \| undefined`. |
+
+With those four fixed, `tsc -p apps/api/tsconfig.json` exits 0 for the first time.
+
+**The run.** A fresh database `luxtax_e2e` received all **13 migrations**; the API was built with
+`tsc` and started on port 3011. A live HTTP pass exercised register → login → household →
+calculate → approve → filing package → return-versions → scenario comparison → notifications →
+device registration:
+
+- **16 / 16 live checks** passed, including `calculate` (engine), the stored result's
+  `deductions.specialExpensesCovered`, the CIM split, `approve` and package generation.
+- **6 / 6 jest e2e suites, 53 / 53 tests** passed (59 / 59 across 7 suites after the PROD-2 spec).
+
+Two further defects surfaced only because the suite finally ran:
+
+| # | Defect | Fix |
+|---|---|---|
+| API-10 vs cleanup | The append-only trigger rejects every DELETE on `audit_events`, so a household delete — which cascades into audit rows — could never succeed. Every suite reported a failure in `afterAll`, and a second run then collided on the fixed test e-mails. | The trigger now honours a **session flag** (`luxtax.allow_audit_purge = 'on'`) that only a `SET LOCAL` inside the test transaction sets. Production stays deny-by-default. `apps/api/test/support/audit-purge.ts` is the only caller. |
+| Freelance e2e | The suite asserted `taxableIncome = 14 540` (the €960 couple forfait) while its fixture never declared a tax class: the engine correctly applied the €480 single-filer forfait. | The expectation is corrected to 15 020, with a comment that Class 2 must be declared explicitly — the engine never infers marriage from a second member. |
+
+The e2e harness itself also needed the jest globals typed (`types: ["node", "jest"]` in
+`jest-e2e.json`); without them ts-jest failed to compile every spec.
+
+## 2026-11-10 — the mobile bundle builds (gap 3's last element)
+
+**`cd apps/mobile && npm run build` exits 0**: iOS 957 modules, Android 954, both written as Hermes
+bytecode (~2.5 MB each) under `dist/`, which is git-ignored. The app's own screens, `src/lib`, the
+workspace packages and the Expo runtime are all in the bundle — the first real React Native build in
+this project.
+
+### Correcting the record
+
+Two earlier conclusions were wrong and are retracted here:
+
+- **"expo@52 is truncated on this registry."** It is not. Registry metadata, a direct download whose
+  SHA-1 matches the advertised `shasum`, and jsDelivr's independent mirror all agree on **295 files**
+  with the same contents. `npm pack` returning a small archive was correct.
+- **"expo imports `../lib/statuses`, which it does not ship."** It does not import it; the published
+  file is 50 self-contained lines, identical in a fresh Python extraction and on disk.
+
+### The real blocker
+
+`browserslist`'s nested `caniuse-lite` had been copied incompletely — **611 files, no
+`package.json`, no `dist/lib/`** — so its own `dist/unpacker/feature.js` could not load
+`../lib/statuses` and the Babel transform worker died before Metro transformed anything. Metro names
+whichever file it was transforming when the worker failed, which is why the error pointed at
+`expo/src/errors/ExpoErrorManager.native.ts`, then `@babel/runtime/helpers/interopRequireDefault.js`,
+then `expo-router/entry.js` on three consecutive runs. Three symptoms, one broken dependency.
+
+A second instance: `@react-navigation/elements` shipped **14 of its 29** assets, missing
+`close-icon.png` and `search-icon.png` that its own `index.js` imports.
+
+Both repaired by extracting the published tarballs with Python's `tarfile` — a different extractor
+from npm, which was the one thing worth changing: `caniuse-lite` now has 841 files including
+`dist/lib/statuses.js`, and the navigation package has all 29 assets.
+
+### Repository defects fixed
+
+| Defect | Fix |
+|---|---|
+| `apps/mobile` absent from `pnpm-workspace.yaml`, so no install ever resolved it | added |
+| `@luxtax/*` declared as bare `"*"`, which pnpm 11 does not link (default `link-workspace-packages=false`); it looked for `@luxtax/config` on the registry | `workspace:*` |
+| No lockfile importer for the app → `--frozen-lockfile` would fail | regenerated; `pnpm install --frozen-lockfile` passes |
+| `metro.config.js` watched `node_modules` again, which empties Metro's file map when that path is a junction (`Cannot read properties of undefined (reading 'get')`) | watch `packages/` only |
+| No `assets/`, `babel.config.js`, `metro.config.js`; `@babel/runtime` and `expo-asset` undeclared | added in this pass |
+
+### The pnpm shim on this machine is a no-op
+
+`pnpm -v` prints nothing and exits 0: the installed `pnpm.ps1` calls `node_modules/pnpm/pnpm` without
+a file extension. Every earlier "pnpm install never finishes" observation measured a command that
+never ran. Invoked properly (`node …/pnpm/bin/pnpm.mjs`) it reports **11.18.0** and resolves the
+mobile graph (1347 packages) before stalling on tarball fetches — the sandbox destroys its outbound
+connections (`UND_ERR_DESTROYED`), and `--offline` cannot help because the store never held the
+mobile dependencies.
+
+**Verification.** 826 unit tests (159 suites, 81 files), 67 API e2e (8 suites), three typechecks at
+0, `next build` six routes, `npm run build` in `apps/mobile` green for both platforms.
+
+---
+
+## 2026-11-10 — the three policy items, closed
+
+The review-closure pass recorded three findings as deliberately open. All three are now closed, with
+the decision written next to the code.
+
+### L3 — a rejected login is an audit event
+
+`USER_LOGIN_FAILED` (new enum value + migration `20261110160000_login_failed_audit`) is emitted on
+every refusal: wrong password, inactive account, failed second factor, **and an address that matches
+no account**. The last one matters most — it is what an enumeration or credential-stuffing run
+produces, and it was the only case that used to leave no trace at all.
+
+`audit_events.actorId` became nullable for it. That is the honest model: with no account there is no
+actor, and dropping those rows would delete the signal. Existing rows keep their actor and their
+hashes — the canonical payload hashes the id when present and `null` when absent, so the chain
+verifies unchanged.
+
+The emitter never records the submitted secret (asserted by an e2e that greps the whole row for it)
+and never turns a refusal into a 500: an audit failure is logged and the caller still gets its 401.
+
+### L6 — proxy trust is configuration, and the default is "do not trust"
+
+`X-Forwarded-For` is client-controlled. The auth controller used to read it directly
+(`req.ip || req.headers['x-forwarded-for']`), which let any caller write an arbitrary address into the
+audit trail and reset the per-IP rate-limit bucket at will. That read is gone.
+
+`TRUST_PROXY` now builds Fastify's `trustProxy` (`apps/api/src/config/proxy-trust.ts`):
+
+| Value | Meaning |
+|---|---|
+| unset / `false` | the socket address is the client address; the header is never consulted |
+| `1` … `n` | trust the last *n* hops (compiled to Fastify's hop predicate) |
+| `10.0.0.0/8,...` | trust the header only when the peer is in a listed network |
+| `true` | trust unconditionally — only correct when nothing but the proxy can reach the API |
+
+An unreadable value falls back to **no trust**: a typo in a deployment variable must not silently
+enable the header. `proxy-trust.spec.ts` (6 tests) pins that, including the case where a bare word
+was being accepted as a network list — the test caught it and the parser now validates every entry.
+
+### M10 — retention, erasure and export
+
+| Right | Endpoint |
+|---|---|
+| See where I am signed in | `GET /api/users/me/sessions` |
+| Get a copy of my data | `GET /api/users/me/export` |
+| Erase my account | `DELETE /api/users/me` |
+
+`Session.ipAddress`/`userAgent` were declared but never written, so the list would have been empty of
+anything a user could recognise; they are now recorded at issue. Export returns one JSON document
+(profile, memberships, workspaces, the facts the user owns, their document metadata, filing records,
+their own audit events, sessions) and is itself audited.
+
+Erasure anonymises the identity in place — address replaced by `deleted-<uuid>@deleted.invalid`,
+password hash destroyed, verification and MFA state cleared, `tokenVersion` bumped, profile names
+blanked — deletes sessions, push registrations and memberships, and renames a sole household to
+"Deleted household".
+
+**What it deliberately does not do:** delete the household, its workspaces or the audit trail. The
+append-only trigger rejects the `UPDATE` a cascade would need, so a household with any audit history
+cannot be deleted at all — a constraint the database enforces, not a preference. A filed return is
+also a tax record with its own retention. And a shared household blocks erasure with **409** while
+another active member depends on the owner: erasing them would leave a co-filer unable to administer
+or file.
+
+Retention of derived data: the raw text a model read from a document (`DocumentExtraction.extractedText`
+and `rawJson`) is cleared as soon as every fact of that document is confirmed, and expired sessions are
+deleted as the next one is issued. Policy, including the parts that remain manual, is in
+`docs/data-retention.md`.
+
+Implementation note: `document_extractions.extractedText` had to become nullable
+(`20261110161000_retention_and_lifecycle`), which also carries the two lifecycle events.
+
+**Verification.** `account-lifecycle.e2e-spec.ts` — 8 e2e tests (failed login ×3 paths, spoofed
+header ignored, session list, export, erasure refusal, erasure effects). `proxy-trust.spec.ts` — 6
+unit tests. The receipt-scanning e2e now asserts the snippet is cleared after confirmation.
+**826 unit / 159 suites / 81 files; 67 API e2e / 8 suites; three typechecks at 0.**
+
+---
+
+## 2026-11-10 — PROD-2: closed in code, and now enforced by the build
+
+**Status: RESOLVED.** The code review's H6 finding is closed. All three approval gates in
+`apps/api/src/modules/filing/filing.service.ts` compute the required approvers through the single
+helper `requiredApproverIds`:
+
+| Gate | Line | Call |
+|---|---|---|
+| `approveReturn` | 190 | `requiredApproverIds(workspace.household.members)` |
+| `recordFiling` | **1222** | `requiredApproverIds(workspace.household.members)` |
+| history builder | 1543 | `requiredApproverIds(workspace.household.members)` |
+
+No other approver computation remains in `apps/api/src`. The compiled artifact agrees: the three
+matching lines in `apps/api/dist/.../filing.service.js` call the helper too, so the running server is
+not on a stale build.
+
+**Why the finding stayed open in the record.** The review captured the defect with its original line
+number (1205) and a code quote; the fix moved the line to 1222, and the review body kept reading in
+the present tense. Both are corrected: the review now shows an explicit BEFORE/AFTER pair and leads
+with RESOLVED.
+
+**Two guards, each mutation-checked by reverting that exact line:**
+
+1. `apps/api/test/prod2-source-invariant.spec.ts` — **4 tests, new.** Asserts the helper is called
+   exactly three times in `filing.service.ts`, that no gate rebuilds the list from household members,
+   that the helper filters `VIEWER` and nothing else (a widened exclusion would silently lower the
+   approval bar for a joint return), and that no other module in `apps/api/src` maps
+   `household.members` into approvers. Reverting the `recordFiling` line fails **3 of the 4**.
+2. `apps/api/test/viewer-approver.e2e-spec.ts` — **6 tests.** Builds a Class 2 household of two
+   filers plus a VIEWER through the public API: the viewer gets **403** on approve, both filers reach
+   `APPROVED`, and the return **files (201)**. Reverting the same line fails **3 of the 6**, with the
+   predicted 400 "Every required household member must approve the return before it is filed".
+
+**Verification after the change:** **820** unit tests (158 suites, 80 files), **59 / 59 API e2e**
+(7 suites, rebuilt `luxtax_e2e`, 17 migrations), `tsc -p tsconfig.test.json` 0,
+`tsc -p apps/api/tsconfig.json` 0.
+
+**Observation, not a change (Low).** `questionnaire.service.ts:211` accepts `MARRIED` when
+`household.members.length >= 2`, which a VIEWER satisfies. The engine then treats the return as
+Class 2 without an assessed spouse (`selectFilerMembers` only considers filer roles, and
+`class2WithoutSpouse` is reserved for widow(er)/divorced), which is a coherent outcome rather than a
+crash — so this is a copy/validation nicety, not the PROD-2 defect, and changing it would need a
+product decision on what a viewer is allowed to unlock.
+
+## 2026-11-10 — build verification: web green, mobile unbundleable here
+
+`next build` produces the six routes and exits 0 (`BUILD_ID 6ZD8uFg_EMiGCLT8KGH_f`); nothing new to
+fix. The mobile app had never been bundled, and the attempt exposed **five real defects**, all fixed:
+
+1. `app.json` referenced three images that **did not exist** (no `assets/` at all) — any Expo command
+   aborted on config validation.
+2. **No `babel.config.js`** — Metro had no transform for `.tsx`.
+3. **No `metro.config.js`**, although the app imports `@luxtax/*` from outside its root — every screen
+   failed with "Unable to resolve module @luxtax/contracts".
+4. **`@babel/runtime` was not declared** — Metro's own prelude failed to resolve its helpers.
+5. **`expo-asset` was not declared** — `@expo/metro-config` needs it before bundling.
+
+With those fixed, Metro resolves **772 modules** of the real app (screens, `src/lib`, the workspace
+packages through symlinks) and then dies inside `expo` itself:
+`src/errors/ExpoErrorManager.native.ts: Cannot find module '../lib/statuses'`.
+
+That is an environment defect: `expo@52` ships TypeScript sources only (`main: src/Expo.ts`,
+`build/` contains **0** `.js` modules), and every install of it obtainable here is truncated —
+83 source modules with an empty `src/lib`, reproduced by two independent installs of two different
+major versions, after which `npm install` into the tree aborts with `Invalid Version`.
+`npm cache verify` found and cleared 69 corrupt entries (128 MB), which is how `react-native`
+eventually installed at all.
+
+`apps/mobile/package.json` gained a `build` script (`expo export … --output-dir dist`) so the bundle
+is one command on a machine with a working install. Details:
+`build-verification-2026-11-10.md`.
+
+---
+
+## 2026-11-10 — review closure: 21 security + 19 code findings
+
+Every finding from `security-review-2026-11-10.md` and `code-review-2026-11-10.md` is closed except
+three recorded product decisions (retention/erasure, the failed-login audit event, proxy trust). The
+detail is in `review-closure-2026-11-10.md`; this is the summary.
+
+**Criticals, both re-exploited to prove they are gone.** An allowlisted address registered without
+proof is now refused (`/api/admin/audit` → 403, was 200 with 105 rows across 12 households), and the
+process refuses to boot without `JWT_ACCESS_SECRET` instead of signing with a literal.
+
+**Highs.** The private-fact leak is closed in one predicate (snapshot, engine and package now agree);
+rate limiting is on by default with a per-address credential bucket (401×5 then 429); e-mail
+verification is real and gates both admin and invitation acceptance; helmet is registered (6/6
+headers); `@Roles` covers the three viewer-writable routes; the activity feed is redacted for
+non-filers; MFA is wired end to end (enrol/activate/disable, sealed seed, recovery codes, replay
+guard); refresh tokens gained families with reuse detection and `tokenVersion` makes logout
+immediate.
+
+**Engine.** A pension withholding is no longer taxed as income; a standalone qualifying dividend is
+no longer untaxed; the Art. 115 tranche reaches the base; CIS/CIP tie-break is strict; future-dated
+years are refused with a warning; one rounding rule remains.
+
+**Data.** Assessments are unique per (workspace, tax year); the audit chain takes a per-household
+advisory lock so it cannot fork; `filing-record` no longer counts VIEWERs; the phantom
+`matriculeEncrypted` column is gone.
+
+**Verification.** 826 unit tests, 67 API e2e (8 suites), three typechecks at 0, `next build` green, 17
+migrations. The probe `tmp/verify-hardening.cjs` re-runs the security exploits on demand.
+
+---
+
+## 2026-11-10 — full site e2e: the browser found what the API tests could not
+
+The API e2e of the previous pass runs through `app.inject`, which sends no preflight, no `Origin`
+and never exercises the client bundle. The web app had never been built, so its first real run in a
+browser was also its first run at all. It found **seven defects**, five of them user-blocking.
+
+### Fixed
+
+| # | Defect | Why it mattered | Fix |
+|---|---|---|---|
+| S1 | **CORS preflight answered `GET,HEAD,POST` only.** | Every `PUT` / `PATCH` / `DELETE` from the browser died as *“Failed to fetch”*: saving the questionnaire, editing or deleting a fact, changing a document's visibility, saving a freelance profile, saving notification preferences. The whole editing surface of the app was unusable. | Explicit methods + allowed headers in `main.ts`. |
+| S2 | **The API client always declared `Content-Type: application/json`**, even on bodyless POSTs. | Fastify rejected `POST /calculate`, `/approve`, `/read-all`, `/rollover` with *“Body cannot be empty when content-type is set to 'application/json'”* — the first tax calculation from the UI was impossible. | The header is only sent when a body exists (`packages/api-client`). |
+| S3 | **The extractor typed a salary certificate as a childcare invoice** and produced `trainingCourseExpense €76,800`. | Confirming it would have booked a €76,800 *deduction* from a salary certificate — a large understatement of tax. Root cause: the training branch matched the substring `'certif'`, inside “**certif**icat”. | The trigger is gone; the salary branch matches on de-accented text. |
+| S4 | **Codes 105 and 141 were silently dropped** from the app's own sample. | The withholding regex required “retenue d'imp**ô**t” with a circumflex; the sample says “impot”. Two of the four certificate lines were lost. | Certificate lines are parsed by **code** (`101`, `103`, `105`, `141`), accepting both `101. …` and `Code 101 - …`, which is accent-, wording- and language-independent. |
+| S5 | **Accepting an invitation ignored the invited address, and overwrote the member's role.** | A `PRIMARY_FILER` who opened a `CO_FILER` invitation was **demoted to CO_FILER** (observed in the database), and any signed-in user holding a link could join the household. | The accepting account must match the invited e-mail (403 otherwise); an existing membership keeps its role; a revoked invitation is refused. |
+| S6 | The objection deadline and follow-up date stayed blank after importing a bulletin. | The panel told the user the dates came from the API, and showed empty fields. | The import handler fills both states from the response, as the initial load already did. |
+| S7 | “Return version approved successfully! **Both spouses can now review.**” on a single-filer return. | Wrong copy for the common case. | The spouse clause is only appended when the household has more than one active member. |
+
+### Verified in a real browser, against the real API and PostgreSQL
+
+| Step | Result |
+|---|---|
+| `next build` (first ever) | 6 routes, exit 0 |
+| Register → dashboard | ✅ |
+| Sign out → sign in | ✅ |
+| Quick Load 2025 demo facts | 6 facts, gross salary €75,000 |
+| Calculate | taxable €61,385, marginal 39 %, effective 20.2 %, refund €389.63, 6 rules |
+| Approve return | ✅ liability €12,410.37 |
+| Generate filing package | 10 Form 100 boxes, SHA-256 checksum |
+| Questionnaire save (PUT) | ✅ after S1 |
+| Upload sample certificate | SALARY CERTIFICATE, **4** figures (101/103/105/141) after S3+S4 |
+| Confirm a figure | 4 → 3 pending |
+| Import ACD bulletin | **variance €0.00 — exact match** |
+| Record filing on an invalidated return | correctly refused (400) and shown to the user |
+| Admin console as a normal user | API 403, shell renders |
+| Invitation page | renders inviter/role/expiry; wrong-account accept → **403** after S5 |
+
+### Found, reported, **not** changed
+
+| Item | Why it is left alone |
+|---|---|
+| Demo facts omit `mortgageFixationYear`, so the demo's own €3,500 mortgage interest is refused (with a warning). | The engine's Phase 38 guard is right; the demo dataset needs the missing field. Deciding the demo's legal inputs is a product call. |
+| **DS 1553 = EUR 3,200 against an engine line of EUR 3,700** — **RESOLVED, not a defect.** 1553 carries the expenses covered by the statutory minimum (1503 Art. 111bis = 3,200); Art. 112 donations are additional and sit on 1611 (500); LRCP 1609 is 0, so 3,200 + 0 + 500 = 3,700 and the package reconciles to the engine. Folding the donation into 1553 would double-count it. Pinned by `apps/api/test/form100-case-map.spec.ts`. |
+| The admin shell shows “● HEALTHY” and zero counters for a non-admin. | The API correctly returns 403; the shell should say “administrator access required”. |
+| After a material change invalidates the approval, the Assessment tab still offers “record filing”. | The failure and its message are correct; the tab simply does not say “re-approve first”. |
+| The two web render specs fail whenever `apps/web/node_modules` exists. | They need React 18 (`react-test-renderer` 18 in `.tools`) while the app is React 19. A harness fragility that a normal `pnpm install` would expose; it is not a product regression (620/620 pass with the folder absent). |
+
+**Verification.** `next build` exit 0 · **620 / 620** unit tests · **53 / 53** API e2e tests ·
+`tsc -p tsconfig.test.json` and `tsc -p tsconfig.render.json` exit 0 · 13 migrations, zero drift.
+
+**Environment note.** `pnpm install` still links at roughly ten packages per minute here and never
+finishes; the app was therefore run through a flat junction farm (`tmp/flat`) over the already
+populated pnpm store. That changes how the suite was executed, not what it proves.
+
+---
+
+---
+
+## 2026-11-09 — tenth pass: the recorded residuals, closed
+
+The ninth pass left six items "recorded, not changed". This pass changes five of them and adds the
+verification the earlier passes could not produce.
+
+| # | Delivered | Evidence |
+|---|---|---|
+| PROD-2 | **A VIEWER no longer counts as a required approver.** The write-role guard forbids a VIEWER from approving, so a Class 2 household that invited one could never reach APPROVED: the gate waited for an approval the API answered with 403. `requiredApproverIds` / `requiredApproverCount` are pure helpers in `return-version-history.ts`; **all three** service call sites use them (`approveReturn`, `recordFiling`, the history builder), and `getLatestReturnVersion` no longer counts every active member. | `apps/api/test/return-version-history.spec.ts` — 7 unit tests; `apps/api/test/viewer-approver.e2e-spec.ts` — 6 e2e tests over the public API (see the 2026-11-10 PROD-2 section) |
+| Imputation order | **The non-refundable child relief is now imputed before the refundable CIM.** Art. 122 / 123bis bite only on the tax still due, while Art. 154ter al. 2 pays the CIM excess out — imputing the refundable credit first extinguished the tax the relief had to reduce and destroyed up to EUR 922.50 per child. The order is now: non-refundable credits → child relief → CIM. On the reference household (Class 1a, EUR 40,000, one moderated child) the dégrèvement goes from 0 to 749.96 and the refund from 2,754.04 to 3,504. The household is never worse off, and a second test pins that the CIM refund grows by exactly the relief. | `packages/tax-engine/src/engine.ts`; `packages/tax-engine/test/tax-engine.spec.ts` — 1 test rewritten, 1 added |
+| Form 100F — Art. 14 vs 91 | **A filer carrying both natures no longer has them netted together.** The accumulator was keyed by owner only, so one Art. 91 fact turned the whole group liberal and dragged the commercial profit onto sheet I. It is now keyed by owner **and** nature, and each nature gets its own line and its own correct label. | `apps/api/src/modules/filing/filing.service.ts` |
+| Form 100F — foreign nature | **Exempt foreign income names the sheet it belongs on.** `foreignNatureSheet` maps `foreignSalary` → S, `foreignPension` → P, `foreignCapital` → CM, `foreignRental` → L; an unknown or absent key returns `null` and the package falls back to the generic "S/P/CM/L" sentence instead of guessing. The credit stays on RD 1081/1082 either way. | `apps/api/src/modules/filing/form100-case-map.ts`; `apps/api/test/form100-case-map.spec.ts` — 3 new tests |
+| Legacy snapshots | **A stored result from an earlier model version is reconstructed, not discarded.** `normalizeStoredCalculation` rebuilds `deductions.specialExpensesCovered` from its four components and the CIM split from the cote and the non-refundable credits — the only two fields the numbers determine. A stored split whose halves do not add up to the credit is recomputed rather than displayed. A snapshot with no breakdowns at all stays `legacy: true` and the calculator keeps offering a recalculation. | `apps/api/src/modules/calculations/calculation-snapshot.ts`; `apps/api/test/calculation-snapshot.spec.ts` — 15 tests |
+| SMTP | **A real SMTP client, not a JSONL placeholder.** Dependency-free (`net`/`tls`): implicit TLS on 465, STARTTLS on 587, `AUTH PLAIN` / `AUTH LOGIN`, dot-stuffing, CRLF framing, base64 UTF-8 body, RFC 2047 subject, a per-command timeout, and a `X-LuxTax-Notification-Id` correlation header. `SMTP_HOST` selects it; unset keeps the local sink. Proven against an in-process SMTP server that speaks the protocol and records the command sequence. | `apps/api/src/modules/notifications/adapters/smtp-email.transport.ts`; `apps/api/test/smtp-transport.spec.ts` — 14 tests |
+| Push | **A real push path, with the device registry it needed.** `PushDevice` (migration `20261109170000_add_push_devices`, applied, zero drift), `POST …/notifications/devices` and `…/devices/revoke`, and an Expo push transport that batches one ticket per live token and fails a fully-rejected send so the outbox retries. A revoked token is never resurrected implicitly; a token moving to another account is moved, not duplicated. | `expo-push.transport.ts`, `notification-devices.ts`, `notification-devices.service.ts`; `expo-push-transport.spec.ts` (8) + `notification-devices-rules.spec.ts` (9) |
+| Stale e2e | **The two pre-LEG-7 assertions are corrected.** `freelance-lifecycle` now expects the single net-profit line per owner (C/A 501 / 502) instead of the removed box numbers 21–24, and asserts the gross/expense lines no longer exist; `tax-lifecycle-full` no longer pins the guide at four sections. | `apps/api/test/*.e2e-spec.ts` |
+
+**Verification (this machine).** **620 / 620 unit tests** across **51 spec files** and **53 / 53 API e2e tests** across **6 suites**; `tsc -p
+tsconfig.test.json` exit 0; `tsc -p tsconfig.render.json` exit 0; `node .tools/syntax_check.cjs`
+exit 0. Migrations: **12**, `prisma validate` valid, `migrate diff --exit-code` on PostgreSQL 18.4
+reports **no difference**.
+
+**Still not run, and why.**
+
+| Item | Blocking fact |
+|---|---|
+| ~~API e2e~~ | **Now run** — see “The API actually runs” above. |
+| **Mobile on a device — BUILDS.** `cd apps/mobile && npm run build` bundles iOS (957 modules) and Android (954) to Hermes bytecode; the earlier blocker was a truncated `caniuse-lite` copy, not the expo package. A device/simulator run still needs hardware this machine does not have. |
+| Browser rendering | No Next build was run; the web components are typechecked through `tsconfig.render.json` and the render specs. |
+
+**Recorded, not changed.** Foreign income on a fact is still expressed through its field key rather
+than a first-class `nature` column; the Form 100F still has no foreign sheet, so the package names
+the sheet instead of emitting a case. The 2026 CIC bands and the loi 8775 épargne-logement limit
+remain parked exactly as the ninth pass recorded — no figure was invented.
+
+---
 
 ---
 
@@ -102,7 +477,7 @@ four new files added to its list.
 |---|---|
 | API e2e (`tax-lifecycle-full`, `admin-governance`, `household-collaboration`, `freelance-lifecycle`, `receipt-scanning`) | `@nestjs/*` and the generated Prisma client are absent; `pnpm install` hangs in this environment before linking. The code is transpiled and reviewed, not executed against a database. |
 | API e2e against the migrated database | Migrations are applied and drift-free (below), but `@nestjs/*` and `@prisma/client` still cannot be installed here, so no endpoint was executed. |
-| Mobile on a device | No native build here; the MOB renderers remain mounted through the `react-native` shim. |
+| **Mobile on a device — BUILDS.** `cd apps/mobile && npm run build` bundles iOS (957 modules) and Android (954) to Hermes bytecode; the earlier blocker was a truncated `caniuse-lite` copy, not the expo package. A device/simulator run still needs hardware this machine does not have. |
 | A real push provider / SMTP account | The outbox, retry and adapters are implemented; e-mail defaults to a **local JSONL sink** and push is **not configured** until a provider is wired (`useTransport`) and a device-token store exists. `NOTIFICATION_PUSH_ENABLED=true` turns the local push sink on for a smoke test. |
 | Foreign income split by nature (S/P/CM/L) | The 100F has no foreign sheet and the app has no per-fact foreign nature; the package emits an INSTRUCTION naming the relevant sheets and RD 1081/1082 rather than guessing a case. |
 | Legacy snapshots / audit rows | No database here; stored results written before this pass keep their old shape (`specialExpensesCovered` absent, no `class2WithoutSpouse`). |

@@ -71,6 +71,56 @@ function stubApi(factEcho: unknown = { id: 'f1', isIncludedInReturn: true }): Ca
   return calls;
 }
 
+/**
+ * A workspace whose gross salary is already confirmed at 40,000: the quick
+ * estimate below must update that fact, never add a second one.
+ */
+function stubWithExistingSalary(): Call[] {
+  const calls: Call[] = [];
+  (globalThis as { fetch: unknown }).fetch = async (url: unknown, init: unknown) => {
+    const request = (init ?? {}) as { method?: string; body?: string };
+    const method = request.method ?? 'GET';
+    const parsed = request.body ? JSON.parse(request.body) : undefined;
+    calls.push({ url: String(url), method, body: parsed });
+
+    const target = String(url);
+    if (target.endsWith('/facts') && method === 'GET') {
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({
+          extractedFacts: [],
+          confirmedFacts: [
+            {
+              id: 'f-existing',
+              category: 'EMPLOYMENT_INCOME',
+              fieldKey: 'grossSalary',
+              amount: '40000.00',
+              isIncludedInReturn: true,
+            },
+          ],
+        }),
+      };
+    }
+    if (target.includes('/facts/')) {
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({ id: 'f-existing', amount: '50000.00', isIncludedInReturn: true }),
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ answers: ANSWERS, readiness: READINESS }),
+    };
+  };
+  return calls;
+}
+
 interface Node {
   type: unknown;
   props: Record<string, unknown>;
@@ -275,5 +325,42 @@ describe('QuestionnaireView — reads, saves, and writes facts', () => {
       text.includes(FACT_INCLUSION_DOWNGRADE_MESSAGE),
       `downgrade message missing from:\n${text}`,
     );
+  });
+
+  it('shows an error state — not an editable form — when the questionnaire cannot be loaded', async () => {
+    (globalThis as { fetch: unknown }).fetch = async () => ({
+      ok: false,
+      status: 500,
+      statusText: 'Server Error',
+      json: async () => ({ message: 'Questionnaire unavailable' }),
+    });
+
+    await TestRenderer.act(async () => {
+      current = TestRenderer.create(
+        React.createElement(QuestionnaireView, { workspaceId: 'ws-1', onProfileUpdated: () => {} }),
+      );
+    });
+
+    const tree = nodes(current!.toJSON());
+    const text = textOf(current!.toJSON()).join('');
+    assert.ok(text.includes('Questionnaire unavailable'), `error message missing from:\n${text}`);
+    assert.equal(tree.some((n) => n.type === 'form'), false, 'no form may be editable before the GET succeeds');
+    assert.equal(tree.some((n) => n.type === 'input'), false, 'no invented answers may be rendered');
+  });
+
+  it('updates the fact it already created instead of saving a duplicate', async () => {
+    const calls = stubWithExistingSalary();
+    const { tree } = await mount();
+    await type(tree, 'e.g. 75000', '50000');
+    await submitForm(nodes(current!.toJSON()));
+
+    assert.equal(
+      calls.some((c) => c.url.includes('/facts/confirm')),
+      false,
+      'a quick estimate that already exists must not be confirmed twice',
+    );
+    const patch = calls.find((c) => c.method === 'PATCH' && c.url.includes('/facts/f-existing'));
+    assert.ok(patch, `no PATCH on the existing fact: ${JSON.stringify(calls)}`);
+    assert.equal((patch!.body as Record<string, unknown>).amount, '50000.00');
   });
 });

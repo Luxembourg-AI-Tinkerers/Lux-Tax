@@ -7,6 +7,36 @@ import {
   Logger,
 } from '@nestjs/common';
 
+/** What a 5xx says unless someone explicitly opted into more. */
+const SAFE_5XX_MESSAGE = 'An unexpected error occurred. Please try again later.';
+
+/**
+ * Database errors are the richest leak we have: Prisma embeds the failing
+ * invocation, node-postgres embeds the statement and its bound values. They are
+ * never serialised to a client, not even when EXPOSE_ERROR_DETAILS is on.
+ */
+function isDatabaseError(exception: unknown, message: string): boolean {
+  if (!exception || typeof exception !== 'object') {
+    return /PrismaClient|Invalid `prisma\.|prisma\.\$|\$queryRawUnsafe|\$executeRawUnsafe/.test(message);
+  }
+
+  const error = exception as Record<string, unknown>;
+  if (typeof error.name === 'string' && error.name.startsWith('PrismaClient')) {
+    return true;
+  }
+  // P#### = Prisma request/validation code; ##### = SQLSTATE from node-postgres.
+  if (typeof error.code === 'string' && (/^P\d{4}$/.test(error.code) || /^\d{5}$/.test(error.code))) {
+    return true;
+  }
+  // node-postgres attaches the server's severity/routine to the thrown error.
+  if (typeof error.severity === 'string' || typeof error.routine === 'string') {
+    return true;
+  }
+  return /PrismaClient|Invalid `prisma\.|prisma\.\$|\$queryRawUnsafe|\$executeRawUnsafe|22P02|P20\d{2}/.test(
+    message,
+  );
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
@@ -33,11 +63,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message = exception.message;
     }
 
-    // Never leak stack trace or internal SQL errors to client
-    const clientMessage =
-      status >= 500 && process.env.NODE_ENV === 'production'
-        ? 'An unexpected error occurred. Please try again later.'
-        : message;
+    // 4xx messages are written by us and are what the client needs; 5xx details
+    // stay server-side unless EXPOSE_ERROR_DETAILS=true was set on purpose.
+    // An unset NODE_ENV used to mean "development" and leaked everything.
+    let clientMessage = message;
+    if (status >= 500) {
+      const exposeDetails = process.env.EXPOSE_ERROR_DETAILS === 'true';
+      clientMessage =
+        exposeDetails && !isDatabaseError(exception, message) ? message : SAFE_5XX_MESSAGE;
+    }
 
     if (status >= 500) {
       this.logger.error(

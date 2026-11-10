@@ -2,7 +2,15 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { UserDto, AuthResponseDto } from '@luxtax/contracts';
-import { apiClient } from './api';
+import {
+  ACCESS_TOKEN_KEY,
+  LOGOUT_URL,
+  REFRESH_TOKEN_KEY,
+  apiClient,
+  clearSession,
+  readStoredToken,
+  storeSession,
+} from './api';
 
 interface AuthContextType {
   user: UserDto | null;
@@ -19,7 +27,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const refreshUser = async () => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('luxtax_access_token') : null;
+    const token = readStoredToken(ACCESS_TOKEN_KEY);
     if (!token) {
       setUser(null);
       setIsLoading(false);
@@ -31,8 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(res.data);
     } else {
       setUser(null);
-      localStorage.removeItem('luxtax_access_token');
-      localStorage.removeItem('luxtax_refresh_token');
+      clearSession();
     }
     setIsLoading(false);
   };
@@ -42,28 +49,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = (tokens: AuthResponseDto['tokens'], loggedInUser: UserDto) => {
-    localStorage.setItem('luxtax_access_token', tokens.accessToken);
-    localStorage.setItem('luxtax_refresh_token', tokens.refreshToken);
+    storeSession(tokens);
     setUser(loggedInUser);
   };
 
   const logout = async () => {
-    const refreshToken = localStorage.getItem('luxtax_refresh_token') || undefined;
+    const refreshToken = readStoredToken(REFRESH_TOKEN_KEY) || undefined;
+    const accessToken = readStoredToken(ACCESS_TOKEN_KEY);
     try {
-      // Best effort logout on server
-      await fetch('http://localhost:3001/api/auth/logout', {
+      // Best effort: revoke the refresh token server-side. The local session is
+      // ended below whatever the server answers.
+      const res = await fetch(LOGOUT_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('luxtax_access_token')}`,
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
         body: JSON.stringify({ refreshToken }),
       });
-    } catch {
-      // Ignore network errors on logout
+      if (!res.ok) {
+        // Not swallowed: a refresh token that failed to be revoked stays valid
+        // until it expires, which the console record must make visible.
+        console.error(
+          `Logout request failed with HTTP ${res.status}; the local session was cleared anyway, the refresh token may not be revoked.`,
+        );
+      }
+    } catch (err) {
+      console.error('Logout request failed; the local session was cleared anyway.', err);
     }
-    localStorage.removeItem('luxtax_access_token');
-    localStorage.removeItem('luxtax_refresh_token');
+    clearSession();
     setUser(null);
     window.location.href = '/login';
   };

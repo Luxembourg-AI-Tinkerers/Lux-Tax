@@ -12,6 +12,7 @@ import {
 } from '@luxtax/contracts';
 import { CameraScanModal } from './CameraScanModal';
 import { factInclusionWarning } from '../lib/fact-inclusion';
+import { nextDocumentVisibility, removesFromReturn } from '../lib/document-visibility';
 
 interface DocumentsViewProps {
   workspaceId: string;
@@ -164,10 +165,19 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
   };
 
   const handleToggleVisibility = async (doc: DocumentDto) => {
-    const nextVis =
-      doc.visibility === DocumentVisibility.PRIVATE_DRAFT
-        ? DocumentVisibility.SHARED_FOR_DISCUSSION
-        : DocumentVisibility.INCLUDED_IN_RETURN;
+    const nextVis = nextDocumentVisibility(doc.visibility);
+
+    // Taking a document out of the return changes what gets filed, so it is a
+    // confirmed action rather than one click of a cycle. Declining leaves the
+    // document exactly as it was.
+    if (
+      removesFromReturn(doc.visibility, nextVis) &&
+      !confirm(
+        `"${doc.originalName}" is included in the return. Changing it to ${nextVis.replace(/_/g, ' ')} keeps the file in the vault but removes its figures from the return. Continue?`,
+      )
+    ) {
+      return;
+    }
 
     const res = await apiClient.updateDocumentVisibility(workspaceId, doc.id, nextVis);
     if (res.error) {
@@ -273,7 +283,11 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
           }`}
         >
           <span>{feedback.message}</span>
-          <button onClick={() => setFeedback(null)} className="text-xs opacity-60 hover:opacity-100">
+          <button
+            onClick={() => setFeedback(null)}
+            aria-label="Dismiss notification"
+            className="text-xs opacity-60 hover:opacity-100"
+          >
             ✕
           </button>
         </div>

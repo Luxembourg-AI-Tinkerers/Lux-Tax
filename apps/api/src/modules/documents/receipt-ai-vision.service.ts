@@ -18,6 +18,17 @@ export interface ReceiptAiExtractionResult {
   fields: ExtractedField[];
 }
 
+/**
+ * Lower-case text with diacritics stripped (é → e, ü → u …).
+ *
+ * Document text arrives from OCR, from PDFs and from hand-typed samples, and the
+ * same certificate spells "rémunération" both ways. Matching on the de-accented
+ * form makes the keyword lists independent of that.
+ */
+export function stripAccents(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 @Injectable()
 export class ReceiptAiVisionService {
   private readonly logger = new Logger(ReceiptAiVisionService.name);
@@ -63,6 +74,36 @@ export class ReceiptAiVisionService {
 
     // 4. Fallback: Local deterministic multimodal & pattern extraction engine
     return this.extractLocally(rawString, fileName, isImage, primaryModelId);
+  }
+
+  /**
+   * Read the amount printed on a numbered line of a certificate, e.g.
+   * "105. Retenue d'impôt sur traitements et salaires: 13950.00 EUR".
+   *
+   * Returns the LAST number on that line, which is the amount in every layout
+   * seen so far (the label may itself contain numbers such as "Art. 111").
+   */
+  private codeAmount(
+    text: string,
+    codes: readonly string[],
+  ): { value: string; snippet: string } | null {
+    for (const code of codes) {
+      // Both layouts occur: "101. Rémunération brute …" and
+      // "Code 101 - Rémunération brute …". The code may be prefixed by the
+      // word "Code" and is followed by a separator or the label itself.
+      const linePattern = new RegExp(`^\\s*(?:code\\s*)?${code}\\b[^\\n]*$`, 'im');
+      const line = linePattern.exec(text);
+      if (!line) continue;
+
+      const amounts = line[0].match(/\d{1,3}(?:[ .,]\d{3})*(?:[.,]\d{2})|\d+[.,]\d{2}/g);
+      if (!amounts || amounts.length === 0) continue;
+
+      return {
+        value: amounts[amounts.length - 1],
+        snippet: line[0].trim().slice(0, 160),
+      };
+    }
+    return null;
   }
 
   private async callExternalVisionModel(
@@ -145,6 +186,11 @@ Return JSON with format:
     modelUsed: string,
   ): ReceiptAiExtractionResult {
     const textLower = (rawText + ' ' + fileName).toLowerCase();
+    // Taxpayers, employers and the ACD all produce documents with and without
+    // accents ("CERTIFICAT DE REMUNERATION" vs "Certificat de Rémunération").
+    // Keyword matching runs on the de-accented text so neither spelling is
+    // missed — the sample this app ships is the unaccented one.
+    const textPlain = stripAccents(textLower);
     const fields: ExtractedField[] = [];
 
     // --- A. CHILDCARE & CRÈCHE INVOICES (Frais de garde d'enfants) ---
@@ -211,43 +257,62 @@ Return JSON with format:
 
     // --- C. SALARY CERTIFICATE (Certificat de Rémunération) ---
     if (
-      textLower.includes('certificat de rémunération') ||
-      textLower.includes('certificat de salaire') ||
-      textLower.includes('salary') ||
-      textLower.includes('rémunération') ||
-      textLower.includes('code 101') ||
-      textLower.includes('code 102')
+      textPlain.includes('certificat de remuneration') ||
+      textPlain.includes('certificat de salaire') ||
+      textPlain.includes('salary certificate') ||
+      textPlain.includes('salary') ||
+      textPlain.includes('remuneration') ||
+      textPlain.includes('code 101') ||
+      textPlain.includes('code 102')
     ) {
-      const grossMatch =
-        rawText.match(/(?:code\s*10[12]|brut|gross|rémunération\s*brute)[^\d]*([\d.,]+)/i) ||
-        rawText.match(/([\d]+[.,][\d]{2})/);
+      // A certificat de rémunération is a printed table of numbered lines
+      // ("101. Rémunération brute … 76800.00 EUR"). Parsing it by prose failed
+      // as soon as the sender dropped an accent — "Retenue d'impot" did not
+      // match /retenue d'impôt/, so the withholding and the mortgage interest
+      // of the app's own sample were silently lost. Matching the line number
+      // instead is accent-, wording- and language-independent.
+      const grossMatch = this.codeAmount(rawText, ['101', '102']);
       if (grossMatch) {
         fields.push({
           name: 'grossSalary',
-          value: this.normalizeAmount(grossMatch[1]),
+          value: this.normalizeAmount(grossMatch.value),
           confidence: 0.95,
-          snippet: grossMatch[0],
+          snippet: grossMatch.snippet,
           category: FactCategory.EMPLOYMENT_INCOME,
         });
       }
 
-      const socialMatch = rawText.match(/(?:code\s*103|sécurité\s*sociale|cotisations)[^\d]*([\d.,]+)/i);
+      const socialMatch = this.codeAmount(rawText, ['103']);
       if (socialMatch) {
         fields.push({
           name: 'socialSecurity',
-          value: this.normalizeAmount(socialMatch[1]),
+          value: this.normalizeAmount(socialMatch.value),
           confidence: 0.95,
-          snippet: socialMatch[0],
+          snippet: socialMatch.snippet,
         });
       }
 
-      const taxMatch = rawText.match(/(?:code\s*105|retenue\s*d['’]impôt|withholding)[^\d]*([\d.,]+)/i);
+      const taxMatch = this.codeAmount(rawText, ['105']);
       if (taxMatch) {
         fields.push({
           name: 'withholdingTax',
-          value: this.normalizeAmount(taxMatch[1]),
+          value: this.normalizeAmount(taxMatch.value),
           confidence: 0.95,
-          snippet: taxMatch[0],
+          snippet: taxMatch.snippet,
+        });
+      }
+
+      // Line 141 on a 160 is the deductible owner-occupier interest. It is
+      // extracted here so it is not silently dropped; the certificate's own
+      // mortgage document carries the same figure, and the user confirms once.
+      const mortgageMatch = this.codeAmount(rawText, ['141']);
+      if (mortgageMatch) {
+        fields.push({
+          name: 'mortgageInterest',
+          value: this.normalizeAmount(mortgageMatch.value),
+          confidence: 0.9,
+          snippet: mortgageMatch.snippet,
+          category: FactCategory.MORTGAGE_INTEREST,
         });
       }
 
@@ -401,7 +466,10 @@ Return JSON with format:
       textLower.includes('cours') ||
       textLower.includes('séminaire') ||
       textLower.includes('seminar') ||
-      textLower.includes('certif') ||
+      // NOT 'certif': it is a substring of "certificat", so every
+      // certificate — a salary certificate included — was read as a
+      // training invoice and produced a bogus trainingCourseExpense.
+      textPlain.includes('certificat de formation') ||
       textLower.includes('webinar') ||
       textLower.includes('tuition') ||
       textLower.includes('atelier') ||

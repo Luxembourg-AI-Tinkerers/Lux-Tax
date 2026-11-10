@@ -35,6 +35,17 @@ export enum DocumentVisibility {
 export enum AuditEventType {
   USER_REGISTERED = 'USER_REGISTERED',
   USER_LOGGED_IN = 'USER_LOGGED_IN',
+  /**
+   * A login was rejected. Recorded for every refusal — wrong password, unknown
+   * address, inactive account, failed second factor — because the volume and the
+   * addresses are the only signal that a credential-stuffing run is in progress.
+   * `actorId` is null when the address matches no account.
+   */
+  USER_LOGIN_FAILED = 'USER_LOGIN_FAILED',
+  /** The user downloaded a copy of their own data (M10). */
+  USER_DATA_EXPORTED = 'USER_DATA_EXPORTED',
+  /** The user erased their account; the identity behind the row is gone (M10). */
+  USER_ACCOUNT_ERASED = 'USER_ACCOUNT_ERASED',
   USER_LOGGED_OUT = 'USER_LOGGED_OUT',
   HOUSEHOLD_CREATED = 'HOUSEHOLD_CREATED',
   MEMBER_INVITED = 'MEMBER_INVITED',

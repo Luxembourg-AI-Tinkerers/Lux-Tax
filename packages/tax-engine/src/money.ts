@@ -7,6 +7,15 @@
  * 3 × 0.1 or repeated 0.07 surcharges).
  */
 
+/**
+ * Snap a money amount to integer cents.
+ *
+ * A non-finite value has no cents representation and returns 0. That coercion is
+ * deliberately silent here because this module has no way to name a field: the
+ * engine validates every money input at its boundary and reports a non-finite
+ * amount with a warning (see the fact loop and the loss/securities ledgers in
+ * engine.ts), so a NaN never reaches the arithmetic unnoticed.
+ */
 export const toCents = (value: number): number => {
   if (!Number.isFinite(value)) return 0;
   return Math.round(value * 100);

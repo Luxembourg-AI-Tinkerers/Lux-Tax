@@ -1,6 +1,8 @@
+// Prisma 7 reads the connection URL from prisma.config.ts; a `url` here is
+// rejected by the CLI the project pins (prisma@7.10.0), which made
+// `prisma generate` impossible and, with it, any run of the API.
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -36,6 +38,9 @@ enum WorkspaceStatus {
 enum AuditEventType {
   USER_REGISTERED
   USER_LOGGED_IN
+  USER_LOGIN_FAILED
+  USER_DATA_EXPORTED
+  USER_ACCOUNT_ERASED
   USER_LOGGED_OUT
   HOUSEHOLD_CREATED
   MEMBER_INVITED
@@ -167,6 +172,16 @@ model User {
   email            String                @unique
   passwordHash     String
   isEmailVerified  Boolean               @default(false)
+  /// SHA-256 of the one-time e-mail verification token. Cleared once verified.
+  emailVerificationTokenHash String?              @unique
+  emailVerificationExpiresAt DateTime?
+  /// Bumped to invalidate every access token already issued to this account.
+  tokenVersion     Int                   @default(0)
+  /// TOTP seed, AES-256-GCM sealed. Present only once enrolment started.
+  mfaSecret        String?
+  mfaEnabled       Boolean               @default(false)
+  /// SHA-256 of each single-use recovery code.
+  mfaRecoveryCodes String[]              @default([])
   isActive         Boolean               @default(true)
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
@@ -186,6 +201,7 @@ model User {
   notifications    Notification[]        @relation("NotificationRecipient")
   notificationsActedOn Notification[]    @relation("NotificationActor")
   notificationPreferences NotificationPreference[]
+  pushDevices          PushDevice[]
 
   @@map("users")
 }
@@ -194,6 +210,8 @@ model Session {
   id               String    @id @default(uuid()) @db.Uuid
   userId           String    @db.Uuid
   refreshTokenHash String
+  /// Rotation family: a reused (already revoked) token revokes the whole family.
+  familyId         String?
   userAgent        String?
   ipAddress        String?
   expiresAt        DateTime
@@ -203,6 +221,7 @@ model Session {
   user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([familyId])
   @@map("sessions")
 }
 
@@ -212,7 +231,9 @@ model PersonProfile {
   firstName          String?
   lastName           String?
   dateOfBirth        DateTime?
-  matriculeEncrypted String?
+  // The ACD matricule is not stored yet. A column named "encrypted" that no code
+  // ever encrypts is worse than no column: when it is added it must be sealed
+  // with a real AEAD (see auth/secret-box.ts) and documented as such.
   taxResidence       TaxResidence @default(RESIDENT)
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
@@ -384,7 +405,8 @@ model Document {
 model DocumentExtraction {
   id            String    @id @default(uuid()) @db.Uuid
   documentId    String    @db.Uuid
-  extractedText String    @db.Text
+  /// Nulled once every fact of this document is confirmed (data minimisation).
+  extractedText String?   @db.Text
   confidence    Float     @default(1.0)
   rawJson       Json?
   createdAt     DateTime  @default(now())
@@ -584,6 +606,10 @@ model Assessment {
 
   workspace             TaxYearWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
+  /// One assessment notice per declarable year: a second import is an amendment,
+  /// not a second row. Enforced here because the service alone could not stop two
+  /// concurrent imports.
+  @@unique([workspaceId, taxYear])
   @@index([workspaceId])
   @@map("assessments")
 }
@@ -592,7 +618,8 @@ model AuditEvent {
   id            String          @id @default(uuid()) @db.Uuid
   householdId   String?         @db.Uuid
   workspaceId   String?         @db.Uuid
-  actorId       String          @db.Uuid
+  /// Nullable: a rejected login for an unknown address has no actor.
+  actorId       String?         @db.Uuid
   actorEmail    String?
   eventType     AuditEventType
   entityType    String
@@ -608,7 +635,7 @@ model AuditEvent {
   hash          String?
   createdAt     DateTime        @default(now())
 
-  actor         User            @relation("UserAuditEvents", fields: [actorId], references: [id])
+  actor         User?           @relation("UserAuditEvents", fields: [actorId], references: [id])
   household     Household?      @relation(fields: [householdId], references: [id], onDelete: SetNull)
   workspace     TaxYearWorkspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
 
@@ -758,3 +785,22 @@ model NotificationPreference {
   @@map("notification_preferences")
 }
 
+model PushDevice {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  /// Expo push token (ExponentPushToken[...]); unique per install.
+  token     String   @unique
+  /// 'ios' | 'android' | 'web' — free form so a new platform needs no migration.
+  platform  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  /// Set when the provider reports the token as dead; a stale token is ignored
+  /// by the resolver instead of failing every future send.
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, revokedAt])
+  @@map("push_devices")
+}

@@ -4,6 +4,24 @@ import React, { useState, useRef, useEffect } from 'react';
 import { DocumentVisibility, DocumentType, DocumentDto } from '@luxtax/contracts';
 import { apiClient } from '../lib/api';
 
+/**
+ * The scan categories, each with a stable id so a click selects one chip. Where
+ * the document model has no matching type the scan is sent as UNKNOWN, which is
+ * what the API assumed before — sending the wrong type would mis-file the
+ * extracted figures.
+ */
+const SCAN_CATEGORIES: readonly { id: string; type: DocumentType; label: string }[] = [
+  { id: 'work-expense', type: DocumentType.UNKNOWN, label: '💼 Work Expense' },
+  { id: 'training', type: DocumentType.UNKNOWN, label: '🎓 Course / Training' },
+  { id: 'childcare', type: DocumentType.CHILDCARE_INVOICE, label: '👶 Daycare / Crèche' },
+  { id: 'medical', type: DocumentType.UNKNOWN, label: '🩺 Medical Invoice' },
+  { id: 'donation', type: DocumentType.DONATION_CERTIFICATE, label: '🎁 Charity Donation' },
+  { id: 'salary', type: DocumentType.SALARY_CERTIFICATE, label: '📄 Salary Slip' },
+  { id: 'mortgage', type: DocumentType.MORTGAGE_CERTIFICATE, label: '🏠 Mortgage Interest' },
+  { id: 'insurance', type: DocumentType.INSURANCE_CERTIFICATE, label: '🛡️ Insurance / Pension' },
+  { id: 'other', type: DocumentType.UNKNOWN, label: '📑 Invoice / Other' },
+];
+
 interface CameraScanModalProps {
   isOpen: boolean;
   workspaceId: string;
@@ -20,7 +38,7 @@ export function CameraScanModal({
   onError,
 }: CameraScanModalProps) {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [selectedType, setSelectedType] = useState<DocumentType>(DocumentType.CHILDCARE_INVOICE);
+  const [selectedCategoryId, setSelectedCategoryId] = useState(SCAN_CATEGORIES[2].id);
   const [visibility, setVisibility] = useState<DocumentVisibility>(DocumentVisibility.INCLUDED_IN_RETURN);
   const [uploading, setUploading] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
@@ -46,6 +64,20 @@ export function CameraScanModal({
       setCameraError(null);
     }
   }, [isOpen]);
+
+  // Escape closes the dialog, except while the scan is being uploaded.
+  useEffect(() => {
+    if (!isOpen || uploading) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, uploading, onClose]);
+
+  const selectedCategory =
+    SCAN_CATEGORIES.find((category) => category.id === selectedCategoryId) ??
+    SCAN_CATEGORIES[SCAN_CATEGORIES.length - 1];
 
   // Start live webcam stream
   const startCamera = async () => {
@@ -121,6 +153,8 @@ export function CameraScanModal({
       fileName,
       fileContentBase64: base64,
       mimeType: 'image/jpeg',
+      // The chip the user picked is part of the upload, not decoration.
+      documentType: selectedCategory.type,
     });
 
     if (res.error) {
@@ -161,17 +195,23 @@ export function CameraScanModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden border border-slate-200 dark:border-slate-800">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="camera-scan-title"
+        className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden border border-slate-200 dark:border-slate-800"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center space-x-2">
             <span className="text-xl">📸</span>
-            <h3 className="font-bold text-slate-900 dark:text-white text-base">
-              Scan Receipt & Tax Documents
+            <h3 id="camera-scan-title" className="font-bold text-slate-900 dark:text-white text-base">
+              Scan Receipt &amp; Tax Documents
             </h3>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close scanner"
             className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
           >
             ✕
@@ -295,23 +335,14 @@ export function CameraScanModal({
                   Document Category
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {[
-                    { type: DocumentType.CHILDCARE_INVOICE, label: '💼 Work Expense' },
-                    { type: DocumentType.CHILDCARE_INVOICE, label: '🎓 Course / Training' },
-                    { type: DocumentType.CHILDCARE_INVOICE, label: '👶 Daycare / Crèche' },
-                    { type: DocumentType.CHILDCARE_INVOICE, label: '🩺 Medical Invoice' },
-                    { type: DocumentType.DONATION_CERTIFICATE, label: '🎁 Charity Donation' },
-                    { type: DocumentType.SALARY_CERTIFICATE, label: '📄 Salary Slip' },
-                    { type: DocumentType.MORTGAGE_CERTIFICATE, label: '🏠 Mortgage Interest' },
-                    { type: DocumentType.INSURANCE_CERTIFICATE, label: '🛡️ Insurance / Pension' },
-                    { type: DocumentType.UNKNOWN, label: '📑 Invoice / Other' },
-                  ].map((cat, idx) => (
+                  {SCAN_CATEGORIES.map((cat) => (
                     <button
-                      key={`${cat.label}-${idx}`}
+                      key={cat.id}
                       type="button"
-                      onClick={() => setSelectedType(cat.type)}
+                      onClick={() => setSelectedCategoryId(cat.id)}
+                      aria-pressed={selectedCategoryId === cat.id}
                       className={`text-xs py-2 px-2.5 rounded-lg border font-medium text-center transition ${
-                        selectedType === cat.type
+                        selectedCategoryId === cat.id
                           ? 'bg-sky-50 border-sky-500 text-sky-700 dark:bg-sky-950 dark:border-sky-400 dark:text-sky-300 font-bold'
                           : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
                       }`}

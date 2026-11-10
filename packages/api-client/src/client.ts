@@ -56,17 +56,25 @@ import {
 export interface ApiClientConfig {
   readonly baseUrl: string;
   readonly getAccessToken?: () => string | null | Promise<string | null>;
+  /**
+   * Renews the session after a 401 on an authenticated request. Return the new
+   * access token so the request can be replayed once, or `null` when the
+   * session cannot be renewed (the caller is then treated as unauthorized).
+   */
+  readonly refreshAccessToken?: () => Promise<string | null>;
   readonly onUnauthorized?: () => void;
 }
 
 export class LuxTaxApiClient {
   private readonly baseUrl: string;
   private readonly getAccessToken?: () => string | null | Promise<string | null>;
+  private readonly refreshAccessToken?: () => Promise<string | null>;
   private readonly onUnauthorized?: () => void;
 
   constructor(config: ApiClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/+$/, '');
     this.getAccessToken = config.getAccessToken;
+    this.refreshAccessToken = config.refreshAccessToken;
     this.onUnauthorized = config.onUnauthorized;
   }
 
@@ -75,27 +83,51 @@ export class LuxTaxApiClient {
     options: RequestInit = {}
   ): Promise<{ data?: T; error?: string; status: number }> {
     const url = `${this.baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+    // Only claim a JSON body when there is one. Fastify (correctly) rejects a
+    // request that declares `application/json` and sends nothing, which made
+    // every bodyless POST — calculate, approve, read-all, rollover — fail with
+    // "Body cannot be empty when content-type is set to 'application/json'".
+    const hasBody = options.body !== undefined && options.body !== null;
+    const buildHeaders = (token: string | null): Record<string, string> => ({
       Accept: 'application/json',
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
       ...((options.headers as Record<string, string>) || {}),
-    };
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    });
 
+    let token: string | null = null;
     if (this.getAccessToken) {
-      const token = await this.getAccessToken();
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      token = await this.getAccessToken();
     }
 
     try {
-      const res = await fetch(url, {
+      let res = await fetch(url, {
         ...options,
-        headers,
+        headers: buildHeaders(token),
       });
 
-      if (res.status === 401 && this.onUnauthorized) {
-        this.onUnauthorized();
+      // A 401 on a request that carried no token is a credential failure (a
+      // wrong password on login, an unusable refresh token), not an expired
+      // session: hand it back to the caller instead of navigating the page away
+      // from the message it is about to render.
+      if (res.status === 401 && token) {
+        // Renew once and replay once. `/api/auth/*` is excluded: the renewal
+        // call itself carries no usable session, so renewing it would recurse
+        // into this same branch.
+        if (this.refreshAccessToken && !endpoint.startsWith('/api/auth/')) {
+          const renewed = await this.refreshAccessToken();
+          if (renewed) {
+            token = renewed;
+            res = await fetch(url, {
+              ...options,
+              headers: buildHeaders(token),
+            });
+          }
+        }
+
+        if (res.status === 401 && this.onUnauthorized) {
+          this.onUnauthorized();
+        }
       }
 
       if (!res.ok) {

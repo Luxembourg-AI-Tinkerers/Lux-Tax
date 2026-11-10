@@ -15,6 +15,7 @@ import {
   HouseholdRole,
 } from '@luxtax/contracts';
 import { factInclusionWarning } from '../lib/fact-inclusion';
+import { removesFromReturn } from '../lib/document-visibility';
 
 interface FreelanceBusinessViewProps {
   workspaceId: string;
@@ -326,6 +327,16 @@ export function FreelanceBusinessView({
         ? DocumentVisibility.SHARED_FOR_DISCUSSION
         : DocumentVisibility.INCLUDED_IN_RETURN;
 
+    // One click must not silently drop evidence out of the return.
+    if (
+      removesFromReturn(doc.visibility, nextVis) &&
+      !confirm(
+        `"${doc.originalName}" is included in the return. Sharing it for discussion only keeps the file but removes its figures from the return. Continue?`,
+      )
+    ) {
+      return;
+    }
+
     const res = await apiClient.updateDocumentVisibility(workspaceId, doc.id, nextVis);
     if (res.error) {
       showFeedback('error', res.error);
@@ -362,7 +373,11 @@ export function FreelanceBusinessView({
           }`}
         >
           <span>{feedback.message}</span>
-          <button onClick={() => setFeedback(null)} className="text-xs opacity-60 hover:opacity-100">
+          <button
+            onClick={() => setFeedback(null)}
+            aria-label="Dismiss notification"
+            className="text-xs opacity-60 hover:opacity-100"
+          >
             ✕
           </button>
         </div>

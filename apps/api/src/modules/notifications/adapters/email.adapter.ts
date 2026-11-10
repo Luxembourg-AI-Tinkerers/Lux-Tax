@@ -1,6 +1,7 @@
 import { appendFile, mkdir } from 'fs/promises';
 import { dirname, join } from 'path';
 import type { DeliveryAdapter, DeliveryPayload } from './delivery-adapter';
+import { smtpTransportFromEnv } from './smtp-email.transport';
 
 export interface EmailMessage {
   to: string;
@@ -47,7 +48,12 @@ export class LocalSinkEmailTransport implements EmailTransport {
 export class EmailAdapter implements DeliveryAdapter {
   readonly channel = 'EMAIL' as const;
 
-  private transport: EmailTransport = new LocalSinkEmailTransport();
+  /**
+   * A configured SMTP relay wins; otherwise the local sink keeps the outbox
+   * working end to end without sending anything off the machine.
+   */
+  private transport: EmailTransport =
+    smtpTransportFromEnv() ?? new LocalSinkEmailTransport();
 
   get transportName(): string {
     return this.transport.name;

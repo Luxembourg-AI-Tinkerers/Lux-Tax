@@ -5,14 +5,18 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { AuditModule } from '../audit/audit.module';
+import { assertRuntimeConfig, jwtAccessSecret } from '../../config/runtime-config';
+
+// Fail fast: a missing or defaulted signing key must stop the process, not
+// produce tokens that anybody who has read this repository can forge.
+assertRuntimeConfig();
 
 @Global()
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
-      secret:
-        process.env.JWT_ACCESS_SECRET || 'dev_luxembourg_tax_jwt_access_secret_32chars_min_2026',
+      secret: jwtAccessSecret(),
       signOptions: { expiresIn: '15m' },
     }),
     AuditModule,

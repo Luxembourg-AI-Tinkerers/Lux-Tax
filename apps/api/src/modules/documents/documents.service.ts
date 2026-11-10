@@ -24,6 +24,10 @@ import * as path from 'path';
 
 import { ReceiptAiVisionService } from './receipt-ai-vision.service';
 import { ReturnApprovalsService } from '../filing/return-approvals.service';
+import { assertDeclaredMimeMatches, decodeBase64Upload } from './upload-guard';
+
+/** The upload cap enforced below, re-exported so callers can document it. */
+export { MAX_UPLOAD_BYTES } from './upload-guard';
 
 @Injectable()
 export class DocumentsService {
@@ -87,8 +91,11 @@ export class DocumentsService {
     // extracts from it to that spouse, so the record stays consistent.
     const documentOwnerId = input.ownerId ?? uploaderId;
 
-    // 1. Compute SHA-256 hash of file content
-    const fileBuffer = Buffer.from(input.fileContentBase64, 'base64');
+    // 1. Decode and verify the payload before it costs anything. An oversized
+    // body, a string that is not base64, or bytes that contradict the declared
+    // MIME type must not reach the hash check, the disk, or the AI model.
+    const fileBuffer = decodeBase64Upload(input.fileContentBase64);
+    assertDeclaredMimeMatches(input.mimeType, fileBuffer);
     const sha256Hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
 
     // 2. Check for duplicate document in this workspace

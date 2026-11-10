@@ -4,7 +4,11 @@ export interface AuditEventDto {
   readonly id: string;
   readonly householdId?: string;
   readonly workspaceId?: string;
-  readonly actorId: string;
+  /**
+   * Null only for an event with no identifiable actor - a rejected login for an
+   * address that matches no account. Every other event names its actor.
+   */
+  readonly actorId?: string;
   readonly actorEmail?: string;
   readonly actorName?: string;
   readonly eventType: AuditEventType;

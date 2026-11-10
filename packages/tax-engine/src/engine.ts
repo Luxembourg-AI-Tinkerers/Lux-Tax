@@ -241,7 +241,20 @@ export class LuxembourgTaxEngine {
     };
 
     for (const fact of facts) {
-      const amount = Number(fact.amount) || 0;
+      const declaredAmount = Number(fact.amount);
+
+      // `Number(x) || 0` turned NaN / Infinity / an unreadable import into 0 with
+      // no trace. A silent 0 understates the tax, so a non-finite amount is
+      // reported by name and skipped; a numeric string ('60000') still parses.
+      if (!Number.isFinite(declaredAmount)) {
+        warnings.push(
+          `Fact ${fact.id} (${fact.category}.${fact.fieldKey}) has a non-finite amount ` +
+            `(${String(fact.amount)}) and was ignored. A missing or unreadable amount must not ` +
+            'become 0 silently: that would understate the tax.',
+        );
+        continue;
+      }
+      const amount = declaredAmount;
       const bucket = ownerBucket(fact.ownerId);
 
       // A negative amount is not a correction mechanism: netting it against other income would
@@ -310,8 +323,14 @@ export class LuxembourgTaxEngine {
           break;
 
         case 'PENSION_INCOME':
-          bucket.grossPension = addMoney(bucket.grossPension, amount);
-          if (effectiveFieldKey === 'withholdingTax') bucket.pensionWithholding = addMoney(bucket.pensionWithholding, amount);
+          // A withholding fact is not pension income: adding it to grossPension made
+          // the retenue d'impot taxable (20 000 pension + 3 000 withheld became
+          // 23 000 of income). Branch on the field, like capital and rental.
+          if (effectiveFieldKey === 'withholdingTax') {
+            bucket.pensionWithholding = addMoney(bucket.pensionWithholding, amount);
+          } else {
+            bucket.grossPension = addMoney(bucket.grossPension, amount);
+          }
           break;
 
         case 'CAPITAL_INCOME':
@@ -469,14 +488,28 @@ export class LuxembourgTaxEngine {
       let amortisationTotal = 0;
       let recentBuildings = 0;
 
-      for (const building of params.rentalProperties) {
+      for (const [buildingIndex, building] of params.rentalProperties.entries()) {
         if (!Number.isFinite(building.grossRent) || building.grossRent <= 0) continue;
 
         const charges = building.charges ?? 0;
         let amortisation = 0;
 
-        if (building.purchasePrice && building.completionYear) {
-          const age = taxYear - building.completionYear;
+        // A completion year after the tax year cannot position the building in
+        // the Art. 98 age bands: `taxYear - completionYear` goes negative and the
+        // `age < 5` branch grants the highest 4 % rate. The dated input is
+        // refused; the rent itself stays taxed.
+        const completionYear = building.completionYear;
+        const futureCompletion = completionYear !== undefined && completionYear > taxYear;
+        if (futureCompletion) {
+          warnings.push(
+            `Rental building ${buildingIndex + 1} has a completion year (${completionYear}) after ` +
+              `tax year ${taxYear}; the entry is future-dated, so the Art. 98 amortisation was ` +
+              'not applied and its rent is taxed without it.',
+          );
+        }
+
+        if (building.purchasePrice && completionYear && !futureCompletion) {
+          const age = taxYear - completionYear;
           const landShare = Math.min(Math.max(building.landSharePercent ?? 20, 0), 100) / 100;
           const base = building.purchasePrice * (1 - landShare);
 
@@ -561,8 +594,12 @@ export class LuxembourgTaxEngine {
     // ------------------------------------------------------- capital (Art. 97)
     const capitalTaxableFor = (p: PersonFacts): number => {
       if (p.capitalIncome === 0 && p.qualifyingDividends === 0) return 0;
-      const halfExempt = Math.min(p.qualifyingDividends, p.capitalIncome) * 0.5;
-      return Math.max(0, round2(p.capitalIncome - halfExempt));
+      // A qualifying dividend is capital income in its own right: the fact only
+      // fills `qualifyingDividends`, so netting the exemption against
+      // `capitalIncome` (the old min()) made a standalone dividend disappear
+      // entirely. It enters the base and then takes the 50 % exemption.
+      const halfExempt = p.qualifyingDividends * 0.5;
+      return Math.max(0, round2(p.capitalIncome + p.qualifyingDividends - halfExempt));
     };
 
     // ------------------------------------------------- securities ledger
@@ -575,7 +612,14 @@ export class LuxembourgTaxEngine {
 
       for (const [holdingIndex, holding] of params.securities.entries()) {
         const gross = holding.grossIncome;
-        if (!Number.isFinite(gross) || gross <= 0) continue;
+        if (!Number.isFinite(gross)) {
+          warnings.push(
+            `Securities holding ${holdingIndex + 1} (${holding.label ?? 'unlabelled'}) has a ` +
+              'non-finite gross income and was ignored: a silent 0 would understate the tax.',
+          );
+          continue;
+        }
+        if (gross <= 0) continue;
 
         // 20 % RELIBI elected as final: the income does not enter the base.
         if (params.relibiFinalElective && (holding.relibiWithheld ?? 0) > 0) {
@@ -651,6 +695,18 @@ export class LuxembourgTaxEngine {
       });
     }
 
+    // The tranche is a household-level exemption: the per-person split handed to
+    // the deduction and tariff layers must carry it, otherwise it is reported in
+    // provenance and never reaches the base (a +5 000 capital fact raised the
+    // taxable base by 4 975 while the LIR-ART-115-15 line claimed 3 500).
+    const capitalSplitFor = (personCapital: number): number => {
+      if (capitalGrossTaxable <= 0) return 0;
+      if (personCapital === capitalGrossTaxable) return capitalAfterTranche;
+      return round2((capitalAfterTranche * personCapital) / capitalGrossTaxable);
+    };
+    const primaryCapitalTaxable = capitalSplitFor(primaryCapital);
+    const spouseCapitalTaxable = Math.max(0, round2(capitalAfterTranche - primaryCapitalTaxable));
+
     if (primary.qualifyingDividends > 0 || (spouse?.qualifyingDividends ?? 0) > 0) {
       provenance.push({
         ruleCode: 'LIR-ART-115-15a',
@@ -678,11 +734,13 @@ export class LuxembourgTaxEngine {
       invalidityRate: undefined,
     });
 
-    const primaryIncome = toPersonIncome(primary, primaryRental.net, primaryCapital);
+    const primaryIncome = toPersonIncome(primary, primaryRental.net, primaryCapitalTaxable);
     primaryIncome.travelUnits = params.travelUnitsPrimary ?? 0;
     primaryIncome.invalidityRate = params.invalidityRatePrimary;
 
-    const spouseIncome = spouse ? toPersonIncome(spouse, spouseRental.net, spouseCapital) : undefined;
+    const spouseIncome = spouse
+      ? toPersonIncome(spouse, spouseRental.net, spouseCapitalTaxable)
+      : undefined;
     if (spouseIncome) {
       spouseIncome.travelUnits = params.travelUnitsSpouse ?? 0;
       spouseIncome.invalidityRate = params.invalidityRateSpouse;
@@ -810,12 +868,45 @@ export class LuxembourgTaxEngine {
     );
 
     // ---------------------------------------------------- prior losses (114)
-    const lossEntries = (params.lossCarryForward ?? []).filter(
-      (entry) => entry.amount > 0 && taxYear - entry.year <= 17,
-    );
+    // Only a loss of a past year can be carried forward: a ledger entry dated
+    // after the tax year used to pass the 17-year test (`taxYear - year` is
+    // negative) and reduce the current base with a loss that has not happened yet.
+    const lossEntries: Array<{ year: number; amount: number }> = [];
+    for (const entry of params.lossCarryForward ?? []) {
+      if (!Number.isFinite(entry.amount)) {
+        warnings.push(
+          `Art. 114: the loss carried forward from ${entry.year} has a non-finite amount and was ` +
+            'ignored. A silent 0 must not pass for a declared loss.',
+        );
+        continue;
+      }
+      if (entry.amount <= 0) continue;
+      if (!Number.isFinite(entry.year)) {
+        warnings.push(
+          'Art. 114: a loss carry-forward entry has no usable year and was ignored rather than ' +
+            'deducted in an unknown year.',
+        );
+        continue;
+      }
+      if (entry.year > taxYear) {
+        warnings.push(
+          `Art. 114: the loss carried forward from ${entry.year} is dated after tax year ` +
+            `${taxYear} and was ignored; a future-year loss cannot reduce this year's base.`,
+        );
+        continue;
+      }
+      if (taxYear - entry.year > 17) continue;
+      lossEntries.push(entry);
+    }
     const priorLossesFromLedger = fromCents(
       sumCents(...lossEntries.map((entry) => toCents(entry.amount))),
     );
+    if (params.priorYearLosses !== undefined && !Number.isFinite(params.priorYearLosses)) {
+      warnings.push(
+        'Art. 114: priorYearLosses is not a finite number and was ignored (0) instead of being ' +
+          'used as a deduction.',
+      );
+    }
     // A ledger, when supplied, is authoritative: taking the larger of the two would let a stale
     // total re-introduce losses the 17-year window has already expired.
     const priorLosses = round2(
@@ -839,6 +930,35 @@ export class LuxembourgTaxEngine {
           `${art111bisContributorCount} person(s).`,
       );
     }
+    // A fixation year after the tax year cannot place the taxpayer in the Art. 105
+    // schedule: `years = taxYear - fixationYear + 1` goes negative, which the
+    // `years <= fullDeductionYears` branch reads as "years 1-2" and grants an
+    // unlimited deduction. Refuse the future date instead of granting the band.
+    const futureFixationYear =
+      params.mortgageFixationYear !== undefined && params.mortgageFixationYear > taxYear;
+    if (mortgageInterest > 0 && futureFixationYear) {
+      warnings.push(
+        `Mortgage interest: the year the valeur locative was fixed (${params.mortgageFixationYear}) ` +
+          `is after tax year ${taxYear}. A future date cannot place the loan in the Art. 105 ` +
+          'habit_pers schedule, so the deduction was refused (0).',
+      );
+    }
+    const mortgageFixationYear = futureFixationYear ? undefined : params.mortgageFixationYear;
+
+    if (
+      mortgageInterest > 0 &&
+      mortgageFixationYear === undefined &&
+      !futureFixationYear &&
+      !params.mortgageBeforeDisposition
+    ) {
+      warnings.push(
+        'Mortgage interest was declared without the year the valeur locative was fixed. The ' +
+          'Art. 105 habit_pers schedule cannot be applied without it, so the deduction was ' +
+          'refused (0) instead of being granted without limit. Supply mortgageFixationYear ' +
+          '(or mortgageBeforeDisposition for a home still under construction).',
+      );
+    }
+
     const deductionContext: DeductionContext = {
       pkg,
       taxClass,
@@ -853,7 +973,7 @@ export class LuxembourgTaxEngine {
       savingsHousingSubscriberAge: params.savingsHousingSubscriberAge,
       lrcpDeclared: lrcp,
       mortgageInterest,
-      mortgageFixationYear: params.mortgageFixationYear,
+      mortgageFixationYear,
       mortgageBeforeDisposition: params.mortgageBeforeDisposition,
       donationsDeclared: donations,
       extraordinaryChargesDeclared: extraordinaryCharges,
@@ -868,19 +988,6 @@ export class LuxembourgTaxEngine {
       asrdChildren: params.asrdChildren ?? moderationCount,
       netIncomeForDonationCap: Math.max(0, netIncome),
     };
-
-    if (
-      mortgageInterest > 0 &&
-      params.mortgageFixationYear === undefined &&
-      !params.mortgageBeforeDisposition
-    ) {
-      warnings.push(
-        'Mortgage interest was declared without the year the valeur locative was fixed. The ' +
-          'Art. 105 habit_pers schedule cannot be applied without it, so the deduction was ' +
-          'refused (0) instead of being granted without limit. Supply mortgageFixationYear ' +
-          '(or mortgageBeforeDisposition for a home still under construction).',
-      );
-    }
 
     const d = calculateDeductions(deductionContext);
 
@@ -963,7 +1070,7 @@ export class LuxembourgTaxEngine {
         formula: 'min(interest, capByYearsSinceFixation × (1 + conjoint + enfants modérés))',
         inputs: {
           declaredInterest: mortgageInterest,
-          fixationYear: params.mortgageFixationYear ?? 'unset',
+          fixationYear: mortgageFixationYear ?? 'unset',
           multiplier: 1 + (isCollective ? 1 : 0) + moderationCount,
         },
         outputAmount: d.mortgageInterestDeduction,
@@ -1367,32 +1474,22 @@ export class LuxembourgTaxEngine {
       });
     }
 
-    // Art. 154ter al. 2: the CIM is the only refundable credit here. It is
-    // imputed on the tax still due after the other credits, and the excess is
-    // paid back to the taxpayer instead of being lost. Every other credit is
-    // non-refundable, so the two groups cannot be summed into one subtraction.
+    // Order of imputation: non-refundable credits, then the child relief, then
+    // the refundable CIM.
+    //
+    // Art. 122 / 123bis are non-refundable and bite only on the tax still due;
+    // Art. 154ter al. 2 makes the CIM refundable, so its excess is paid out and
+    // imputing it last costs the household nothing. Imputing the CIM first would
+    // extinguish the very tax the child relief has to reduce and silently
+    // destroy up to EUR 922.50 per child — an entitlement the law grants. A
+    // refundable credit is the one that can wait.
     const nonRefundableCredits = round2(credits.total - credits.cim);
     const taxAfterNonRefundable = Math.max(0, round2(totalTaxBeforeCredits - nonRefundableCredits));
-    const cimApplied = Math.min(credits.cim, taxAfterNonRefundable);
-    const cimRefund = round2(Math.max(0, credits.cim - cimApplied));
-    credits.cimApplied = round2(cimApplied);
-    credits.cimRefund = cimRefund;
-
-    if (cimRefund > 0) {
-      provenance.push({
-        ruleCode: 'LIR-ART-154ter-refund',
-        description: 'CIM refundable portion paid out (Art. 154ter al. 2)',
-        sourceFactIds: [],
-        formula: 'max(0, CIM - min(CIM, tax after non-refundable credits))',
-        inputs: { cim: credits.cim, cimApplied, cimRefund, taxAfterNonRefundable },
-        outputAmount: cimRefund,
-      });
-    }
 
     // ------------------------------------- Art. 122 / 123bis child relief
     // Child relief is not a credit: it is imputed on the tax still due after the
     // credits, and it can never turn the liability negative (non-refundable).
-    const taxAfterCredits = Math.max(0, round2(taxAfterNonRefundable - cimApplied));
+    const taxBeforeChildRelief = taxAfterNonRefundable;
 
     // Art. 122: the dégrèvement replaces the family allowance (CAE /
     // Zukunftskeess), CEDIES or SNJ aid and is granted per child, only for the
@@ -1409,8 +1506,8 @@ export class LuxembourgTaxEngine {
               (childBenefitReceived === false ? moderationCount : 0),
           ),
         );
-    const degrevement = degrevementForChildren(degrevementChildren, taxAfterCredits, pkg.childRelief);
-    const remainingAfterDegrevement = Math.max(0, round2(taxAfterCredits - degrevement));
+    const degrevement = degrevementForChildren(degrevementChildren, taxBeforeChildRelief, pkg.childRelief);
+    const remainingAfterDegrevement = Math.max(0, round2(taxBeforeChildRelief - degrevement));
 
     // Art. 123bis: a child whose moderation right expired cannot generate a
     // dégrèvement in the same year, so the caller reports the two counts
@@ -1437,7 +1534,7 @@ export class LuxembourgTaxEngine {
         inputs: {
           children: degrevementChildren,
           amountPerChild: pkg.childRelief.amountPerChild,
-          taxAfterCredits,
+          taxBeforeChildRelief,
         },
         outputAmount: degrevement,
       });
@@ -1478,8 +1575,28 @@ export class LuxembourgTaxEngine {
       );
     }
 
+    // Art. 154ter al. 2: the CIM is the only refundable credit here. It is
+    // imputed on the tax the non-refundable reliefs left, and the excess is paid
+    // back to the taxpayer instead of being lost.
+    const taxAfterChildRelief = Math.max(0, round2(taxBeforeChildRelief - childReliefTotal));
+    const cimApplied = Math.min(credits.cim, taxAfterChildRelief);
+    const cimRefund = round2(Math.max(0, credits.cim - cimApplied));
+    credits.cimApplied = round2(cimApplied);
+    credits.cimRefund = cimRefund;
+
+    if (cimRefund > 0) {
+      provenance.push({
+        ruleCode: 'LIR-ART-154ter-refund',
+        description: 'CIM refundable portion paid out (Art. 154ter al. 2)',
+        sourceFactIds: [],
+        formula: 'max(0, CIM - min(CIM, tax after non-refundable credits and child relief))',
+        inputs: { cim: credits.cim, cimApplied, cimRefund, taxAfterChildRelief },
+        outputAmount: cimRefund,
+      });
+    }
+
     // --------------------------------------------------------------- balance
-    const finalTaxLiability = Math.max(0, round2(taxAfterCredits - childReliefTotal));
+    const finalTaxLiability = Math.max(0, round2(taxAfterChildRelief - cimApplied));
     // The refundable CIM excess is paid out, so it deepens a refund. It can only
     // exist when the tax due is already covered, so it never offsets tax payable.
     const balancePayableOrRefund = round2(finalTaxLiability - withheld - cimRefund);

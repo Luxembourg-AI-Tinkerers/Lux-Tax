@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { purgeAuditEvents } from './support/audit-purge';
+import { verifyEmailFor } from './support/verify-email';
 import {
   HouseholdRole,
   DocumentType,
@@ -86,6 +88,8 @@ describe('Dual-Spouse Freelance & Business Lifecycle (e2e)', () => {
     expect(inviteRes.statusCode).toBe(201);
     const invitationToken = JSON.parse(inviteRes.payload).invitationToken;
 
+    // 5. Bob accepts invitation (his address must be verified first)
+    await verifyEmailFor(app, bobEmail);
     // 5. Bob accepts invitation
     const acceptRes = await app.inject({
       method: 'POST',
@@ -117,6 +121,9 @@ describe('Dual-Spouse Freelance & Business Lifecycle (e2e)', () => {
         await prisma.returnVersion.deleteMany({ where: { workspaceId } });
         await prisma.missingInformationItem.deleteMany({ where: { workspaceId } });
         await prisma.taxProfile.deleteMany({ where: { workspaceId } });
+        // Audit rows are append-only and cascade from the workspace, so they are
+        // purged first (inside the transaction that opts the trigger out).
+        await purgeAuditEvents(prisma, userIds);
         await prisma.taxYearWorkspace.deleteMany({ where: { id: workspaceId } });
       }
       if (householdId) {
@@ -125,7 +132,9 @@ describe('Dual-Spouse Freelance & Business Lifecycle (e2e)', () => {
         await prisma.household.deleteMany({ where: { id: householdId } });
       }
       if (userIds.length > 0) {
-        await prisma.auditEvent.deleteMany({ where: { actorId: { in: userIds } } });
+        // Audit rows are append-only (API-10): a trigger rejects DELETE, so no
+        // cleanup is attempted here. Removing the user leaves them unlinked.
+
         await prisma.session.deleteMany({ where: { userId: { in: userIds } } });
         await prisma.personProfile.deleteMany({ where: { userId: { in: userIds } } });
         await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -427,8 +436,13 @@ describe('Dual-Spouse Freelance & Business Lifecycle (e2e)', () => {
     expect(calc.freelanceIncomeBreakdown.spouseNetProfit).toBe(6500);
     expect(calc.freelanceIncomeBreakdown.totalFreelanceNetProfit).toBe(15500);
 
-    // Verify taxable income equals combined net freelance profit minus statutory special expenses (€960 for Class 2)
-    expect(calc.taxableIncome).toBe(14540);
+    // 15 500 of net profit minus the statutory special-expenses forfait.
+    //
+    // The fixture never declares a tax class or a marital status, so the
+    // workspace stays on the single-filer default and the forfait is EUR 480.
+    // The EUR 960 couple forfait needs an explicit Class 2 declaration — the
+    // engine deliberately never infers marriage from a second household member.
+    expect(calc.taxableIncome).toBe(15020);
 
     // Approve return to create ReturnVersion
     const approveRes = await app.inject({
@@ -447,20 +461,27 @@ describe('Dual-Spouse Freelance & Business Lifecycle (e2e)', () => {
     expect(filingRes.statusCode).toBe(201);
     const filingPkg = JSON.parse(filingRes.payload);
 
+    // Since LEG-7 the package emits ONE net-profit line per owner on C/A
+    // 501 (taxpayer) / 502 (spouse) — never a gross income line plus a positive
+    // expense line. The pre-LEG-7 assertions used boxNumber 21/22/23/24, which
+    // no longer exist on the 100F.
     const boxes = filingPkg.form100Boxes || [];
-    const aliceIncomeBox = boxes.find((b: any) => b.boxNumber === '21');
-    const aliceExpenseBox = boxes.find((b: any) => b.boxNumber === '23');
-    const bobIncomeBox = boxes.find((b: any) => b.boxNumber === '22');
-    const bobExpenseBox = boxes.find((b: any) => b.boxNumber === '24');
+    const netProfitBoxes = boxes.filter(
+      (b: any) => b.kind === 'FORM_100' && b.sheet === 'C/A',
+    );
 
-    expect(aliceIncomeBox).toBeDefined();
-    expect(parseFloat(aliceIncomeBox.amount)).toBe(12000);
-    expect(aliceExpenseBox).toBeDefined();
-    expect(parseFloat(aliceExpenseBox.amount)).toBe(3000);
-    expect(bobIncomeBox).toBeDefined();
-    expect(parseFloat(bobIncomeBox.amount)).toBe(8000);
-    expect(bobExpenseBox).toBeDefined();
-    expect(parseFloat(bobExpenseBox.amount)).toBe(1500);
+    const aliceBox = netProfitBoxes.find((b: any) => b.caseNumber === '501');
+    const bobBox = netProfitBoxes.find((b: any) => b.caseNumber === '502');
+
+    expect(aliceBox).toBeDefined();
+    // Alice: 12 000 revenue − 3 000 expenses = 9 000 net profit.
+    expect(parseFloat(aliceBox.amount)).toBe(9000);
+    expect(bobBox).toBeDefined();
+    // Bob: 8 000 revenue − 1 500 expenses = 6 500 net profit.
+    expect(parseFloat(bobBox.amount)).toBe(6500);
+
+    // A gross revenue line and a positive expense line must not exist.
+    expect(boxes.some((b: any) => b.caseNumber === '21' || b.caseNumber === '23')).toBe(false);
   });
 
   it('6. Successfully triggers 1-click freelance demo data loader', async () => {

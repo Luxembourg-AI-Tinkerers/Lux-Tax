@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { apiClient } from '../lib/api';
 import { HouseholdRole } from '@luxtax/contracts';
 
@@ -17,6 +17,16 @@ export function InviteModal({ householdId, isOpen, onClose, onSuccess }: InviteM
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [invitationLink, setInvitationLink] = useState('');
+
+  // Escape closes the dialog like any other modal.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -49,8 +59,15 @@ export function InviteModal({ householdId, isOpen, onClose, onSuccess }: InviteM
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-      <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl border border-slate-100">
-        <h3 className="text-lg font-bold text-slate-900 mb-1">Invite Household Co-Filer</h3>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="invite-modal-title"
+        className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl border border-slate-100"
+      >
+        <h3 id="invite-modal-title" className="text-lg font-bold text-slate-900 mb-1">
+          Invite Household Co-Filer
+        </h3>
         <p className="text-xs text-slate-500 mb-5">
           Spouses have separate accounts but can collaborate on the same joint return.
         </p>
@@ -94,10 +111,14 @@ export function InviteModal({ householdId, isOpen, onClose, onSuccess }: InviteM
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+              <label
+                htmlFor="invite-email"
+                className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+              >
                 Spouse's Email
               </label>
               <input
+                id="invite-email"
                 type="email"
                 required
                 value={email}
@@ -108,10 +129,14 @@ export function InviteModal({ householdId, isOpen, onClose, onSuccess }: InviteM
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+              <label
+                htmlFor="invite-role"
+                className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+              >
                 Role
               </label>
               <select
+                id="invite-role"
                 value={role}
                 onChange={(e) => setRole(e.target.value as HouseholdRole)}
                 className="w-full px-3.5 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm"

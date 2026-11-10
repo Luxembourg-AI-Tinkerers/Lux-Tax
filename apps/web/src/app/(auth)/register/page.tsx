@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth-context';
 import { apiClient } from '../../../lib/api';
+import { resolvePostAuthPath } from '../../../lib/auth-redirect';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -38,6 +39,19 @@ export default function RegisterPage() {
     if (res.data) {
       login(res.data.tokens, res.data.user);
 
+      // `/register?redirect=/invite/<token>` comes from an invitation link: the
+      // new account exists to accept it, so go straight back there.
+      const redirect = resolvePostAuthPath(
+        typeof window !== 'undefined' ? window.location.search : '',
+        '',
+      );
+
+      if (redirect) {
+        setLoading(false);
+        router.push(redirect);
+        return;
+      }
+
       // Create initial household
       const hhName = householdName.trim() || `${lastName || 'Dupont'} Household`;
       const hhRes = await apiClient.createHousehold({ name: hhName });
@@ -63,7 +77,10 @@ export default function RegisterPage() {
         </div>
 
         {error && (
-          <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-sm">
+          <div
+            role="alert"
+            className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-sm"
+          >
             {error}
           </div>
         )}
@@ -71,10 +88,14 @@ export default function RegisterPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+              <label
+                htmlFor="register-first-name"
+                className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+              >
                 First Name
               </label>
               <input
+                id="register-first-name"
                 type="text"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
@@ -83,10 +104,14 @@ export default function RegisterPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+              <label
+                htmlFor="register-last-name"
+                className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+              >
                 Last Name
               </label>
               <input
+                id="register-last-name"
                 type="text"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
@@ -97,10 +122,14 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+            <label
+              htmlFor="register-household-name"
+              className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+            >
               Household Name
             </label>
             <input
+              id="register-household-name"
               type="text"
               value={householdName}
               onChange={(e) => setHouseholdName(e.target.value)}
@@ -110,10 +139,14 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+            <label
+              htmlFor="register-email"
+              className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+            >
               Email Address
             </label>
             <input
+              id="register-email"
               type="email"
               required
               value={email}
@@ -124,10 +157,14 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
-              Password (min 8 chars, 1 letter & 1 number)
+            <label
+              htmlFor="register-password"
+              className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+            >
+              Password (min 8 chars, 1 letter &amp; 1 number)
             </label>
             <input
+              id="register-password"
               type="password"
               required
               value={password}

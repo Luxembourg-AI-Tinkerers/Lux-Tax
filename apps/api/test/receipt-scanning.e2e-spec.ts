@@ -2,7 +2,21 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { purgeAuditEvents } from './support/audit-purge';
 import { DocumentVisibility, DocumentType } from '@luxtax/contracts';
+
+/**
+ * The upload endpoint now sniffs the bytes instead of trusting the declared
+ * MIME type, so a simulated receipt has to start with the real signature of the
+ * format it claims to be. The OCR text still follows the signature.
+ */
+const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const PDF_MAGIC = Buffer.from('%PDF-1.4\n', 'ascii');
+
+const asJpeg = (text: string): Buffer => Buffer.concat([JPEG_MAGIC, Buffer.from(text)]);
+const asPng = (text: string): Buffer => Buffer.concat([PNG_MAGIC, Buffer.from(text)]);
+const asPdf = (text: string): Buffer => Buffer.concat([PDF_MAGIC, Buffer.from(text)]);
 
 describe('Receipt & Camera Document Scanning with AI Model Extraction (e2e)', () => {
   let app: NestFastifyApplication;
@@ -61,6 +75,9 @@ describe('Receipt & Camera Document Scanning with AI Model Extraction (e2e)', ()
 
   afterAll(async () => {
     if (prisma && userId) {
+      // Purge the actor's audit rows first: deleting the workspace cascades into
+      // audit_events, which the API-10 trigger rejects unless the session opts in.
+      await purgeAuditEvents(prisma, [userId]);
       if (workspaceId) {
         await prisma.extractedFact.deleteMany({ where: { workspaceId } });
         await prisma.documentExtraction.deleteMany({ where: { document: { workspaceId } } });
@@ -71,7 +88,9 @@ describe('Receipt & Camera Document Scanning with AI Model Extraction (e2e)', ()
         await prisma.householdMembership.deleteMany({ where: { householdId } });
         await prisma.household.deleteMany({ where: { id: householdId } });
       }
-      await prisma.auditEvent.deleteMany({ where: { actorId: userId } });
+      // Audit rows are append-only (API-10): a trigger rejects DELETE, so no
+      // cleanup is attempted here. Removing the user leaves them unlinked.
+
       await prisma.session.deleteMany({ where: { userId } });
       await prisma.personProfile.deleteMany({ where: { userId } });
       await prisma.user.deleteMany({ where: { id: userId } });
@@ -83,8 +102,8 @@ describe('Receipt & Camera Document Scanning with AI Model Extraction (e2e)', ()
 
   it('uploads a phone-scanned childcare receipt (JPEG) and extracts childcare facts via AI model route', async () => {
     // 1x1 transparent PNG / simulated JPEG receipt payload
-    const simulatedChildcareReceiptImage = Buffer.from(
-      'FACTURE CRECHE LA MAISON DES ENFANTS LUXEMBOURG Garde d enfant Octobre 2025 Montant Total EUR 450.00 TVA 0.00 EUR Net a payer 450.00 EUR'
+    const simulatedChildcareReceiptImage = asJpeg(
+      'FACTURE CRECHE LA MAISON DES ENFANTS LUXEMBOURG Garde d enfant Octobre 2025 Montant Total EUR 450.00 TVA 0.00 EUR Net a payer 450.00 EUR',
     ).toString('base64');
 
     const res = await app.inject({
@@ -128,8 +147,8 @@ describe('Receipt & Camera Document Scanning with AI Model Extraction (e2e)', ()
   });
 
   it('uploads a phone-scanned charitable donation receipt (PNG) and extracts donation facts', async () => {
-    const simulatedDonationReceiptImage = Buffer.from(
-      'CROIX-ROUGE LUXEMBOURGEOISE ATTESTATION DE DON ART 112 LIR Nous certifions avoir recu un don de 250.00 EUR pour l annee 2025'
+    const simulatedDonationReceiptImage = asPng(
+      'CROIX-ROUGE LUXEMBOURGEOISE ATTESTATION DE DON ART 112 LIR Nous certifions avoir recu un don de 250.00 EUR pour l annee 2025',
     ).toString('base64');
 
     const res = await app.inject({
@@ -170,7 +189,7 @@ describe('Receipt & Camera Document Scanning with AI Model Extraction (e2e)', ()
   });
 
   it('deduplicates scanned receipt photos by rejecting identical SHA-256 uploads', async () => {
-    const simulatedImage = Buffer.from('DUPLICATE RECEIPT SCAN CONTENT').toString('base64');
+    const simulatedImage = asJpeg('DUPLICATE RECEIPT SCAN CONTENT').toString('base64');
 
     const first = await app.inject({
       method: 'POST',
@@ -226,11 +245,29 @@ describe('Receipt & Camera Document Scanning with AI Model Extraction (e2e)', ()
     expect(confirmed.extractedFactId).toBe(unconfirmed.id);
     // The scan was promoted before confirmation, so the fact may join the return.
     expect(confirmed.isIncludedInReturn).toBe(true);
+
+    // M10: the snippet the model read exists only for the review. Once no fact of
+    // the document is left unconfirmed, the text and the raw model JSON are
+    // cleared — a health-insurance certificate must not keep its text for the
+    // lifetime of the workspace.
+    const documentId = unconfirmed.documentId as string;
+    const stillUnconfirmed = await prisma.extractedFact.count({
+      where: { documentId, isConfirmed: false },
+    });
+    if (stillUnconfirmed === 0) {
+      const extraction = await prisma.documentExtraction.findFirst({
+        where: { documentId },
+        select: { extractedText: true, rawJson: true },
+      });
+      expect(extraction).not.toBeNull();
+      expect(extraction?.extractedText).toBeNull();
+      expect(extraction?.rawJson).toBeNull();
+    }
   });
 
   it('uploads a professional training course invoice and populates trainingCourseExpense fact', async () => {
-    const courseInvoice = Buffer.from(
-      'INSTITUT DE FORMATION LUXEMBOURG Facture Formation Continue Professionnelle Data Analytics & AI Course Total EUR 850.00 Net a payer 850.00 EUR'
+    const courseInvoice = asPdf(
+      'INSTITUT DE FORMATION LUXEMBOURG Facture Formation Continue Professionnelle Data Analytics & AI Course Total EUR 850.00 Net a payer 850.00 EUR',
     ).toString('base64');
 
     const res = await app.inject({
@@ -270,8 +307,8 @@ describe('Receipt & Camera Document Scanning with AI Model Extraction (e2e)', ()
   });
 
   it('uploads a work-related equipment receipt and populates workRelatedExpense fact', async () => {
-    const workReceipt = Buffer.from(
-      'COMPUTERSHOP LUXEMBOURG Facture Equipement Professionnel Travail Télétravail Laptop Screen Montant Total 420.00 EUR'
+    const workReceipt = asJpeg(
+      'COMPUTERSHOP LUXEMBOURG Facture Equipement Professionnel Travail Télétravail Laptop Screen Montant Total 420.00 EUR',
     ).toString('base64');
 
     const res = await app.inject({

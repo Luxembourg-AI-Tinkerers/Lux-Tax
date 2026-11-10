@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { apiClient, downloadAnnexPdf } from '../lib/api';
+import { formatEuro } from '../lib/money';
 import {
   ReturnVersionDto,
   ReturnVersionHistoryDto,
@@ -84,7 +85,14 @@ export function FilingPackageView({
       showFeedback('error', res.error);
     } else if (res.data) {
       setReturnVersion(res.data);
-      showFeedback('success', 'Return version approved successfully! Both spouses can now review.');
+      // A single filer has no spouse to notify; the copy said otherwise.
+      const activeMembers = household?.members?.filter((m) => m.status === 'ACTIVE').length ?? 1;
+      showFeedback(
+        'success',
+        activeMembers > 1
+          ? 'Return version approved successfully! Both spouses can now review.'
+          : 'Return version approved successfully!',
+      );
       onRefresh();
       await loadFilingData();
     }
@@ -302,10 +310,7 @@ export function FilingPackageView({
                         Final tax liability:{' '}
                         <span className="font-bold text-slate-900">
                           {typeof item.finalTaxLiability === 'number'
-                            ? `€${item.finalTaxLiability.toLocaleString('en-US', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}`
+                            ? formatEuro(item.finalTaxLiability)
                             : 'Not available until approved'}
                         </span>
                       </p>
@@ -450,7 +455,7 @@ export function FilingPackageView({
                         <td className="px-4 py-2 font-medium text-slate-800">{box.labelFr}</td>
                         <td className="px-4 py-2 text-slate-500">{box.labelDe}</td>
                         <td className="px-4 py-2 text-right font-bold text-slate-900">
-                          €{Number(box.amount).toFixed(2)}
+                          {formatEuro(box.amount)}
                         </td>
                         <td className="px-4 py-2 text-center">
                           {box.kind === 'FORM_100' || !box.kind ? (
@@ -568,7 +573,7 @@ export function FilingPackageView({
                               <p className="text-[11px] text-slate-600">{f.fieldLabel}</p>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-900">€{Number(f.value).toFixed(2)}</span>
+                              <span className="font-bold text-slate-900">{formatEuro(f.value)}</span>
                               <button
                                 onClick={() => handleCopy(f.form100Box, f.value)}
                                 className="rounded bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600"

@@ -11,7 +11,11 @@ import {
   TaxClass,
   WorkspaceStatus,
 } from '@luxtax/contracts';
-import { historyStatus, mergeHistory } from './return-version-history';
+import {
+  historyStatus,
+  mergeHistory,
+  requiredApproverCount,
+} from './return-version-history';
 import { NotificationsService } from '../notifications/notifications.service';
 
 export interface ApprovalInvalidationResult {
@@ -179,12 +183,14 @@ export class ReturnApprovalsService {
       orderBy: { versionNumber: 'desc' },
     });
 
-    // A joint (Class 2) return needs every active member's approval; a single
-    // filer needs only their own. Mirrors the rule in `approveReturn`.
-    const requiredApproverCount =
-      workspace.taxClass === TaxClass.CLASS_2
-        ? workspace.household.members.length
-        : 1;
+    // A joint (Class 2) return needs every filer's approval; a single filer
+    // needs only their own. A VIEWER is never a required approver (PROD-2):
+    // the write-role guard forbids it from approving, so counting it would
+    // make the return permanently unapprovable.
+    const requiredApproverCountForVersion = requiredApproverCount(
+      workspace.taxClass,
+      workspace.household.members,
+    );
 
     const versions: ReturnVersionHistoryItemDto[] = returnVersions.map(
       (returnVersion) => {
@@ -201,7 +207,7 @@ export class ReturnApprovalsService {
             returnVersion.versionNumber,
             workspace.activeReturnVersion,
             activeApprovalCount,
-            requiredApproverCount,
+            requiredApproverCountForVersion,
           ),
           createdAt: returnVersion.createdAt.toISOString(),
           finalTaxLiability: snapshotFinalTaxLiability(

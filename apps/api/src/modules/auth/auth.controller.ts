@@ -34,7 +34,8 @@ export class AuthController {
       throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
     }
     return this.authService.register(parseResult.data, {
-      ipAddress: req.ip || req.headers?.['x-forwarded-for'],
+      // L6: the adapter decides whether the header is trusted; never read it here.
+      ipAddress: req.ip,
       userAgent: req.headers?.['user-agent'],
     });
   }
@@ -46,20 +47,90 @@ export class AuthController {
     if (!parseResult.success) {
       throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
     }
-    return this.authService.login(parseResult.data, {
-      ipAddress: req.ip || req.headers?.['x-forwarded-for'],
-      userAgent: req.headers?.['user-agent'],
-    });
+    const totpCode =
+      typeof (body as unknown as { totpCode?: unknown })?.totpCode === 'string'
+        ? (body as unknown as { totpCode: string }).totpCode
+        : undefined;
+    return this.authService.login(
+      parseResult.data,
+      {
+        // L6: `req.ip` is the socket address unless the adapter was built with
+        // `trustProxy` (main.ts), in which case Fastify has already resolved
+        // the header against the configured hops/networks. Reading
+        // `x-forwarded-for` here as well would bypass that decision and let any
+        // caller write an arbitrary address into the audit trail.
+        ipAddress: req.ip,
+        userAgent: req.headers?.['user-agent'],
+      },
+      totpCode,
+    );
   }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refresh(@Body() body: RefreshTokenRequestDto): Promise<AuthResponseDto> {
+  async refresh(
+    @Body() body: RefreshTokenRequestDto,
+    @Req() req: any,
+  ): Promise<AuthResponseDto> {
     const parseResult = refreshTokenSchema.safeParse(body);
     if (!parseResult.success) {
       throw new BadRequestException(parseResult.error.errors[0]?.message || 'Validation failed');
     }
-    return this.authService.refresh(parseResult.data);
+    return this.authService.refresh(parseResult.data, {
+      ipAddress: req.ip,
+      userAgent: req.headers?.['user-agent'],
+    });
+  }
+
+  /**
+   * Confirm an address from the link in the verification e-mail. Public on
+   * purpose: the token is the credential.
+   */
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  async verifyEmail(@Body() body: { token?: unknown }): Promise<{ verified: true }> {
+    const token = typeof body?.token === 'string' ? body.token.trim() : '';
+    if (token.length < 16) {
+      throw new BadRequestException('A verification token is required');
+    }
+    return this.authService.verifyEmail(token);
+  }
+
+  /** Re-send the link for the signed-in, unverified account. */
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async resendVerification(@CurrentUser('id') userId: string): Promise<{ sent: boolean }> {
+    return this.authService.resendVerification(userId);
+  }
+
+  /**
+   * Multi-factor authentication. Enrolment returns the seed once; activation
+   * requires a code, and disabling requires a code or a recovery code.
+   */
+  @Post('mfa/enrol')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async enrolMfa(@CurrentUser('id') userId: string) {
+    return this.authService.enrolMfa(userId);
+  }
+
+  @Post('mfa/activate')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async activateMfa(@CurrentUser('id') userId: string, @Body() body: { code?: unknown }) {
+    const code = typeof body?.code === 'string' ? body.code.trim() : '';
+    if (!code) throw new BadRequestException('A code is required');
+    return this.authService.activateMfa(userId, code);
+  }
+
+  @Post('mfa/disable')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async disableMfa(@CurrentUser('id') userId: string, @Body() body: { code?: unknown }) {
+    const code = typeof body?.code === 'string' ? body.code.trim() : '';
+    if (!code) throw new BadRequestException('A code is required');
+    return this.authService.disableMfa(userId, code);
   }
 
   @Post('logout')

@@ -281,20 +281,34 @@ export function resolvePerPersonCredits(input: {
   }
 
   // More than one category: keep the highest total credit, zero the others.
-  const best = Math.max(salaryCredit, pensionCredit, independentCredit);
+  // The tie-break must be strict, otherwise two credits that cannot be cumulated
+  // both survive: an equal salary and pension credit were both kept. The
+  // statutory order (salary > pension > independent) decides, and `reduce` keeps
+  // the first candidate on an equal credit, so exactly one category is granted.
+  const candidates = [
+    { kind: 'salary' as const, credit: salaryCredit, eligible: hasSalary },
+    { kind: 'pension' as const, credit: pensionCredit, eligible: hasPension },
+    { kind: 'independent' as const, credit: independentCredit, eligible: hasIndependent },
+  ].filter((candidate) => candidate.eligible);
+  const winner = candidates.reduce((best, candidate) =>
+    candidate.credit > best.credit ? candidate : best,
+  );
+  const best = winner.credit;
   const note =
     'CIS, CIP and CII cannot be cumulated for the same person (Art. 152ter, 154quater, 154quinquies). ' +
     'No official tie-break is published; the engine kept the highest credit (' +
     best.toFixed(2) +
-    ' EUR) and set the others to zero. Verify against the ACD assessment.';
+    ' EUR, ' +
+    winner.kind +
+    ' on a tie) and set the others to zero. Verify against the ACD assessment.';
 
   return {
-    cis: salaryCredit === best ? cis : 0,
-    ciCo2: salaryCredit === best ? cisCo2 : 0,
-    cip: pensionCredit === best ? cip : 0,
-    cipCo2: pensionCredit === best ? cipCo2 : 0,
-    cii: independentCredit === best ? cii : 0,
-    ciiCo2: independentCredit === best ? ciiCo2 : 0,
+    cis: winner.kind === 'salary' ? cis : 0,
+    ciCo2: winner.kind === 'salary' ? cisCo2 : 0,
+    cip: winner.kind === 'pension' ? cip : 0,
+    cipCo2: winner.kind === 'pension' ? cipCo2 : 0,
+    cii: winner.kind === 'independent' ? cii : 0,
+    ciiCo2: winner.kind === 'independent' ? ciiCo2 : 0,
     note,
   };
 }
