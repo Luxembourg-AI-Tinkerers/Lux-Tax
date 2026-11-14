@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { HelpTip } from './HelpTip';
 import { apiClient } from '../lib/api';
 import { formatEuro } from '../lib/money';
 import {
@@ -310,6 +311,7 @@ export function AssessmentView({ workspace, onRefresh }: AssessmentViewProps) {
                 className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-700"
               >
                 Filing route
+                {" "}<HelpTip id="filingRoute" />
               </label>
               <select
                 id="filing-route"
@@ -384,7 +386,8 @@ export function AssessmentView({ workspace, onRefresh }: AssessmentViewProps) {
               Tax Year Transition
             </span>
             <h3 className="text-base font-bold text-slate-900 mt-1">
-              Roll Over to Next Tax Year ({workspace.taxYear + 1})
+              Roll Over to Next Tax Year
+                    {" "}<HelpTip id="rollover" /> ({workspace.taxYear + 1})
             </h3>
             <p className="text-xs text-slate-600 mt-0.5">
               Copy reusable household data, dependants, and employer details into the {workspace.taxYear + 1} workspace. All data requires reconfirmation.
@@ -427,6 +430,7 @@ export function AssessmentView({ workspace, onRefresh }: AssessmentViewProps) {
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
               Assessed Taxable Income (€)
+                    {" "}<HelpTip id="assessmentVariance" />
             </label>
             <input
               type="number"
@@ -554,6 +558,7 @@ export function AssessmentView({ workspace, onRefresh }: AssessmentViewProps) {
                 className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-700"
               >
                 Objection deadline
+                    {" "}<HelpTip id="objectionDeadline" />
               </label>
               <input
                 id="objection-deadline"
@@ -570,6 +575,7 @@ export function AssessmentView({ workspace, onRefresh }: AssessmentViewProps) {
                 className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-700"
               >
                 Follow-up date
+                    {" "}<HelpTip id="followUpDate" />
               </label>
               <input
                 id="assessment-follow-up-at"

@@ -74,6 +74,21 @@ export class DocumentsController {
     );
   }
 
+  /**
+   * Reads the stored file again — used after an OCR model is activated, or when
+   * the first read produced no figures. Confirmed facts are left alone.
+   */
+  @Roles(HouseholdRole.PRIMARY_FILER, HouseholdRole.CO_FILER)
+  @Post(':documentId/reextract')
+  async reextract(
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @CurrentUser('id') userId: string,
+    @Req() req: FastifyRequest,
+  ): Promise<DocumentDto> {
+    return this.documentsService.reextractDocument(workspaceId, documentId, userId, req.ip);
+  }
+
   @Roles(HouseholdRole.PRIMARY_FILER, HouseholdRole.CO_FILER)
   @Delete(':documentId')
   async delete(

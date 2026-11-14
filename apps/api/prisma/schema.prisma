@@ -48,6 +48,8 @@ enum AuditEventType {
   MEMBER_REMOVED
   WORKSPACE_INITIALIZED
   DOCUMENT_UPLOADED
+  /// The same file was read again, for example after an OCR model was activated.
+  DOCUMENT_REEXTRACTED
   DOCUMENT_DELETED
   FACT_CREATED
   FACT_CONFIRMED
@@ -93,6 +95,12 @@ enum DocumentType {
   INSURANCE_CERTIFICATE
   DONATION_CERTIFICATE
   CHILDCARE_INVOICE
+  /// A training or seminar invoice (formation continue).
+  TRAINING_INVOICE
+  /// A doctor, dentist, pharmacy or hospital invoice (Art. 127).
+  MEDICAL_INVOICE
+  /// A receipt or invoice with no more specific classification.
+  RECEIPT
   TAX_ASSESSMENT
   FREELANCE_INVOICE
   BUSINESS_EXPENSE
@@ -109,6 +117,21 @@ enum DocumentStatus {
   EXTRACTED
   FAILED
   CONFIRMED
+  /// Stored, but nothing could be read: a photo or a scan with no text layer.
+  NEEDS_OCR
+}
+
+/// Where the figures of a document came from. Recorded so a user can see why a
+/// document produced no facts, and so an auditor can tell a PDF read from a
+/// model's answer.
+enum ExtractionSource {
+  TEXT_LAYER
+  EMBEDDED_TEXT
+  PLAIN_TEXT
+  VISION
+  /// Read locally by an OCR engine (Tesseract), not by a remote model.
+  OCR
+  NONE
 }
 
 enum FactCategory {
@@ -386,6 +409,10 @@ model Document {
   status       DocumentStatus     @default(UPLOADED)
   visibility   DocumentVisibility @default(PRIVATE_DRAFT)
   pageCount    Int?
+  /// Where the last extraction attempt got its text from.
+  extractionSource ExtractionSource @default(NONE)
+  /// True when the file has no readable text: it needs OCR or manual entry.
+  ocrRequired      Boolean          @default(false)
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
 

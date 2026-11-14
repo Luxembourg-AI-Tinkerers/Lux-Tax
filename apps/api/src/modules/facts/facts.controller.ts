@@ -16,7 +16,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { HouseholdGuard } from '../../common/guards/household.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { confirmFactSchema, updateFactSchema } from '@luxtax/validation';
+import { confirmFactSchema, confirmFactsBulkSchema, updateFactSchema } from '@luxtax/validation';
 import { ConfirmedFactDto, ExtractedFactDto, HouseholdRole } from '@luxtax/contracts';
 import { FastifyRequest } from 'fastify';
 
@@ -46,6 +46,28 @@ export class FactsController {
       throw new BadRequestException(parseResult.error.issues[0]?.message || 'Validation failed');
     }
     return this.factsService.confirmFact(workspaceId, userId, parseResult.data, req.ip);
+  }
+
+  /**
+   * Confirms several figures of one document at once.
+   *
+   * The route is separate from `POST confirm` because the response shape is
+   * different: a batch reports what it could not confirm instead of failing
+   * whole, which is what a client retrying a partial import needs.
+   */
+  @Roles(HouseholdRole.PRIMARY_FILER, HouseholdRole.CO_FILER)
+  @Post('confirm-bulk')
+  async confirmFactsBulk(
+    @Param('workspaceId', ParseUUIDPipe) workspaceId: string,
+    @CurrentUser('id') userId: string,
+    @Body() body: any,
+    @Req() req: FastifyRequest,
+  ): Promise<{ confirmed: ConfirmedFactDto[]; skipped: Array<{ id: string; reason: string }> }> {
+    const parseResult = confirmFactsBulkSchema.safeParse(body);
+    if (!parseResult.success) {
+      throw new BadRequestException(parseResult.error.issues[0]?.message || 'Validation failed');
+    }
+    return this.factsService.confirmFactsBulk(workspaceId, userId, parseResult.data, req.ip);
   }
 
   @Roles(HouseholdRole.PRIMARY_FILER, HouseholdRole.CO_FILER)

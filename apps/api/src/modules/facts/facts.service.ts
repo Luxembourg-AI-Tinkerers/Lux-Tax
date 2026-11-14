@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { factCategoryForFieldName } from '@luxtax/contracts';
 import { ReturnApprovalsService } from '../filing/return-approvals.service';
 import {
   AuditEventType,
@@ -17,7 +18,7 @@ import {
   NotificationSeverity,
   NotificationType,
 } from '@luxtax/contracts';
-import { ConfirmFactInput, UpdateFactInput } from '@luxtax/validation';
+import { ConfirmFactInput, ConfirmFactsBulkInput, UpdateFactInput } from '@luxtax/validation';
 import { Prisma } from '@prisma/client';
 import {
   canIncludeInReturn,
@@ -160,6 +161,7 @@ export class FactsService {
     userId: string,
     input: ConfirmFactInput,
     ipAddress?: string,
+    options: { notify?: boolean } = {},
   ): Promise<ConfirmedFactDto> {
     const workspace = await this.prisma.taxYearWorkspace.findUnique({
       where: { id: workspaceId },
@@ -327,7 +329,7 @@ export class FactsService {
     // The spouse learns that a shared material fact changed; the actor already
     // knows. Private facts never reach this branch (redactAudit is true for
     // them), and a notification failure must not undo the confirmed fact.
-    if (!redactAudit && confirmed.isSharedWithHousehold) {
+    if (!redactAudit && confirmed.isSharedWithHousehold && options.notify !== false) {
       await this.safeNotify('material fact confirmed', () =>
         this.notifications.emitToHousehold({
           householdId: workspace.householdId,
@@ -363,6 +365,118 @@ export class FactsService {
       createdAt: confirmed.createdAt.toISOString(),
       updatedAt: confirmed.updatedAt.toISOString(),
     };
+  }
+
+  /**
+   * Confirms several recognised figures of one document in a single request.
+   *
+   * Each fact still goes through `confirmFact`, so the audit row, the approval
+   * invalidation, the privacy rules and the retention trigger are the same ones
+   * a single confirmation uses — a bulk path that reimplemented any of those
+   * would be a second, unaudited way to change a return. Only the notification
+   * is suppressed per fact and replaced by one summary, because a certificate
+   * with five figures should not produce five alerts for the spouse.
+   *
+   * Ids that are already confirmed, belong to another workspace, or cannot be
+   * read are reported as skipped rather than failing the whole batch: a client
+   * retrying after a partial failure must not be blocked by its own history.
+   */
+  async confirmFactsBulk(
+    workspaceId: string,
+    userId: string,
+    input: ConfirmFactsBulkInput,
+    ipAddress?: string,
+  ): Promise<{ confirmed: ConfirmedFactDto[]; skipped: Array<{ id: string; reason: string }> }> {
+    const candidates = await this.prisma.extractedFact.findMany({
+      where: {
+        id: { in: input.extractedFactIds },
+        workspaceId,
+        isConfirmed: false,
+      },
+      include: {
+        document: { select: { documentType: true, uploaderId: true, ownerId: true, visibility: true } },
+      },
+    });
+
+    const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+    const confirmed: ConfirmedFactDto[] = [];
+    const skipped: Array<{ id: string; reason: string }> = [];
+
+    for (const id of input.extractedFactIds) {
+      const candidate = byId.get(id);
+      if (!candidate) {
+        skipped.push({
+          id,
+          reason: 'Not awaiting confirmation in this workspace (unknown, or already confirmed).',
+        });
+        continue;
+      }
+
+      if (
+        !canReadDocument(
+          candidate.document.visibility as Visibility,
+          candidate.document.uploaderId,
+          candidate.document.ownerId,
+          userId,
+        )
+      ) {
+        skipped.push({ id, reason: 'This document is a private draft of another household member.' });
+        continue;
+      }
+
+      try {
+        confirmed.push(
+          await this.confirmFact(
+            workspaceId,
+            userId,
+            {
+              extractedFactId: id,
+              category: factCategoryForFieldName(candidate.fieldName, candidate.document.documentType),
+              fieldKey: candidate.fieldName,
+              amount: candidate.fieldValue,
+              currency: candidate.currency,
+              isSharedWithHousehold: input.isSharedWithHousehold,
+              isIncludedInReturn: input.isIncludedInReturn,
+            },
+            ipAddress,
+            { notify: false },
+          ),
+        );
+      } catch (error) {
+        skipped.push({
+          id,
+          reason: error instanceof Error ? error.message : 'Confirmation failed',
+        });
+      }
+    }
+
+    if (confirmed.length > 1) {
+      const workspace = await this.prisma.taxYearWorkspace.findUnique({
+        where: { id: workspaceId },
+        select: { householdId: true },
+      });
+
+      if (workspace) {
+        await this.safeNotify('bulk material facts confirmed', () =>
+          this.notifications.emitToHousehold({
+            householdId: workspace.householdId,
+            workspaceId,
+            actorId: userId,
+            excludeUserIds: [userId],
+            type: NotificationType.MATERIAL_FIELD_CHANGED,
+            severity: NotificationSeverity.INFO,
+            title: `${confirmed.length} figures added to the return`,
+            body: 'A household member confirmed figures read from a document.',
+            entityType: 'Document',
+            entityId: confirmed[0].sourceDocumentId ?? confirmed[0].id,
+            dedupeKey: `bulk-facts:${confirmed[0].sourceDocumentId ?? confirmed[0].id}:${confirmed.length}`,
+            actionUrl: `/${workspace.householdId}/dashboard`,
+          }),
+        );
+      }
+    }
+
+    return { confirmed, skipped };
   }
 
   async updateFact(

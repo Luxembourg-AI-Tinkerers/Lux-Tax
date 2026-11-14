@@ -1,5 +1,74 @@
 # Lux-Tax implementation tracker
 
+## 2026-11-10 — a “?” beside every option that needs one
+
+Sixty-three plain-language explainers now sit next to the options a taxpayer
+cannot be expected to decode: tax class, the Art. 111 and 111bis envelopes, CIM,
+ASRD, travel units, marginal versus effective rate, the four document-visibility
+states, the approval gate, the data classes in the admin console. The record is
+[`docs/help-affordances.md`](docs/help-affordances.md).
+
+Behaviour follows what people expect from modern products: hover or keyboard
+focus opens the bubble, click pins it for touch, Escape closes it. It renders in
+a portal with fixed positioning, so a table's scroll container cannot clip it, and
+it flips above the trigger near the bottom of the screen.
+
+Two details cost a pass of their own. A tip inside a wrapping `<label>` renamed
+the checkbox (“Employment income About: Employment income”) — the tips now sit
+after the label, which shrank to `inline-flex w-fit` so they stay on the same
+line. And the test harness compiles JSX with the classic transform, so the
+component imports React like every other one in `apps/web`.
+
+**Verification.** `apps/web/test/help-tip.spec.ts` — 9 tests (placement geometry;
+no unused copy, no `?` without copy, no paragraph-sized tooltip, and a floor on
+where the help appears). `tsc --noEmit` exit 0, `next build` green, and a real
+browser pass at 440 px: 25 affordances on the questionnaire, correct copy on
+open, `aria-expanded`/`aria-describedby` set, bubble inside the viewport, Escape
+closes, and clicking a tip does not toggle its checkbox.
+
+---
+
+## 2026-11-10 — document automation: upload → text layer → figures
+
+The pipeline could calculate a return precisely and could not read the documents
+the return is made of: extraction ran `buffer.toString('utf-8')` over the uploaded
+bytes and keyword-matched the result, so a real PDF (FlateDecode streams) produced
+noise and a photograph produced nothing at all — silently, because "no facts found"
+and "no deductible amounts" looked identical.
+
+Phases DA-1 … DA-8 close that gap; the record, the measurements and the explicit
+backlog are in [`docs/document-automation.md`](docs/document-automation.md).
+
+| Phase | Delivered |
+|---|---|
+| DA-1 | Dependency-free PDF text layer (`node:zlib` + `/ToUnicode` CMaps + `/ObjStm`), 20-page Form 100 and 359-page LIR read correctly |
+| DA-2 | One entry point (`readDocumentText`) with `TEXT_LAYER` / `EMBEDDED_TEXT` / `PLAIN_TEXT` / `NONE`; `DocumentStatus.NEEDS_OCR`, `extractionSource`, `ocrRequired` |
+| DA-3 | Vision models behind a validated contract: field allowlist, amount normalisation, fallback chain, per-call data-class check |
+| DA-4 | `TRAINING_INVOICE`, `MEDICAL_INVOICE`, `RECEIPT` — a dental bill is no longer a childcare invoice |
+| DA-5 | `POST …/facts/confirm-bulk` (each fact still audited individually) + *Confirm all* in the vault |
+| DA-6 | `POST …/documents/:id/reextract`, audited as `DOCUMENT_REEXTRACTED` |
+| DA-7 | `Needs OCR` chip and *Re-scan* action in the document vault |
+| DA-8 | 420 / 420 unit tests, `next build` green, 22 migrations with zero drift |
+| DA-9 | In-process OCR: `OcrEngine` port + Tesseract CLI adapter (`OCR_TESSERACT_PATH`, `--psm 6 -l fra`); a photographed receipt now yields figures with no model registered |
+| DA-10 | Scanned PDFs: page images are pulled out of the file (JPEG passthrough, Flate → PNG) and sent through the same OCR port; a scan-to-PDF now yields figures too |
+
+Also cleared: `audit_events.actorId` kept an `ON DELETE RESTRICT` foreign key after
+it became nullable, so `migrate diff` reported a difference on every run.
+
+**Not done, on purpose:** bundling Tesseract with the app, rasterising a *vector*
+page that has neither text nor an image, table-aware extraction, and a
+questionnaire task type for `NEEDS_OCR`. Each is listed with what it needs in the
+backlog.
+
+**The HTTP e2e still cannot run on this machine** — `@nestjs/testing` is ESM-only and
+the Jest 29 configuration has no transform for `node_modules`. Two substitutes were
+run instead: `apps/api/test/document-pipeline.spec.ts` (real PDF bytes → text layer →
+typed figures) and a live HTTP pass against the built API and a migrated database —
+register → household → workspace → upload a 41 KB PNG of a receipt → **3 figures,
+`extractionSource: OCR`** — with a real Tesseract 5.4.0 process.
+
+---
+
 ## 2026-11-10 — dependency security: 71 vulnerable copies → 5
 
 GitHub reported **28 Dependabot vulnerabilities** on the default branch (4 critical, 7 high,

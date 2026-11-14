@@ -83,6 +83,16 @@ export function CameraScanModal({
   const startCamera = async () => {
     setCameraError(null);
     try {
+      // getUserMedia only exists in a secure context. A phone opening the dev
+      // server by its LAN address (http://192.168.x.x:3000) is not one, so the
+      // API is missing rather than the permission being refused; point at the
+      // native-camera button instead of blaming the user.
+      if (window.isSecureContext === false || !navigator.mediaDevices?.getUserMedia) {
+        setCameraError(
+          'Live camera needs HTTPS (or localhost). On this address use "Snap with Phone Camera" instead - it opens your phone\u2019s own camera.'
+        );
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },

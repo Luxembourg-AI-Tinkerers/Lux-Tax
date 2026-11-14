@@ -1,9 +1,13 @@
+// Must stay first: the configuration modules below read `process.env` while
+// they are being imported, and this is what puts `.env` there.
+import './config/load-env';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Logger } from '@nestjs/common';
 import helmet from '@fastify/helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+import { allowedCorsOrigins } from './config/cors-origins';
 import { resolveTrustProxy } from './config/proxy-trust';
 
 /**
@@ -80,7 +84,10 @@ async function bootstrap() {
   // Server-to-server clients (and the e2e suite, which uses app.inject) never
   // send a preflight, so nothing caught this until the UI ran in a browser.
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    // A demo on a phone reaches the web app by its LAN address, not by
+    // localhost, so the allowlist is configurable (CORS_ORIGINS) instead of a
+    // single pinned origin. See config/cors-origins.ts.
+    origin: allowedCorsOrigins(),
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],

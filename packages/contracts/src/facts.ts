@@ -47,6 +47,13 @@ export interface ConfirmFactRequestDto {
   description?: string;
 }
 
+export interface ConfirmFactsBulkRequestDto {
+  /** At most 50: one document's figures, not a workspace sweep. */
+  extractedFactIds: string[];
+  isSharedWithHousehold?: boolean;
+  isIncludedInReturn?: boolean;
+}
+
 export interface UpdateFactRequestDto {
   amount?: string;
   ownerId?: string | null;

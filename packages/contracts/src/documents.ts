@@ -17,6 +17,10 @@ export interface DocumentDto {
   pageCount?: number | null;
   taxYear: number;
   extractedFactsCount?: number;
+  /** True when the file has no readable text and needs OCR or manual entry. */
+  ocrRequired?: boolean;
+  /** Which reader produced the text: a PDF text layer, text, or a vision model. */
+  extractionSource?: 'TEXT_LAYER' | 'EMBEDDED_TEXT' | 'PLAIN_TEXT' | 'VISION' | 'OCR' | 'NONE';
   createdAt: string;
   updatedAt: string;
 }

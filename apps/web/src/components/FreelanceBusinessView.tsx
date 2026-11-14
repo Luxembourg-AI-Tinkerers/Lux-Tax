@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { HelpTip } from './HelpTip';
 import { apiClient } from '../lib/api';
 import {
   DocumentDto,
@@ -562,12 +563,14 @@ export function FreelanceBusinessView({
           <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 shadow-xs">
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">
               Net Taxable Profit
+              {" "}<HelpTip id="netProfit" />
             </span>
             <div className="mt-1 text-2xl font-black text-emerald-700">
               €{metrics.netBusinessProfit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
             <span className="text-[11px] text-emerald-700/80 mt-1 block font-medium">
               Taxable under Art. 14 / Art. 91
+                    {" "}<HelpTip id="freelanceNature" />
             </span>
           </div>
 
@@ -575,6 +578,7 @@ export function FreelanceBusinessView({
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Net VAT (TVA) Balance
+                    {" "}<HelpTip id="vatCollected" />
             </span>
             <div className="mt-1 text-2xl font-black text-indigo-700">
               €{metrics.netVatPayable.toLocaleString('en-US', { minimumFractionDigits: 2 })}

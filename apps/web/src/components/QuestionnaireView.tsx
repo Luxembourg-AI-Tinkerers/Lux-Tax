@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { HelpTip } from './HelpTip';
 import { apiClient } from '../lib/api';
 import {
   ChildReliefHistoryEntry,
@@ -326,6 +327,8 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
               Marital / Household Status
+                  {' '}
+                  <HelpTip id="householdStatus" />
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               {(['SINGLE', 'MARRIED', 'PACS', 'DIVORCED', 'WIDOWED'] as const).map((status) => (
@@ -350,6 +353,8 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
               <label className="block text-[11px] font-semibold text-slate-600">
                 Where does your spouse live?
+                  {' '}
+                  <HelpTip id="mixedCouple" />
               </label>
               <select
                 value={answers.spouseResidence ?? ''}
@@ -394,6 +399,8 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                 Year of spouse's death
+                  {' '}
+                  <HelpTip id="class2Window" />
               </label>
               <input
                 type="number"
@@ -458,7 +465,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               Income Sources in Luxembourg
             </label>
             <div className="space-y-3">
-              <label className="flex items-center gap-3 cursor-pointer">
+              <label className="inline-flex items-center gap-3 cursor-pointer w-fit">
                 <input
                   type="checkbox"
                   checked={answers.hasEmploymentIncome}
@@ -467,8 +474,10 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 />
                 <span className="text-xs font-medium text-slate-800">
                   Employment Income (Salaires / Traitements)
+
                 </span>
-              </label>
+              </label>
+              <HelpTip id="employmentIncome" className="ml-1" />
 
               {answers.hasEmploymentIncome && (
                 <div className="ml-7 grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
@@ -501,7 +510,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 </div>
               )}
 
-              <label className="flex items-center gap-3 cursor-pointer">
+              <label className="inline-flex items-center gap-3 cursor-pointer w-fit">
                 <input
                   type="checkbox"
                   checked={answers.hasFreelanceIncome ?? false}
@@ -510,8 +519,10 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 />
                 <span className="text-xs font-medium text-slate-800">
                   Freelance & Independent Business Income (Art. 14 / Art. 91 LIR)
+
                 </span>
-              </label>
+              </label>
+              <HelpTip id="freelanceIncome" className="ml-1" />
 
               {answers.hasFreelanceIncome && (
                 <div className="ml-7 p-3 bg-indigo-50/70 rounded-xl border border-indigo-200 text-xs text-indigo-900">
@@ -522,7 +533,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 </div>
               )}
 
-              <label className="flex items-center gap-3 cursor-pointer">
+              <label className="inline-flex items-center gap-3 cursor-pointer w-fit">
                 <input
                   type="checkbox"
                   checked={answers.hasPensionIncome}
@@ -531,8 +542,10 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 />
                 <span className="text-xs font-medium text-slate-800">
                   Pension Income (Pensions ou rentes)
+
                 </span>
-              </label>
+              </label>
+              <HelpTip id="pensionIncome" className="ml-1" />
             </div>
           </div>
 
@@ -543,7 +556,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
             </label>
             <div className="space-y-4">
               <div>
-                <label className="flex items-center gap-3 cursor-pointer">
+                <label className="inline-flex items-center gap-3 cursor-pointer w-fit">
                   <input
                     type="checkbox"
                     checked={answers.hasPrimaryResidenceMortgage}
@@ -554,8 +567,10 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                   />
                   <span className="text-xs font-medium text-slate-800">
                     Mortgage Interest on Primary Residence (Habitation personnelle)
+
                   </span>
-                </label>
+                </label>
+              <HelpTip id="mortgageInterest" className="ml-1" />
                 {answers.hasPrimaryResidenceMortgage && (
                   <div className="mt-3 ml-7 grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
                     <div>
@@ -591,7 +606,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 )}
               </div>
 
-              <label className="flex items-center gap-3 cursor-pointer">
+              <label className="inline-flex items-center gap-3 cursor-pointer w-fit">
                 <input
                   type="checkbox"
                   checked={answers.hasLifeInsuranceOrPensionPlan}
@@ -602,10 +617,12 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 />
                 <span className="text-xs font-medium text-slate-800">
                   Private insurance / consumer-loan interest (Art. 111 — €672 envelope)
-                </span>
-              </label>
 
-              <label className="flex items-center gap-3 cursor-pointer">
+                </span>
+              </label>
+              <HelpTip id="art111" className="ml-1" />
+
+              <label className="inline-flex items-center gap-3 cursor-pointer w-fit">
                 <input
                   type="checkbox"
                   checked={answers.hasDonations}
@@ -614,8 +631,10 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 />
                 <span className="text-xs font-medium text-slate-800">
                   Charitable Donations to Recognized Foundations (Art 112 LIR)
+
                 </span>
-              </label>
+              </label>
+              <HelpTip id="donations" className="ml-1" />
             </div>
           </div>
 
@@ -662,6 +681,8 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               <div>
                 <span className="block text-[11px] font-semibold text-slate-600 mb-1">
                   Unités d'éloignement — you (Art. 105bis)
+                  {' '}
+                  <HelpTip id="travelUnits" />
                 </span>
                 <input
                   type="number"
@@ -696,6 +717,8 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               <div>
                 <span className="block text-[11px] font-semibold text-slate-600 mb-1">
                   Prior-year losses carried forward (Art. 114, €)
+                  {' '}
+                  <HelpTip id="priorYearLosses" />
                 </span>
                 <input
                   type="number"
@@ -733,6 +756,8 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               <div>
                 <span className="block text-[11px] font-semibold text-slate-600 mb-1">
                   Moderated children with no family allowance / CEDIES / SNJ (Art. 122 dégrèvement)
+                  {' '}
+                  <HelpTip id="childrenModeration" />
                 </span>
                 <input
                   type="number"
@@ -756,6 +781,8 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               <div>
                 <span className="block text-[11px] font-semibold text-slate-600 mb-1">
                   Children with expired moderation (bonification, Art. 123bis)
+                  {' '}
+                  <HelpTip id="childrenBonification" />
                 </span>
                 <input
                   type="number"
@@ -922,6 +949,8 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               <div>
                 <span className="block text-[11px] font-semibold text-slate-600 mb-1">
                   Reduced working capacity (0–1, invalidity forfait)
+                  {' '}
+                  <HelpTip id="invalidity" />
                 </span>
                 <input
                   type="number"
@@ -940,6 +969,8 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               <div>
                 <span className="block text-[11px] font-semibold text-slate-600 mb-1">
                   Épargne-logement subscriber age on 1 January
+                  {' '}
+                  <HelpTip id="savingsHousing" />
                 </span>
                 <input
                   type="number"
@@ -1011,6 +1042,8 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               <div>
                 <span className="block text-[11px] font-semibold text-slate-600 mb-1">
                   Allocations paid for the child (CIM reduction, €)
+                  {' '}
+                  <HelpTip id="cim" />
                 </span>
                 <input
                   type="number"
@@ -1027,7 +1060,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
             </div>
 
             <div className="mt-4 space-y-2">
-              <label className="flex items-center gap-3 cursor-pointer">
+              <label className="inline-flex items-center gap-3 cursor-pointer w-fit">
                 <input
                   type="checkbox"
                   checked={answers.spouseHasProfessionalIncome ?? false}
@@ -1036,10 +1069,12 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 />
                 <span className="text-xs font-medium text-slate-800">
                   My spouse also has professional income (salary or side-business) — Art. 129b AEP €4,500
-                </span>
-              </label>
 
-              <label className="flex items-center gap-3 cursor-pointer">
+                </span>
+              </label>
+              <HelpTip id="spouseProfessional" className="ml-1" />
+
+              <label className="inline-flex items-center gap-3 cursor-pointer w-fit">
                 <input
                   type="checkbox"
                   checked={answers.spouseIsConjointAidant ?? false}
@@ -1048,10 +1083,12 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 />
                 <span className="text-xs font-medium text-slate-800">
                   My spouse is registered as conjoint-aidant in my business
-                </span>
-              </label>
 
-              <label className="flex items-center gap-3 cursor-pointer">
+                </span>
+              </label>
+              <HelpTip id="conjointAidant" className="ml-1" />
+
+              <label className="inline-flex items-center gap-3 cursor-pointer w-fit">
                 <input
                   type="checkbox"
                   checked={
@@ -1066,14 +1103,16 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 />
                 <span className="text-xs font-medium text-slate-800">
                   Single parent (CIM, Art. 154ter)
+
                   <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
                     Automatic for a single, divorced or widowed parent with a moderated child; tick only to force it
                     on or off.
                   </span>
                 </span>
-              </label>
+              </label>
+              <HelpTip id="cim" className="ml-1" />
 
-              <label className="flex items-center gap-3 cursor-pointer">
+              <label className="inline-flex items-center gap-3 cursor-pointer w-fit">
                 <input
                   type="checkbox"
                   checked={answers.bothParentsSameHome ?? false}
@@ -1082,10 +1121,12 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 />
                 <span className="text-xs font-medium text-slate-800">
                   Both parents live in the same home as the child (excludes the CIM)
-                </span>
-              </label>
 
-              <label className="flex items-center gap-3 cursor-pointer">
+                </span>
+              </label>
+              <HelpTip id="cim" className="ml-1" />
+
+              <label className="inline-flex items-center gap-3 cursor-pointer w-fit">
                 <input
                   type="checkbox"
                   checked={answers.hasPensionSavingsContract ?? false}
@@ -1094,10 +1135,12 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 />
                 <span className="text-xs font-medium text-slate-800">
                   I hold a prévoyance-vieillesse contract (Art. 111bis — cap €3,200 for 2025, €4,500 from 2026)
-                </span>
-              </label>
 
-              <label className="flex items-center gap-3 cursor-pointer">
+                </span>
+              </label>
+              <HelpTip id="art111bis" className="ml-1" />
+
+              <label className="inline-flex items-center gap-3 cursor-pointer w-fit">
                 <input
                   type="checkbox"
                   checked={answers.hasSavingsHousingContract ?? false}
@@ -1106,8 +1149,10 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 />
                 <span className="text-xs font-medium text-slate-800">
                   I hold an épargne-logement contract (Art. 111 al. 5 — €1,344 / €672)
+
                 </span>
-              </label>
+              </label>
+              <HelpTip id="savingsHousing" className="ml-1" />
 
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
@@ -1126,6 +1171,8 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               <div>
                 <span className="block text-[11px] font-semibold text-slate-600 mb-1">
                   ASRD single premium (€, Art. 111 al. 3/4)
+                  {' '}
+                  <HelpTip id="asrd" />
                 </span>
                 <input
                   type="number"
@@ -1158,6 +1205,8 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               <div>
                 <span className="block text-[11px] font-semibold text-slate-600 mb-1">
                   Start-up investment (2026, € — 20 % credit, cap €100,000)
+                  {' '}
+                  <HelpTip id="startupInvestment" />
                 </span>
                 <input
                   type="number"
@@ -1186,7 +1235,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 </span>
               </label>
 
-              <label className="flex items-center gap-3 cursor-pointer">
+              <label className="inline-flex items-center gap-3 cursor-pointer w-fit">
                 <input
                   type="checkbox"
                   checked={answers.rentalForfaitEligible ?? false}
@@ -1195,8 +1244,10 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 />
                 <span className="text-xs font-medium text-slate-800">
                   Rental property: private patrimoine completed ≥ 15 years ago — 35 % forfait (max €2,700)
+
                 </span>
-              </label>
+              </label>
+              <HelpTip id="rentalIncome" className="ml-1" />
 
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
@@ -1262,6 +1313,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
             <div className="mt-6 border-t border-slate-100 pt-4">
               <p className="text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-2">
                 Capital and rental (one row each)
+                    {" "}<HelpTip id="capitalIncome" />
               </p>
               <div className="grid gap-3 sm:grid-cols-4">
                 <div>

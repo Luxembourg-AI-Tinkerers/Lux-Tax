@@ -15,7 +15,8 @@
     "lint": "corepack pnpm -r run lint",
     "test": "corepack pnpm --filter @luxtax/tax-engine test && corepack pnpm --filter @luxtax/validation test && corepack pnpm --filter @luxtax/api test:e2e",
     "typecheck": "corepack pnpm tsc -b packages/contracts packages/validation packages/design-tokens packages/api-client packages/tax-engine",
-    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "seed": "npm --prefix apps/api run seed"
   },
   "devDependencies": {
     "prettier": "^3.5.3",

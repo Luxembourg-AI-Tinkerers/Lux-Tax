@@ -119,11 +119,13 @@ export class DocumentsService {
     const storagePath = path.join(workspaceUploadDir, safeFileName);
     fs.writeFileSync(storagePath, fileBuffer);
 
-    // 4. AI Model & Vision Receipt Extraction
+    // 4. Read the document: text layer → parser, image → OCR model, or neither.
+    // The third outcome is a first-class state, not an empty fact list.
     const extractionResult = await this.receiptAiVisionService.processReceiptOrDocument(
       fileBuffer,
       input.fileName,
       input.mimeType,
+      input.documentType ?? null,
     );
 
     const finalDocType = (input.documentType && input.documentType !== DocumentType.UNKNOWN)
@@ -143,22 +145,33 @@ export class DocumentsService {
         sha256Hash,
         storagePath,
         documentType: finalDocType,
-        status: DocumentStatus.EXTRACTED,
+        status: extractionResult.needsOcr ? DocumentStatus.NEEDS_OCR : DocumentStatus.EXTRACTED,
         visibility: DocumentVisibility.PRIVATE_DRAFT,
-        pageCount: 1,
+        pageCount: extractionResult.pageCount > 0 ? extractionResult.pageCount : 1,
+        extractionSource: extractionResult.source,
+        ocrRequired: extractionResult.needsOcr,
       },
       include: {
         owner: { select: { email: true } },
       },
     });
 
-    // 6. Create DocumentExtraction record
+    // 6. Create DocumentExtraction record. `rawJson` keeps the fields for the
+    // UI and the provenance for an auditor: which reader ran, and why it found
+    // nothing when it found nothing.
     await this.prisma.documentExtraction.create({
       data: {
         documentId: document.id,
-        extractedText: extractionResult.extractedSnippet,
+        extractedText: extractionResult.extractedSnippet || null,
         confidence: extractionResult.confidence,
-        rawJson: extractionResult.fields as any,
+        rawJson: {
+          fields: extractionResult.fields,
+          source: extractionResult.source,
+          modelUsed: extractionResult.modelUsed,
+          reason: extractionResult.reason,
+          rejectedFields: extractionResult.rejectedFields,
+          textCharacters: extractionResult.textCharacters,
+        } as any,
       },
     });
 
@@ -214,6 +227,8 @@ export class DocumentsService {
       pageCount: document.pageCount,
       taxYear: workspace.taxYear,
       extractedFactsCount: extractionResult.fields.length,
+      ocrRequired: extractionResult.needsOcr,
+      extractionSource: extractionResult.source,
       createdAt: document.createdAt.toISOString(),
       updatedAt: document.updatedAt.toISOString(),
     };
@@ -274,9 +289,167 @@ export class DocumentsService {
       pageCount: doc.pageCount,
       taxYear: workspace.taxYear,
       extractedFactsCount: doc._count.extractedFacts,
+      ocrRequired: doc.ocrRequired,
+      extractionSource: doc.extractionSource,
       createdAt: doc.createdAt.toISOString(),
       updatedAt: doc.updatedAt.toISOString(),
     }));
+  }
+
+  /**
+   * Reads a stored document again.
+   *
+   * Two situations need this: an OCR model was activated after the file was
+   * uploaded, and a first read produced nothing usable. Confirmed figures are
+   * never touched — they are the user's data, and replacing them silently would
+   * be a different feature with a different consent. Only the unconfirmed
+   * candidates are replaced, and the event is audited because the figures the
+   * user is shown change without a new upload.
+   */
+  async reextractDocument(
+    workspaceId: string,
+    documentId: string,
+    userId: string,
+    ipAddress?: string,
+  ): Promise<DocumentDto> {
+    const document = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      include: { workspace: true },
+    });
+
+    if (!document || document.workspaceId !== workspaceId) {
+      throw new NotFoundException('Document not found in workspace');
+    }
+
+    // The path is written by the upload handler from a hash, never by a client,
+    // but resolving it inside the upload directory keeps a corrupted row from
+    // turning this endpoint into an arbitrary file reader.
+    const resolvedPath = path.resolve(document.storagePath);
+    const uploadRoot = path.resolve(this.uploadDir) + path.sep;
+    if (!resolvedPath.startsWith(uploadRoot) || !fs.existsSync(resolvedPath)) {
+      throw new NotFoundException('The stored file is no longer available');
+    }
+
+    const fileBuffer = fs.readFileSync(resolvedPath);
+    const extraction = await this.receiptAiVisionService.processReceiptOrDocument(
+      fileBuffer,
+      document.originalName,
+      document.mimeType,
+      null,
+    );
+
+    // A figure the user already confirmed must not come back as a candidate: the
+    // engine sums confirmed facts, so confirming it twice would double the income
+    // or the deduction. Re-reading therefore only fills what is still missing.
+    const alreadyConfirmed = new Set(
+      (
+        await this.prisma.confirmedFact.findMany({
+          where: { sourceDocumentId: document.id },
+          select: { fieldKey: true },
+        })
+      ).map((fact) => fact.fieldKey),
+    );
+    const candidates = extraction.fields.filter((field) => !alreadyConfirmed.has(field.name));
+
+    const extractedFactsCount = await this.prisma.$transaction(async (transaction) => {
+      // Only candidates: a confirmed fact keeps its provenance link and its amount.
+      await transaction.extractedFact.deleteMany({
+        where: { documentId: document.id, isConfirmed: false },
+      });
+
+      for (const field of candidates) {
+        await transaction.extractedFact.create({
+          data: {
+            documentId: document.id,
+            workspaceId,
+            ownerId: document.ownerId ?? document.uploaderId,
+            fieldName: field.name,
+            fieldValue: field.value,
+            currency: 'EUR',
+            confidence: field.confidence,
+            sourcePage: 1,
+            sourceSnippet: field.snippet,
+          },
+        });
+      }
+
+      await transaction.document.update({
+        where: { id: document.id },
+        data: {
+          documentType:
+            extraction.documentType !== DocumentType.UNKNOWN ? extraction.documentType : document.documentType,
+          status: extraction.needsOcr ? DocumentStatus.NEEDS_OCR : DocumentStatus.EXTRACTED,
+          pageCount: extraction.pageCount > 0 ? extraction.pageCount : document.pageCount,
+          extractionSource: extraction.source,
+          ocrRequired: extraction.needsOcr,
+        },
+      });
+
+      await transaction.documentExtraction.create({
+        data: {
+          documentId: document.id,
+          extractedText: extraction.extractedSnippet || null,
+          confidence: extraction.confidence,
+          rawJson: {
+            fields: extraction.fields,
+            source: extraction.source,
+            modelUsed: extraction.modelUsed,
+            reason: extraction.reason,
+            rejectedFields: extraction.rejectedFields,
+            textCharacters: extraction.textCharacters,
+            alreadyConfirmed: [...alreadyConfirmed],
+            reextraction: true,
+          } as any,
+        },
+      });
+
+      return candidates.length;
+    });
+
+    await this.auditService.logEvent({
+      householdId: document.workspace.householdId,
+      workspaceId,
+      actorId: userId,
+      eventType: AuditEventType.DOCUMENT_REEXTRACTED,
+      entityType: 'Document',
+      entityId: document.id,
+      newValue: {
+        documentType: extraction.documentType,
+        source: extraction.source,
+        ocrRequired: extraction.needsOcr,
+        factsReplaced: extractedFactsCount,
+      },
+      description: `Re-read "${document.originalName}" (${extraction.source}); ${extractedFactsCount} candidate figure(s) replaced`,
+      ipAddress,
+    });
+
+    const refreshed = await this.prisma.document.findUniqueOrThrow({
+      where: { id: document.id },
+      include: { owner: { select: { email: true } } },
+    });
+
+    return {
+      id: refreshed.id,
+      workspaceId: refreshed.workspaceId,
+      uploaderId: refreshed.uploaderId,
+      ownerId: refreshed.ownerId,
+      ownerEmail: refreshed.owner?.email || null,
+      fileName: refreshed.fileName,
+      originalName: refreshed.originalName,
+      mimeType: refreshed.mimeType,
+      fileSize: refreshed.fileSize,
+      sha256Hash: refreshed.sha256Hash,
+      documentType: refreshed.documentType as DocumentType,
+      status: refreshed.status as DocumentStatus,
+      visibility: refreshed.visibility as DocumentVisibility,
+      pageCount: refreshed.pageCount,
+      taxYear: document.workspace.taxYear,
+      extractedFactsCount,
+      ocrRequired: extraction.needsOcr,
+      extractionSource: extraction.source,
+      createdAt: refreshed.createdAt.toISOString(),
+      updatedAt: refreshed.updatedAt.toISOString(),
+    };
   }
 
   async updateVisibility(

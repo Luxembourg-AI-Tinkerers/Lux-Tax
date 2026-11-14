@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { HelpTip } from './HelpTip';
 import { apiClient } from '../lib/api';
 import { ConfirmedFactDto, FactCategory } from '@luxtax/contracts';
 import { FACT_INCLUSION_DOWNGRADE_MESSAGE, factInclusionWarning } from '../lib/fact-inclusion';
@@ -303,7 +304,8 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
         <div className="border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900">
-              Confirmed Tax Facts ({confirmedFacts.length})
+              Confirmed Tax Facts
+                    {" "}<HelpTip id="confirmedFacts" /> ({confirmedFacts.length})
             </h3>
             <p className="text-xs text-slate-500">
               All financial values confirmed here are injected into the versioned calculation engine and the Form 100 package for the workspace tax year.
@@ -374,11 +376,11 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-3">Category</th>
+                  <th className="px-6 py-3">Category{" "}<HelpTip id="factCategory" /></th>
                   <th className="px-6 py-3">Field / Box</th>
                   <th className="px-6 py-3">Description</th>
                   <th className="px-6 py-3">Amount (EUR)</th>
-                  <th className="px-6 py-3">Included</th>
+                  <th className="px-6 py-3">Included{" "}<HelpTip id="factInclusion" /></th>
                   <th className="px-6 py-3 text-right">Actions</th>
                 </tr>
               </thead>

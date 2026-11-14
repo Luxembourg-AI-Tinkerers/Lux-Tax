@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { HelpTip } from './HelpTip';
 import { apiClient } from '../lib/api';
 import {
   AdminOverviewDto,
@@ -858,7 +859,8 @@ export function AdminConsoleView() {
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Task-Based Model Routing Policies</h3>
+                <h3 className="text-sm font-bold text-slate-900">Task-Based Model Routing Policies
+                    {" "}<HelpTip id="modelRouting" /></h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Route Luxembourg tax processing tasks to specific primary and fallback models with traffic rollouts.
                 </p>
@@ -1158,6 +1160,7 @@ export function AdminConsoleView() {
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
                     Permitted Data Classification
+                    {" "}<HelpTip id="dataClass" />
                   </label>
                   <select
                     value={registerForm.permittedDataClass}
@@ -1196,7 +1199,7 @@ export function AdminConsoleView() {
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Capabilities</label>
+                <label className="block font-semibold text-slate-700 mb-1">Capabilities{" "}<HelpTip id="modelCapabilities" /></label>
                 <div className="flex flex-wrap gap-4 pt-1">
                   {(['TEXT', 'VISION', 'EMBEDDING', 'RERANKING'] as const).map((cap) => {
                     const isChecked = registerForm.capabilities.includes(cap);
@@ -1349,7 +1352,8 @@ export function AdminConsoleView() {
 
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    Rollout Percentage ({routeForm.activeRolloutPercentage}%)
+                    Rollout Percentage
+                    {" "}<HelpTip id="rolloutPercentage" /> ({routeForm.activeRolloutPercentage}%)
                   </label>
                   <input
                     type="range"

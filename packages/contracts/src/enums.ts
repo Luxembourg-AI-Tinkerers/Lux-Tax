@@ -53,6 +53,8 @@ export enum AuditEventType {
   MEMBER_REMOVED = 'MEMBER_REMOVED',
   WORKSPACE_INITIALIZED = 'WORKSPACE_INITIALIZED',
   DOCUMENT_UPLOADED = 'DOCUMENT_UPLOADED',
+  /** The same file was read again, for example after an OCR model was activated. */
+  DOCUMENT_REEXTRACTED = 'DOCUMENT_REEXTRACTED',
   DOCUMENT_DELETED = 'DOCUMENT_DELETED',
   FACT_CREATED = 'FACT_CREATED',
   FACT_CONFIRMED = 'FACT_CONFIRMED',
@@ -94,6 +96,12 @@ export enum DocumentType {
   INSURANCE_CERTIFICATE = 'INSURANCE_CERTIFICATE',
   DONATION_CERTIFICATE = 'DONATION_CERTIFICATE',
   CHILDCARE_INVOICE = 'CHILDCARE_INVOICE',
+  /** A training or seminar invoice (formation continue). */
+  TRAINING_INVOICE = 'TRAINING_INVOICE',
+  /** A doctor, dentist, pharmacy or hospital invoice (Art. 127). */
+  MEDICAL_INVOICE = 'MEDICAL_INVOICE',
+  /** A receipt or invoice that carries no more specific classification. */
+  RECEIPT = 'RECEIPT',
   TAX_ASSESSMENT = 'TAX_ASSESSMENT',
   FREELANCE_INVOICE = 'FREELANCE_INVOICE',
   BUSINESS_EXPENSE = 'BUSINESS_EXPENSE',
@@ -110,6 +118,8 @@ export enum DocumentStatus {
   EXTRACTED = 'EXTRACTED',
   FAILED = 'FAILED',
   CONFIRMED = 'CONFIRMED',
+  /** Stored, but nothing could be read: a photo or a scan with no text layer. */
+  NEEDS_OCR = 'NEEDS_OCR',
 }
 
 export enum FactCategory {

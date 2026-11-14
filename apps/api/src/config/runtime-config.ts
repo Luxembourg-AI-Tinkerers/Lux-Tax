@@ -44,11 +44,24 @@ export function configurationProblems(env: NodeJS.ProcessEnv = process.env): str
 
   if ((env.NODE_ENV ?? '') === 'production') {
     if (!(env.FRONTEND_URL ?? '').trim()) {
-      problems.push('FRONTEND_URL is required in production (it is the CORS allowlist)');
+      problems.push('FRONTEND_URL is required in production (verification links and the default CORS origin)');
     }
     const frontend = (env.FRONTEND_URL ?? '').trim();
     if (frontend && !/^https:\/\//i.test(frontend) && !/^http:\/\/localhost(:\d+)?$/i.test(frontend)) {
       problems.push('FRONTEND_URL must be https in production');
+    }
+
+    // Extra browser origins (staging, a second host) are held to the same
+    // rule: over plaintext http the bearer token and the refresh token travel
+    // in the clear.
+    const extraOrigins = (env.CORS_ORIGINS ?? '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+    for (const origin of extraOrigins) {
+      if (!/^https:\/\//i.test(origin) && !/^http:\/\/localhost(:\d+)?$/i.test(origin)) {
+        problems.push(`CORS_ORIGINS entry must be https in production: ${origin}`);
+      }
     }
   }
 

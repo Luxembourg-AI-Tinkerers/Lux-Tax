@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { HelpTip } from './HelpTip';
 import { apiClient, downloadAnnexPdf } from '../lib/api';
 import { formatEuro } from '../lib/money';
 import {
@@ -161,6 +162,7 @@ export function FilingPackageView({
             <div className="flex items-center gap-2">
               <h3 className="text-base font-bold text-slate-900">
                 Joint Household Return Approval
+                    {" "}<HelpTip id="approval" />
               </h3>
               {returnVersion?.bothSpousesApproved && (
                 <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
@@ -379,6 +381,7 @@ export function FilingPackageView({
           <div>
             <h3 className="text-base font-bold text-slate-900">
               Form 100 Box Mappings & MyGuichet Transfer Guide
+                    {" "}<HelpTip id="filingRoute" />
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
               Generates the official Luxembourg Form 100 boxes and step-by-step transfer guide for filing online.
@@ -398,7 +401,8 @@ export function FilingPackageView({
           <div className="mt-6 space-y-6">
             {/* Hash & Verification Banner */}
             <div className="flex items-center justify-between rounded-lg bg-slate-900 text-white p-4 text-xs font-mono">
-              <span className="text-slate-400">Package SHA-256 Checksum:</span>
+              <span className="text-slate-400">Package SHA-256 Checksum:
+                    {" "}<HelpTip id="packageChecksum" /></span>
               <span className="text-emerald-400 font-bold truncate max-w-xs sm:max-w-md">
                 {filingPackage.packageSha256}
               </span>
@@ -407,7 +411,8 @@ export function FilingPackageView({
             {/* Form 100 Boxes Table */}
             <div>
               <h4 className="text-sm font-bold text-slate-900 mb-3">
-                Official Form 100 Box Values ({filingPackage.form100Boxes.length} fields mapped)
+                Official Form 100 Box Values
+                    {" "}<HelpTip id="formBox" /> ({filingPackage.form100Boxes.length} fields mapped)
               </h4>
               {(filingPackage.unsupportedCertificateCodes ?? []).length > 0 && (
                 <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">

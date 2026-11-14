@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { HelpTip } from '../../../../components/HelpTip';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '../../../../lib/auth-context';
 import { apiClient } from '../../../../lib/api';
@@ -170,7 +171,8 @@ export default function DashboardPage() {
               </h1>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                <span className="text-xs text-slate-500">Tax Year:</span>
+                <span className="text-xs text-slate-500">Tax Year:
+                    {" "}<HelpTip id="taxYearWorkspace" /></span>
                 {workspaces.length > 1 ? (
                   <select
                     value={selectedYear}
@@ -301,6 +303,7 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
                     Household Co-Filers
+                    {" "}<HelpTip id="householdMembers" />
                   </h2>
                   {!coFiler && (
                     <button

@@ -4,6 +4,7 @@
     "module": "CommonJS",
     "moduleResolution": "node",
     "strict": true,
+    "experimentalDecorators": true,
     "jsx": "react-jsx",
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -107,6 +108,23 @@
     "apps/api/src/modules/notifications/notification-devices.ts",
     "apps/api/test/notification-devices-rules.spec.ts",
     "apps/api/src/modules/notifications/adapters/expo-push.transport.ts",
-    "apps/api/test/expo-push-transport.spec.ts"
+    "apps/api/test/expo-push-transport.spec.ts",
+    "apps/api/src/modules/documents/text/pdf-text.ts",
+    "apps/api/src/modules/documents/text/document-text.ts",
+    "apps/api/src/modules/documents/extraction/vision-contract.ts",
+    "apps/api/test/support/workspace-file.ts",
+    "apps/api/test/pdf-text.spec.ts",
+    "apps/api/test/document-text.spec.ts",
+    "apps/api/test/vision-contract.spec.ts",
+    "apps/api/test/support/pdf-fixture.ts",
+    "apps/api/test/document-pipeline.spec.ts",
+    "apps/api/src/modules/documents/ocr/ocr-engine.ts",
+    "apps/api/test/ocr-engine.spec.ts",
+    "apps/api/test/ocr-pipeline.spec.ts",
+    "apps/api/src/modules/documents/text/pdf-images.ts",
+    "apps/api/test/pdf-images.spec.ts",
+    "apps/web/src/lib/help-texts.ts",
+    "apps/web/src/lib/tooltip-position.ts",
+    "apps/web/test/help-tip.spec.ts"
   ]
 }

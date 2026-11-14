@@ -1,6 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AdminService } from '../admin/admin.service';
 import { DocumentType, FactCategory } from '@luxtax/contracts';
+import { readDocumentText } from './text/document-text';
+import { extractPdfPageImages, type PdfPageImage } from './text/pdf-images';
+import { TesseractCliOcrEngine, type OcrEngine } from './ocr/ocr-engine';
+import {
+  buildVisionPrompt,
+  parseVisionExtraction,
+  resolveVisionChain,
+  type VisionField,
+} from './extraction/vision-contract';
 
 export interface ExtractedField {
   name: string;
@@ -10,13 +19,33 @@ export interface ExtractedField {
   category?: FactCategory;
 }
 
+/** Where the figures came from. Persisted so the UI can explain a document. */
+export type ExtractionSource =
+  | 'TEXT_LAYER'
+  | 'EMBEDDED_TEXT'
+  | 'PLAIN_TEXT'
+  | 'VISION'
+  | 'OCR'
+  | 'NONE';
+
 export interface ReceiptAiExtractionResult {
   documentType: DocumentType;
   confidence: number;
   extractedSnippet: string;
   modelUsed: string;
   fields: ExtractedField[];
+  source: ExtractionSource;
+  pageCount: number;
+  /** True when nothing could be read and the user must act (OCR or manual entry). */
+  needsOcr: boolean;
+  /** User-facing explanation when `needsOcr` is true, or when a model misbehaved. */
+  reason: string | null;
+  textCharacters: number;
+  /** Field names a model returned that this application cannot store. */
+  rejectedFields: string[];
 }
+
+export { stripAccents };
 
 /**
  * Lower-case text with diacritics stripped (é → e, ü → u …).
@@ -25,55 +54,332 @@ export interface ReceiptAiExtractionResult {
  * same certificate spells "rémunération" both ways. Matching on the de-accented
  * form makes the keyword lists independent of that.
  */
-export function stripAccents(value: string): string {
+function stripAccents(value: string): string {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
+
+const VISION_TIMEOUT_MS = 20_000;
 
 @Injectable()
 export class ReceiptAiVisionService {
   private readonly logger = new Logger(ReceiptAiVisionService.name);
 
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    // Supplied by the module's factory (and by tests) as any implementation of
+    // the port. The default keeps a plain `new ReceiptAiVisionService(admin)`
+    // working, with OCR simply unconfigured.
+    private readonly ocrEngine: OcrEngine = new TesseractCliOcrEngine(),
+  ) {}
 
   /**
-   * Process document or receipt through the AI Model Route.
-   * If custom multimodal AI endpoint (Gemini/OpenAI/Qwen-VL) is registered and active,
-   * dispatches to vision model. Otherwise runs the deterministic OCR & receipt extraction engine.
+   * Turns an uploaded document into candidate tax facts.
+   *
+   * Three outcomes, and the third is the one that used to lie:
+   *  1. the file has a text layer (PDF) or is text → the deterministic parser
+   *     reads it, and every figure carries the printed line it came from;
+   *  2. it has no text layer (photo, scan) and a vision model is registered →
+   *     the model reads it, through a validated JSON contract;
+   *  3. neither → the document is stored, marked as needing OCR, and the user
+   *     is told so. It is never silently reported as "no facts found".
    */
   async processReceiptOrDocument(
     fileBuffer: Buffer,
     fileName: string,
     mimeType: string,
+    hint: DocumentType | null = null,
   ): Promise<ReceiptAiExtractionResult> {
-    // 1. Resolve active AI route
-    const routes = await this.adminService.getModelRoutes();
-    const receiptRoute = routes.find((r) => r.taskName === 'document.ocr.receipt_scan');
-    const primaryModelId = receiptRoute?.primaryModelId || 'mdl-paddle-v3';
+    const documentText = readDocumentText(fileBuffer, mimeType);
 
-    // 2. Read text or metadata from image / PDF / text buffer
-    const rawString = fileBuffer.toString('utf-8');
-    const isImage = mimeType.startsWith('image/');
-
-    // 3. Check for external Vision AI model execution if configured
-    try {
-      const models = await this.adminService.getModels();
-      const activeModel = models.find((m) => m.id === primaryModelId);
-
-      if (activeModel?.endpointUrl && activeModel.status === 'ACTIVE' && activeModel.capabilities.includes('VISION')) {
-        const aiResult = await this.callExternalVisionModel(activeModel, fileBuffer, mimeType, fileName);
-        if (aiResult) {
-          return {
-            ...aiResult,
-            modelUsed: activeModel.displayName || activeModel.id,
-          };
-        }
-      }
-    } catch (err) {
-      this.logger.warn(`External AI vision call failed, falling back to local extraction: ${err}`);
+    if (!documentText.needsOcr) {
+      const parsed = this.extractLocally(documentText.text, fileName, documentText.source);
+      return { ...parsed, pageCount: documentText.pageCount, textCharacters: documentText.detail.characters };
     }
 
-    // 4. Fallback: Local deterministic multimodal & pattern extraction engine
-    return this.extractLocally(rawString, fileName, isImage, primaryModelId);
+    const vision = await this.tryVisionModels(fileBuffer, fileName, mimeType, hint);
+    if (vision) {
+      return { ...vision, pageCount: documentText.pageCount, textCharacters: documentText.detail.characters };
+    }
+
+    // A model endpoint is optional; a local OCR run is not. This is the path a
+    // photographed receipt takes on a machine with no model registered.
+    const ocr = await this.tryOcr(fileBuffer, fileName, mimeType);
+    if (ocr) {
+      return { ...ocr, pageCount: documentText.pageCount, textCharacters: ocr.textCharacters };
+    }
+
+    return {
+      documentType: DocumentType.UNKNOWN,
+      confidence: 0,
+      extractedSnippet: '',
+      modelUsed: 'none',
+      fields: [],
+      source: 'NONE',
+      pageCount: documentText.pageCount,
+      needsOcr: true,
+      reason:
+        documentText.reason ??
+        'This document could not be read. Configure an OCR engine or a vision model, or enter the figures manually.',
+      textCharacters: documentText.detail.characters,
+      rejectedFields: [],
+    };
+  }
+
+  /**
+   * Calls the registered vision models in route order until one returns a
+   * usable answer. A model that answers with prose, or with a field the engine
+   * does not know, is a failed attempt — not a stored fact.
+   */
+  private async tryVisionModels(
+    fileBuffer: Buffer,
+    fileName: string,
+    mimeType: string,
+    hint: DocumentType | null,
+  ): Promise<ReceiptAiExtractionResult | null> {
+    let chain;
+    try {
+      const routes = await this.adminService.getModelRoutes();
+      const models = await this.adminService.getModels();
+      const route = routes.find((candidate) => candidate.taskName === 'document.ocr.receipt_scan') ?? null;
+      chain = resolveVisionChain(route, models);
+    } catch (error) {
+      this.logger.warn(`Could not resolve the OCR model chain: ${error}`);
+      return null;
+    }
+
+    if (chain.length === 0) return null;
+
+    const prompt = buildVisionPrompt(fileName, hint);
+    const failures: string[] = [];
+
+    for (const model of chain) {
+      try {
+        const content = await this.callModel(model, fileBuffer, mimeType, prompt);
+        if (!content) {
+          failures.push(`${model.displayName}: no answer`);
+          continue;
+        }
+
+        const parsed = parseVisionExtraction(content);
+        if (!parsed) {
+          failures.push(`${model.displayName}: unreadable answer`);
+          continue;
+        }
+
+        return {
+          documentType: parsed.documentType,
+          confidence: parsed.confidence,
+          extractedSnippet: parsed.extractedSnippet,
+          modelUsed: model.displayName,
+          fields: parsed.fields.map((field) => this.toExtractedField(field)),
+          source: 'VISION',
+          pageCount: 1,
+          needsOcr: parsed.fields.length === 0,
+          reason:
+            parsed.fields.length === 0
+              ? 'The OCR model read this document but found no amount to extract. Check the scan or enter the figures manually.'
+              : null,
+          textCharacters: 0,
+          rejectedFields: parsed.rejectedFields,
+        };
+      } catch (error) {
+        failures.push(`${model.displayName}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    this.logger.warn(`Every OCR model failed for ${fileName}: ${failures.join('; ')}`);
+    return null;
+  }
+
+  /**
+   * Reads pixels with the configured local OCR engine.
+   *
+   * Returns `null` when this is not an image, or when the engine is absent or
+   * broken — the caller then reports the document as unreadable with the reason
+   * the engine gave. A successful read goes through the same deterministic
+   * parser as a PDF text layer, so a figure from a photo carries the printed
+   * line it came from exactly like a text-layer figure does.
+   */
+  private async tryOcr(
+    fileBuffer: Buffer,
+    fileName: string,
+    mimeType: string,
+  ): Promise<Omit<ReceiptAiExtractionResult, 'pageCount'> | null> {
+    const pageImages = this.pageImagesFor(fileBuffer, mimeType);
+    if (pageImages.length === 0) return null;
+
+    const texts: string[] = [];
+    let sawFailure = false;
+    let emptyReason: string | null = null;
+
+    for (const page of pageImages) {
+      const result = await this.ocrEngine.recognize(page.data, page.mimeType);
+
+      if (result.status === 'NOT_CONFIGURED') {
+        // The operator has to fix this, and the message has to say what to set.
+        return this.unreadable(
+          `${result.reason ?? 'No OCR engine is configured.'} Alternatively, register a vision model in the admin console.`,
+          result.engine,
+        );
+      }
+
+      if (result.status === 'TEXT') {
+        texts.push(result.text);
+        continue;
+      }
+
+      if (result.status === 'EMPTY') {
+        emptyReason = result.reason;
+        continue;
+      }
+
+      if (result.status === 'FAILED') {
+        // The engine's own message is Leptonica's ("Corrupt JPEG data…"), which
+        // is for the log, not for the person holding the receipt.
+        sawFailure = true;
+        this.logger.warn(`Local OCR failed for ${fileName}: ${result.reason}`);
+      }
+    }
+
+    if (texts.length === 0) {
+      // A blank page and a broken file need different advice.
+      return this.unreadable(
+        sawFailure
+          ? 'The OCR engine could not read this file. The scan may be damaged, or too small or blurry to recognise. Try a sharper photo or enter the figures manually.'
+          : emptyReason ?? 'The OCR engine found no readable text in this document.',
+        this.ocrEngine.name,
+      );
+    }
+
+    // Pages are joined with a newline: the parser reads line by line, and a
+    // figure that continues the previous page would otherwise merge into it.
+    const text = texts.join('\n');
+    const parsed = this.extractLocally(text, fileName, 'OCR');
+    return { ...parsed, textCharacters: text.length, rejectedFields: [] };
+  }
+
+  /**
+   * The images OCR should look at, for either kind of upload.
+   *
+   * An image is one page. A PDF has no pixels of its own unless it is a scan, in
+   * which case each page carries one image XObject — that is what this pulls
+   * out. A vector PDF with a text layer never reaches here, and a vector PDF
+   * without one yields nothing, which the caller reports honestly.
+   */
+  private pageImagesFor(fileBuffer: Buffer, mimeType: string): PdfPageImage[] {
+    if (mimeType.startsWith('image/')) {
+      return [{ pageIndex: 0, mimeType: mimeType as 'image/jpeg' | 'image/png', data: fileBuffer, width: 0, height: 0 }];
+    }
+
+    if (mimeType === 'application/pdf') {
+      const images = extractPdfPageImages(fileBuffer);
+      if (images.length > 0) {
+        this.logger.log(`Rendering ${images.length} page image(s) from a scanned PDF for OCR`);
+      }
+      return images;
+    }
+
+    return [];
+  }
+
+  /** A stored-but-unread document, with the reason the reader gave. */
+  private unreadable(reason: string | null, engine: string): Omit<ReceiptAiExtractionResult, 'pageCount'> {
+    return {
+      documentType: DocumentType.UNKNOWN,
+      confidence: 0,
+      extractedSnippet: '',
+      modelUsed: engine,
+      fields: [],
+      source: 'NONE',
+      needsOcr: true,
+      reason,
+      textCharacters: 0,
+      rejectedFields: [],
+    };
+  }
+
+  /** POSTs the document to an OpenAI-compatible chat completion endpoint. */
+  private async callModel(
+    model: { endpointUrl?: string; modelIdentifier: string; apiKey?: string },
+    fileBuffer: Buffer,
+    mimeType: string,
+    prompt: string,
+  ): Promise<string | null> {
+    if (!model.endpointUrl) return null;
+
+    const response = await fetch(model.endpointUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(model.apiKey ? { Authorization: `Bearer ${model.apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model: model.modelIdentifier,
+        temperature: 0,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              {
+                type: 'image_url',
+                image_url: { url: `data:${mimeType};base64,${fileBuffer.toString('base64')}` },
+              },
+            ],
+          },
+        ],
+        response_format: { type: 'json_object' },
+      }),
+      signal: AbortSignal.timeout(VISION_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const json = (await response.json()) as {
+      choices?: Array<{ message?: { content?: unknown } }>;
+    };
+    const content = json.choices?.[0]?.message?.content;
+    return typeof content === 'string' ? content : null;
+  }
+
+  /** Attaches the fact category the engine expects to a model-provided field. */
+  private toExtractedField(field: VisionField): ExtractedField {
+    const categoryByField: Record<string, FactCategory> = {
+      grossSalary: FactCategory.EMPLOYMENT_INCOME,
+      socialSecurity: FactCategory.EMPLOYMENT_INCOME,
+      withholdingTax: FactCategory.EMPLOYMENT_INCOME,
+      fraisObtention: FactCategory.EMPLOYMENT_INCOME,
+      grossPension: FactCategory.PENSION_INCOME,
+      capitalIncome: FactCategory.CAPITAL_INCOME,
+      qualifyingDividend: FactCategory.CAPITAL_INCOME,
+      rentalGross: FactCategory.RENTAL_INCOME,
+      rentalCharges: FactCategory.RENTAL_INCOME,
+      foreignIncome: FactCategory.FOREIGN_INCOME,
+      freelanceRevenue: FactCategory.FREELANCE_INCOME,
+      businessExpense: FactCategory.BUSINESS_EXPENSE,
+      trainingCourseExpense: FactCategory.OTHER_DEDUCTION,
+      workRelatedExpense: FactCategory.OTHER_DEDUCTION,
+      medicalExpense: FactCategory.OTHER_DEDUCTION,
+      invoiceExpense: FactCategory.OTHER_DEDUCTION,
+      childcareExpense: FactCategory.CHILDCARE_EXPENSE,
+      domesticServiceExpense: FactCategory.HOUSEHOLD_HELP_EXPENSE,
+      donationAmount: FactCategory.DONATION_DEDUCTION,
+      insurancePremium: FactCategory.INSURANCE_DEDUCTION,
+      pensionSavings111bis: FactCategory.PENSION_SAVINGS_111BIS,
+      savingsHousing: FactCategory.SAVINGS_HOUSING,
+      lrcp: FactCategory.LRCP_CONTRIBUTION,
+      mortgageInterest: FactCategory.MORTGAGE_INTEREST,
+    };
+
+    return {
+      name: field.name,
+      value: field.value,
+      confidence: field.confidence,
+      snippet: field.snippet,
+      category: categoryByField[field.name],
+    };
   }
 
   /**
@@ -82,6 +388,10 @@ export class ReceiptAiVisionService {
    *
    * Returns the LAST number on that line, which is the amount in every layout
    * seen so far (the label may itself contain numbers such as "Art. 111").
+   *
+   * A PDF prints the label and the figure in two columns, which the text layer
+   * often yields as two lines; the window below covers that without reaching
+   * into the next code's line.
    */
   private codeAmount(
     text: string,
@@ -95,96 +405,33 @@ export class ReceiptAiVisionService {
       const line = linePattern.exec(text);
       if (!line) continue;
 
-      const amounts = line[0].match(/\d{1,3}(?:[ .,]\d{3})*(?:[.,]\d{2})|\d+[.,]\d{2}/g);
-      if (!amounts || amounts.length === 0) continue;
+      // Same line first; then up to two following lines that hold only a figure
+      // (a table column), stopping at the next code or a blank line.
+      const after = text.slice(line.index + line[0].length).split('\n').slice(1, 4);
+      const candidates = [line[0], ...after.filter((next) => /^[\s\d.,'’€%-]+$/.test(next))];
 
-      return {
-        value: amounts[amounts.length - 1],
-        snippet: line[0].trim().slice(0, 160),
-      };
+      for (const candidate of candidates) {
+        const amounts = candidate.match(/\d{1,3}(?:[ .,'’]\d{3})*(?:[.,]\d{2})|\d+[.,]\d{2}/g);
+        if (!amounts || amounts.length === 0) continue;
+
+        return {
+          value: amounts[amounts.length - 1],
+          snippet: candidate.trim().slice(0, 160),
+        };
+      }
     }
     return null;
   }
 
-  private async callExternalVisionModel(
-    model: any,
-    fileBuffer: Buffer,
-    mimeType: string,
-    fileName: string,
-  ): Promise<ReceiptAiExtractionResult | null> {
-    const base64Data = fileBuffer.toString('base64');
-    const prompt = `You are a Luxembourg tax document and receipt specialist.
-Analyze this scanned image or invoice (${fileName}).
-Extract:
-1. Document Type: one of FREELANCE_INVOICE, BUSINESS_EXPENSE, PROFIT_AND_LOSS_STATEMENT, VAT_RETURN, CHILDCARE_INVOICE, DONATION_CERTIFICATE, SALARY_CERTIFICATE, MORTGAGE_CERTIFICATE, INSURANCE_CERTIFICATE, or UNKNOWN.
-2. Total amount in EUR.
-3. Merchant / client / school / employer / organization name.
-4. Transaction date.
-5. Tax deductible field name:
-   - "freelanceRevenue" for client invoices issued, freelance billings, consulting fees (Art 14 & 91 LIR)
-   - "businessExpense" for business operating expenses (software subscriptions, hardware, office, coworking, travel, accounting, subcontracting)
-   - "trainingCourseExpense" for courses, certifications, tuition, and professional training
-   - "workRelatedExpense" for employee work equipment, laptop, travel, professional expenses
-   - "medicalExpense" for doctor, dentist, pharmacy, hospital, optical invoices
-   - "childcareExpense" for crèche, daycare, after-school care
-   - "domesticServiceExpense" for cleaning, home help
-   - "donationAmount" for charity donations (Art 112)
-   - "grossSalary", "socialSecurity", "withholdingTax" for salary certificates
-   - "mortgageInterest" for home loan statements
-Return JSON with format:
-{"documentType": "FREELANCE_INVOICE", "confidence": 0.95, "snippet": "...", "fields": [{"name": "freelanceRevenue", "value": "4500.00", "confidence": 0.95, "snippet": "..."}]}`;
-
-
-    try {
-      const response = await fetch(model.endpointUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(model.apiKey ? { Authorization: `Bearer ${model.apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-          model: model.modelIdentifier,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: prompt },
-                { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}` } },
-              ],
-            },
-          ],
-          response_format: { type: 'json_object' },
-        }),
-        signal: AbortSignal.timeout(15000),
-      });
-
-      if (!response.ok) return null;
-      const json = await response.json();
-      const content = json.choices?.[0]?.message?.content;
-      if (!content) return null;
-
-      const parsed = JSON.parse(content);
-      return {
-        documentType: parsed.documentType as DocumentType,
-        confidence: parsed.confidence || 0.9,
-        extractedSnippet: parsed.snippet || content.substring(0, 300),
-        modelUsed: model.displayName,
-        fields: parsed.fields || [],
-      };
-    } catch {
-      return null;
-    }
-  }
-
   /**
-   * Deterministic local engine for Luxembourg receipts, crèche invoices, and tax certificates.
+   * Deterministic engine for Luxembourg receipts, crèche invoices, and tax
+   * certificates. Runs over the text layer of a PDF or the body of a text file.
    */
   private extractLocally(
     rawText: string,
     fileName: string,
-    isImage: boolean,
-    modelUsed: string,
-  ): ReceiptAiExtractionResult {
+    source: ExtractionSource,
+  ): Omit<ReceiptAiExtractionResult, 'pageCount' | 'textCharacters'> {
     const textLower = (rawText + ' ' + fileName).toLowerCase();
     // Taxpayers, employers and the ACD all produce documents with and without
     // accents ("CERTIFICAT DE REMUNERATION" vs "Certificat de Rémunération").
@@ -192,6 +439,23 @@ Return JSON with format:
     // missed — the sample this app ships is the unaccented one.
     const textPlain = stripAccents(textLower);
     const fields: ExtractedField[] = [];
+    const modelUsed = 'local rule parser (no model)';
+
+    const wrap = (
+      documentType: DocumentType,
+      confidence: number,
+      snippet: string,
+    ): Omit<ReceiptAiExtractionResult, 'pageCount' | 'textCharacters'> => ({
+      documentType,
+      confidence,
+      extractedSnippet: snippet,
+      modelUsed,
+      fields,
+      source,
+      needsOcr: false,
+      reason: null,
+      rejectedFields: [],
+    });
 
     // --- A. CHILDCARE & CRÈCHE INVOICES (Frais de garde d'enfants) ---
     if (
@@ -215,13 +479,11 @@ Return JSON with format:
         });
       }
 
-      return {
-        documentType: DocumentType.CHILDCARE_INVOICE,
-        confidence: 0.95,
-        extractedSnippet: rawText.substring(0, 300) || `Scanned receipt: ${fileName}`,
-        modelUsed: `${modelUsed} (Receipt AI Engine)`,
-        fields,
-      };
+      return wrap(
+        DocumentType.CHILDCARE_INVOICE,
+        0.95,
+        rawText.substring(0, 300) || `Scanned receipt: ${fileName}`,
+      );
     }
 
     // --- B. CHARITABLE DONATIONS (Art. 112 L.I.R.) ---
@@ -246,13 +508,11 @@ Return JSON with format:
         });
       }
 
-      return {
-        documentType: DocumentType.DONATION_CERTIFICATE,
-        confidence: 0.94,
-        extractedSnippet: rawText.substring(0, 300) || `Scanned donation receipt: ${fileName}`,
-        modelUsed: `${modelUsed} (Receipt AI Engine)`,
-        fields,
-      };
+      return wrap(
+        DocumentType.DONATION_CERTIFICATE,
+        0.94,
+        rawText.substring(0, 300) || `Scanned donation receipt: ${fileName}`,
+      );
     }
 
     // --- C. SALARY CERTIFICATE (Certificat de Rémunération) ---
@@ -316,13 +576,7 @@ Return JSON with format:
         });
       }
 
-      return {
-        documentType: DocumentType.SALARY_CERTIFICATE,
-        confidence: 0.95,
-        extractedSnippet: rawText.substring(0, 300),
-        modelUsed: `${modelUsed} (Docling AI Parser)`,
-        fields,
-      };
+      return wrap(DocumentType.SALARY_CERTIFICATE, 0.95, rawText.substring(0, 300));
     }
 
     // --- C2. PENSION CERTIFICATE (modèle 170) ---
@@ -368,13 +622,7 @@ Return JSON with format:
         });
       }
 
-      return {
-        documentType: DocumentType.PENSION_CERTIFICATE,
-        confidence: 0.94,
-        extractedSnippet: rawText.substring(0, 300),
-        modelUsed: `${modelUsed} (Docling AI Parser)`,
-        fields,
-      };
+      return wrap(DocumentType.PENSION_CERTIFICATE, 0.94, rawText.substring(0, 300));
     }
 
     // --- D. MORTGAGE INTEREST (Attestation d'intérêts débiteurs) ---
@@ -395,13 +643,7 @@ Return JSON with format:
         });
       }
 
-      return {
-        documentType: DocumentType.MORTGAGE_CERTIFICATE,
-        confidence: 0.9,
-        extractedSnippet: rawText.substring(0, 300),
-        modelUsed: `${modelUsed} (Docling AI Parser)`,
-        fields,
-      };
+      return wrap(DocumentType.MORTGAGE_CERTIFICATE, 0.9, rawText.substring(0, 300));
     }
 
     // --- E1. THIRD-PILLAR PENSION (Art. 111bis / 111ter) ---
@@ -427,13 +669,7 @@ Return JSON with format:
         });
       }
 
-      return {
-        documentType: DocumentType.INSURANCE_CERTIFICATE,
-        confidence: 0.93,
-        extractedSnippet: rawText.substring(0, 300),
-        modelUsed: `${modelUsed} (Docling AI Parser)`,
-        fields,
-      };
+      return wrap(DocumentType.INSURANCE_CERTIFICATE, 0.93, rawText.substring(0, 300));
     }
 
     // --- E2. PRIVATE INSURANCE (Art. 111, EUR 672 envelope) ---
@@ -449,13 +685,7 @@ Return JSON with format:
         });
       }
 
-      return {
-        documentType: DocumentType.INSURANCE_CERTIFICATE,
-        confidence: 0.9,
-        extractedSnippet: rawText.substring(0, 300),
-        modelUsed: `${modelUsed} (Docling AI Parser)`,
-        fields,
-      };
+      return wrap(DocumentType.INSURANCE_CERTIFICATE, 0.9, rawText.substring(0, 300));
     }
 
     // --- F. COURSES & PROFESSIONAL TRAINING (Formation Continue) ---
@@ -486,13 +716,11 @@ Return JSON with format:
         });
       }
 
-      return {
-        documentType: DocumentType.CHILDCARE_INVOICE,
-        confidence: 0.94,
-        extractedSnippet: rawText.substring(0, 300) || `Training Course Invoice: ${fileName}`,
-        modelUsed: `${modelUsed} (Receipt AI Engine)`,
-        fields,
-      };
+      return wrap(
+        DocumentType.TRAINING_INVOICE,
+        0.94,
+        rawText.substring(0, 300) || `Training Course Invoice: ${fileName}`,
+      );
     }
 
     // --- G. WORK EXPENSES & PROFESSIONAL EQUIPMENT (Frais d'obtention) ---
@@ -510,7 +738,7 @@ Return JSON with format:
       textLower.includes('déplacement professionnel') ||
       textLower.includes('cotisation professionnelle') ||
       textLower.includes('syndicat') ||
-      textLower.includes('frais d\'obtention')
+      textLower.includes("frais d'obtention")
     ) {
       const amount = this.extractAmount(rawText);
       if (amount) {
@@ -523,13 +751,11 @@ Return JSON with format:
         });
       }
 
-      return {
-        documentType: DocumentType.CHILDCARE_INVOICE,
-        confidence: 0.93,
-        extractedSnippet: rawText.substring(0, 300) || `Work Expense Receipt: ${fileName}`,
-        modelUsed: `${modelUsed} (Receipt AI Engine)`,
-        fields,
-      };
+      return wrap(
+        DocumentType.RECEIPT,
+        0.93,
+        rawText.substring(0, 300) || `Work Expense Receipt: ${fileName}`,
+      );
     }
 
     // --- H. MEDICAL & HEALTHCARE INVOICES (Dépenses extraordinaires Art. 127) ---
@@ -562,13 +788,11 @@ Return JSON with format:
         });
       }
 
-      return {
-        documentType: DocumentType.CHILDCARE_INVOICE,
-        confidence: 0.92,
-        extractedSnippet: rawText.substring(0, 300) || `Medical Invoice: ${fileName}`,
-        modelUsed: `${modelUsed} (Receipt AI Engine)`,
-        fields,
-      };
+      return wrap(
+        DocumentType.MEDICAL_INVOICE,
+        0.92,
+        rawText.substring(0, 300) || `Medical Invoice: ${fileName}`,
+      );
     }
 
     // --- I. FREELANCE CLIENT INVOICE & REVENUE (Articles 14 & 91 L.I.R.) ---
@@ -598,18 +822,16 @@ Return JSON with format:
         });
       }
 
-      return {
-        documentType: DocumentType.FREELANCE_INVOICE,
-        confidence: 0.96,
-        extractedSnippet: rawText.substring(0, 300) || `Freelance Client Invoice: ${fileName}`,
-        modelUsed: `${modelUsed} (Freelance AI Parser)`,
-        fields,
-      };
+      return wrap(
+        DocumentType.FREELANCE_INVOICE,
+        0.96,
+        rawText.substring(0, 300) || `Freelance Client Invoice: ${fileName}`,
+      );
     }
 
     // --- J. BUSINESS & OPERATING EXPENSES (Frais d'exploitation Art 14/91) ---
     if (
-      textLower.includes('frais d\'exploitation') ||
+      textLower.includes("frais d'exploitation") ||
       textLower.includes('dépense professionnelle') ||
       textLower.includes('business expense') ||
       textLower.includes('saas') ||
@@ -638,13 +860,11 @@ Return JSON with format:
         });
       }
 
-      return {
-        documentType: DocumentType.BUSINESS_EXPENSE,
-        confidence: 0.94,
-        extractedSnippet: rawText.substring(0, 300) || `Business Operating Expense: ${fileName}`,
-        modelUsed: `${modelUsed} (Freelance AI Parser)`,
-        fields,
-      };
+      return wrap(
+        DocumentType.BUSINESS_EXPENSE,
+        0.94,
+        rawText.substring(0, 300) || `Business Operating Expense: ${fileName}`,
+      );
     }
 
     // --- K. VAT RETURNS & TAX ASSESSMENTS (Déclaration TVA / Acomptes) ---
@@ -665,13 +885,7 @@ Return JSON with format:
         });
       }
 
-      return {
-        documentType: DocumentType.VAT_RETURN,
-        confidence: 0.93,
-        extractedSnippet: rawText.substring(0, 300) || `VAT Declaration: ${fileName}`,
-        modelUsed: `${modelUsed} (VAT AI Parser)`,
-        fields,
-      };
+      return wrap(DocumentType.VAT_RETURN, 0.93, rawText.substring(0, 300) || `VAT Declaration: ${fileName}`);
     }
 
     // --- L. PROFIT & LOSS STATEMENT (Compte de résultat / Bilan) ---
@@ -693,13 +907,11 @@ Return JSON with format:
         });
       }
 
-      return {
-        documentType: DocumentType.PROFIT_AND_LOSS_STATEMENT,
-        confidence: 0.95,
-        extractedSnippet: rawText.substring(0, 300) || `P&L Statement: ${fileName}`,
-        modelUsed: `${modelUsed} (P&L AI Parser)`,
-        fields,
-      };
+      return wrap(
+        DocumentType.PROFIT_AND_LOSS_STATEMENT,
+        0.95,
+        rawText.substring(0, 300) || `P&L Statement: ${fileName}`,
+      );
     }
 
     // --- M. GENERAL RECEIPT / ARTISAN / SERVICE INVOICE ---
@@ -726,23 +938,14 @@ Return JSON with format:
         });
       }
 
-      return {
-        documentType: DocumentType.CHILDCARE_INVOICE,
-        confidence: 0.88,
-        extractedSnippet: rawText.substring(0, 300) || `Invoice/Receipt: ${fileName}`,
-        modelUsed: `${modelUsed} (Receipt AI Engine)`,
-        fields,
-      };
+      return wrap(
+        DocumentType.RECEIPT,
+        0.88,
+        rawText.substring(0, 300) || `Invoice/Receipt: ${fileName}`,
+      );
     }
 
-
-    return {
-      documentType: DocumentType.UNKNOWN,
-      confidence: 0.5,
-      extractedSnippet: rawText.substring(0, 300) || `Document: ${fileName}`,
-      modelUsed,
-      fields: [],
-    };
+    return wrap(DocumentType.UNKNOWN, 0.5, rawText.substring(0, 300) || `Document: ${fileName}`);
   }
 
   private extractAmount(raw: string): { value: string; snippet: string } | null {

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { HelpTip } from './HelpTip';
 import { apiClient } from '../lib/api';
 import { formatEuro } from '../lib/money';
 import { TaxCalculationResultDto, ScenarioComparisonDto } from '@luxtax/contracts';
@@ -230,7 +231,8 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                   <strong className="text-white font-bold">{formatEuro(calc.taxableIncome)}</strong>
                 </div>
                 <div>
-                  <span className="text-white/70">Solidarity Surcharge:</span>{' '}
+                  <span className="text-white/70">Solidarity Surcharge:
+                    {" "}<HelpTip id="solidarity" /></span>{' '}
                   <strong className="text-white font-bold">
                     {(calc.solidaritySurchargeRate * 100).toFixed(0)}% (
                     {formatEuro(calc.solidaritySurchargeAmount)})
@@ -245,6 +247,7 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Gross Salary Income
+                    {" "}<HelpTip id="employmentIncome" />
               </span>
               <div className="mt-1 text-xl font-bold text-slate-900">
                 {formatEuro(calc.grossIncome)}
@@ -255,6 +258,7 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Total Deductions
+                    {" "}<HelpTip id="deductionsTotal" />
               </span>
               <div className="mt-1 text-xl font-bold text-emerald-600">
                 -{formatEuro(calc.totalDeductions)}
@@ -265,6 +269,7 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Tax Credits (CIS/CIM)
+                    {" "}<HelpTip id="credits" />
               </span>
               <div className="mt-1 text-xl font-bold text-sky-600">
                 -
@@ -283,6 +288,7 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Withheld at Source
+                    {" "}<HelpTip id="withheldAtSource" />
               </span>
               <div className="mt-1 text-xl font-bold text-amber-600">
                 {formatEuro(calc.taxWithheldAtSource)}
@@ -383,7 +389,8 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                 <span className="font-semibold">{formatEuro(calc.netIncome)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
-                <span className="text-slate-600">Frais d'obtention (Art. 105/107)</span>
+                <span className="text-slate-600">Frais d'obtention (Art. 105/107)
+                    {" "}<HelpTip id="fraisObtention" /></span>
                 <span className="font-semibold">-{formatEuro(calc.deductions.fraisObtention)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
@@ -455,11 +462,13 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                 <span className="font-semibold">-{formatEuro(calc.credits.cissm)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
-                <span className="text-slate-600">Foreign tax credit</span>
+                <span className="text-slate-600">Foreign tax credit
+                    {" "}<HelpTip id="foreignIncome" /></span>
                 <span className="font-semibold">-{formatEuro(calc.credits.foreignTaxCredit)}</span>
               </div>
               <div className="flex justify-between border-b border-slate-100 py-1">
-                <span className="text-slate-600">CIM applied (single parent)</span>
+                <span className="text-slate-600">CIM applied (single parent)
+                    {" "}<HelpTip id="cim" /></span>
                 <span className="font-semibold">-{formatEuro(calc.credits.cimApplied ?? 0)}</span>
               </div>
               {calc.credits.cimRefund > 0 && (
@@ -486,11 +495,13 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                 <span className="font-semibold">{formatEuro(calc.plusValues?.taxableExtraordinary ?? 0)}</span>
               </div>
               <div className="flex justify-between py-1 font-bold text-slate-900">
-                <span>Taxable income</span>
+                <span>Taxable income
+                    {" "}<HelpTip id="taxableIncome" /></span>
                 <span>{formatEuro(calc.taxableIncome)}</span>
               </div>
               <div className="flex justify-between py-1 font-bold text-slate-900">
-                <span>Marginal / effective rate</span>
+                <span>Marginal / effective rate
+                    {" "}<HelpTip id="marginalRate" /></span>
                 <span>{(calc.marginalRate * 100).toFixed(0)}% / {calc.effectiveTaxRate.toFixed(1)}%</span>
               </div>
             </div>
@@ -511,7 +522,8 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
                   <span className="font-semibold">-{formatEuro(calc.childRelief.bonification)}</span>
                 </div>
                 <div className="flex justify-between py-1 font-bold text-slate-900">
-                  <span>Total child relief</span>
+                  <span>Total child relief
+                    {" "}<HelpTip id="childrenModeration" /></span>
                   <span>-{formatEuro(calc.childRelief.total)}</span>
                 </div>
                 {calc.childRelief.bonificationPhaseOut && (
@@ -589,7 +601,8 @@ export function TaxCalculatorView({ workspaceId, taxYear = 2025, onCalculated, o
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h4 className="text-sm font-bold text-slate-900">Scenario comparison</h4>
+            <h4 className="text-sm font-bold text-slate-900">Scenario comparison
+                    {" "}<HelpTip id="scenarioComparison" /></h4>
             <p className="mt-0.5 text-xs text-slate-500">
               Compare collective Class 2, 2× Class 1 and the Art. 3ter reallocation on the same facts.
               The comparison is not saved and does not change the active election.

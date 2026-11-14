@@ -22,5 +22,18 @@ export const updateFactSchema = z.object({
   description: z.string().max(500).optional(),
 });
 
+/**
+ * Confirming a document's figures one HTTP request each was the slowest step
+ * in an otherwise automatic pipeline: a salary certificate carries four, an
+ * itemised invoice more. The cap keeps one call bounded and forces a client
+ * that somehow sends thousands to page its work instead.
+ */
+export const confirmFactsBulkSchema = z.object({
+  extractedFactIds: z.array(z.string().uuid()).min(1).max(50),
+  isSharedWithHousehold: z.boolean().default(true),
+  isIncludedInReturn: z.boolean().default(true),
+});
+
 export type ConfirmFactInput = z.infer<typeof confirmFactSchema>;
+export type ConfirmFactsBulkInput = z.infer<typeof confirmFactsBulkSchema>;
 export type UpdateFactInput = z.infer<typeof updateFactSchema>;

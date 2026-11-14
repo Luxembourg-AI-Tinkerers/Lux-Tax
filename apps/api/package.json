@@ -18,7 +18,8 @@
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
-    "prisma:dev": "prisma migrate dev"
+    "prisma:dev": "prisma migrate dev",
+    "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
     "@fastify/helmet": "^13.1.1",
@@ -59,5 +60,8 @@
     "ts-jest": "^29.2.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.2"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
   }
 }

@@ -1,8 +1,24 @@
 import { LuxTaxApiClient } from '@luxtax/api-client';
 import type { AuthResponseDto } from '@luxtax/contracts';
 
-/** One base URL for every call the web client makes, logout included. */
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+/**
+ * One base URL for every call the web client makes, logout included.
+ *
+ * A literal `http://localhost:3001` default breaks every origin that is not the
+ * API host itself: a phone opening http://192.168.0.195:3000 called its own
+ * localhost and failed. The API listens on port 3001 of the same machine as the
+ * web app, so the page's hostname is the correct default; NEXT_PUBLIC_API_URL
+ * still wins when a deployment splits the two hosts.
+ */
+const API_PORT = '3001';
+
+function defaultApiBaseUrl(): string {
+  if (typeof window === 'undefined' || !window.location?.hostname) {
+    return `http://localhost:${API_PORT}`;
+  }
+  return `${window.location.protocol}//${window.location.hostname}:${API_PORT}`;
+}
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || defaultApiBaseUrl();
 
 export const ACCESS_TOKEN_KEY = 'luxtax_access_token';
 export const REFRESH_TOKEN_KEY = 'luxtax_refresh_token';

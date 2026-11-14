@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { HelpTip } from './HelpTip';
 import { apiClient } from '../lib/api';
 import {
   DocumentDto,
@@ -28,6 +29,8 @@ export function DocumentsView({ workspaceId, members = [], onFactsChanged }: Doc
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [bulkConfirming, setBulkConfirming] = useState(false);
+  const [reextractingId, setReextractingId] = useState<string | null>(null);
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -269,7 +272,73 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
     onFactsChanged();
   };
 
-  const unconfirmedFacts = extractedFacts.filter((f) => !f.isConfirmed);
+  /**
+   * Confirms every pending figure of the workspace in one call.
+   *
+   * The figures are ordered by confidence so the panel reads the same way the
+   * batch is applied, and the result reports what was skipped instead of
+   * claiming an all-or-nothing success.
+   */
+  const handleConfirmAll = async () => {
+    const pending = [...unconfirmedFacts].sort((a, b) => b.confidence - a.confidence);
+    if (pending.length === 0) return;
+
+    setBulkConfirming(true);
+    const res = await apiClient.confirmFactsBulk(workspaceId, {
+      extractedFactIds: pending.map((fact) => fact.id),
+    });
+    setBulkConfirming(false);
+
+    if (res.error) {
+      showFeedback('error', res.error);
+      return;
+    }
+
+    const confirmed = res.data?.confirmed.length ?? 0;
+    const skipped = res.data?.skipped ?? [];
+    if (skipped.length > 0) {
+      showFeedback(
+        'error',
+        `Confirmed ${confirmed} figure(s); ${skipped.length} could not be confirmed (${skipped[0].reason})`,
+      );
+    } else {
+      showFeedback('success', `Confirmed ${confirmed} figure(s) into the return.`);
+    }
+
+    await refresh();
+    onFactsChanged();
+  };
+
+  /**
+   * Reads a stored document again. Used when an OCR model was activated after
+   * the upload, or when the first read found nothing.
+   */
+  const handleReextract = async (docId: string) => {
+    setReextractingId(docId);
+    const res = await apiClient.reextractDocument(workspaceId, docId);
+    setReextractingId(null);
+
+    if (res.error) {
+      showFeedback('error', res.error);
+      return;
+    }
+
+    if (res.data?.ocrRequired) {
+      showFeedback('error', 'This file still has no readable text. Configure an OCR model or enter the figures by hand.');
+    } else if ((res.data?.extractedFactsCount ?? 0) === 0) {
+      // Confirmed figures are kept on purpose, so "nothing new" is a success.
+      showFeedback('success', 'Re-read the document. No new figures — the ones you already confirmed are kept.');
+    } else {
+      showFeedback('success', `Re-read the document: ${res.data?.extractedFactsCount} figure(s) found.`);
+    }
+
+    await refresh();
+    onFactsChanged();
+  };
+
+  const unconfirmedFacts = extractedFacts
+    .filter((f) => !f.isConfirmed)
+    .sort((a, b) => b.confidence - a.confidence);
 
   return (
     <div className="space-y-6">
@@ -363,12 +432,20 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
           <div className="flex items-center justify-between mb-3">
             <div>
               <h4 className="text-sm font-bold text-amber-900">
-                Extracted Figures Awaiting Your Confirmation ({unconfirmedFacts.length})
+                Extracted Figures Awaiting Your Confirmation
+                    {" "}<HelpTip id="factConfidence" /> ({unconfirmedFacts.length})
               </h4>
               <p className="text-xs text-amber-700 mt-0.5">
-                Our local parser extracted these numbers from your documents. Confirm them to include in your 2025 calculation.
+                These numbers were read from your documents. Confirm them to include them in your 2025 calculation.
               </p>
             </div>
+            <button
+              onClick={handleConfirmAll}
+              disabled={bulkConfirming}
+              className="rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-500 transition disabled:opacity-50 shrink-0"
+            >
+              {bulkConfirming ? 'Confirming…' : `Confirm all ${unconfirmedFacts.length}`}
+            </button>
           </div>
 
           <div className="divide-y divide-amber-200/60 rounded-lg border border-amber-200 bg-white">
@@ -413,7 +490,8 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h3 className="text-sm font-bold text-slate-900">
-            Document Vault ({documents.length})
+            Document Vault
+                    {" "}<HelpTip id="documentVault" /> ({documents.length})
           </h3>
           <div className="flex items-center gap-3">
             {members.length > 1 && (
@@ -450,7 +528,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                   <th className="px-6 py-3">File Name</th>
                   <th className="px-6 py-3">Spouse</th>
                   <th className="px-6 py-3">Document Type</th>
-                  <th className="px-6 py-3">Visibility</th>
+                  <th className="px-6 py-3">Visibility{" "}<HelpTip id="documentVisibility" /></th>
                   <th className="px-6 py-3">Uploaded</th>
                   <th className="px-6 py-3 text-right">Actions</th>
                 </tr>
@@ -474,6 +552,14 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                           <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
                             {doc.documentType.replace(/_/g, ' ')}
                           </span>
+                          {doc.ocrRequired && (
+                            <span className="ml-2 inline-flex items-center gap-1 align-middle">
+                              <span className="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                                Needs OCR
+                              </span>
+                              <HelpTip id="needsOcr" />
+                            </span>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <button
@@ -493,7 +579,14 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                         <td className="px-6 py-4 text-xs text-slate-500">
                           {new Date(doc.createdAt).toLocaleDateString()}
                         </td>
-                        <td className="px-6 py-4 text-right">
+                        <td className="px-6 py-4 text-right space-x-3 whitespace-nowrap">
+                          <button
+                            onClick={() => handleReextract(doc.id)}
+                            disabled={reextractingId === doc.id}
+                            className="text-xs text-sky-600 hover:text-sky-700 font-semibold disabled:opacity-50"
+                          >
+                            {reextractingId === doc.id ? 'Reading…' : 'Re-scan'}
+                          </button>
                           <button
                             onClick={() => handleDelete(doc.id)}
                             className="text-xs text-rose-600 hover:text-rose-700 font-semibold"

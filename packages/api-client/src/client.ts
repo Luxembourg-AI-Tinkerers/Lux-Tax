@@ -20,6 +20,7 @@ import {
   ExtractedFactDto,
   ConfirmedFactDto,
   ConfirmFactRequestDto,
+  ConfirmFactsBulkRequestDto,
   UpdateFactRequestDto,
   QuestionnaireAnswersDto,
   ReadinessDetailsDto,
@@ -283,6 +284,14 @@ export class LuxTaxApiClient {
     );
   }
 
+  /** Reads a stored document again, for example after an OCR model was added. */
+  async reextractDocument(workspaceId: string, documentId: string) {
+    return this.request<DocumentDto>(
+      `/api/workspaces/${workspaceId}/documents/${documentId}/reextract`,
+      { method: 'POST' }
+    );
+  }
+
   async deleteDocument(workspaceId: string, documentId: string) {
     return this.request<{ success: boolean }>(
       `/api/workspaces/${workspaceId}/documents/${documentId}`,
@@ -341,6 +350,22 @@ export class LuxTaxApiClient {
 
   async confirmFact(workspaceId: string, body: ConfirmFactRequestDto) {
     return this.request<ConfirmedFactDto>(`/api/workspaces/${workspaceId}/facts/confirm`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
+   * Confirms several recognised figures in one call.
+   *
+   * Returns what was confirmed and what was skipped with a reason, so the UI can
+   * report "4 of 5 confirmed" instead of pretending the batch was atomic.
+   */
+  async confirmFactsBulk(workspaceId: string, body: ConfirmFactsBulkRequestDto) {
+    return this.request<{
+      confirmed: ConfirmedFactDto[];
+      skipped: Array<{ id: string; reason: string }>;
+    }>(`/api/workspaces/${workspaceId}/facts/confirm-bulk`, {
       method: 'POST',
       body: JSON.stringify(body),
     });

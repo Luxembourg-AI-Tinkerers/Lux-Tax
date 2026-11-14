@@ -5,6 +5,7 @@ export * from './workspace';
 export * from './audit';
 export * from './documents';
 export * from './facts';
+export * from './fact-category';
 export * from './tax';
 export * from './filing';
 export * from './questionnaire';
