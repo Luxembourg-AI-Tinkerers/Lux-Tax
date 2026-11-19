@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-19
 **Engine:** PostgreSQL 15+ (verified on 18.4)
 **ORM:** Prisma 7.10 with `@prisma/adapter-pg` and `pg`
-**Schema:** `apps/api/prisma/schema.prisma`
+**Schema:** `apps/api/prisma/schema.prisma` — 28 models
 **Connection:** `apps/api/prisma.config.ts` reads `DATABASE_URL`. The Prisma 7 CLI rejects a `url` in the datasource block.
 **Migrations:** 23 committed under `apps/api/prisma/migrations/`
 
@@ -183,6 +183,9 @@ CustomAiRoute  (standalone task routing, string model ids)
 
 ## Related
 
+- [Architecture](ARCHITECTURE.md)
+- [Modules](MODULES.md)
+- [Files](FILES.md)
 - [Backend](backend.md)
 - [API reference](../api.md)
 - [Data retention](../data-retention.md)

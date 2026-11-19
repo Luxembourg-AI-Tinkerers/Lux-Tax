@@ -157,7 +157,7 @@ tax-app/
 │   │   │       ├── questionnaire/ # Tax profile and task resolution
 │   │   │       ├── users/         # Profile, sessions, GDPR export and erasure
 │   │   │       └── workspaces/    # Tax years, readiness
-│   │   └── test/                  # 44 API unit/integration spec files + e2e suites
+│   │   └── test/                  # 43 API unit/integration specs + e2e suites
 │   ├── web/
 │   │   ├── src/
 │   │   │   ├── app/               # Auth, invite, and workspace dashboard routes
@@ -600,6 +600,9 @@ For request bodies, response shapes, roles, and error behaviour, see [`docs/api.
 
 - [`docs/CODEMAPS/INDEX.md`](docs/CODEMAPS/INDEX.md) — architecture index and reading order.
 - [`docs/api.md`](docs/api.md) — endpoint reference generated from the controllers and validation schemas.
+- [`docs/CODEMAPS/ARCHITECTURE.md`](docs/CODEMAPS/ARCHITECTURE.md) — system context, layers, core flows, invariants.
+- [`docs/CODEMAPS/MODULES.md`](docs/CODEMAPS/MODULES.md) — every package and API module with exports and dependencies.
+- [`docs/CODEMAPS/FILES.md`](docs/CODEMAPS/FILES.md) — directory structure and the purpose of each source file.
 - [`docs/CODEMAPS/backend.md`](docs/CODEMAPS/backend.md) — API module map, guards, data flow.
 - [`docs/CODEMAPS/frontend.md`](docs/CODEMAPS/frontend.md) — web and mobile screens, state, and shared libraries.
 - [`docs/CODEMAPS/database.md`](docs/CODEMAPS/database.md) — Prisma models, enums, migrations, and invariants.

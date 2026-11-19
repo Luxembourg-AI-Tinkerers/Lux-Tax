@@ -32,7 +32,7 @@
         ▼                       ▼                      ▼
 ┌───────────────┐      ┌─────────────────┐    ┌─────────────────────┐
 │ PostgreSQL    │      │ Tesseract CLI   │    │ Vision model        │
-│ 23 migrations │      │ OCR (optional)  │    │ endpoints (optional)│
+│ 28 mdl/23 mig │      │ OCR (optional)  │    │ endpoints (optional)│
 │ audit trigger │      │                 │    │ + SMTP + Expo push  │
 └───────────────┘      └─────────────────┘    └─────────────────────┘
 
@@ -48,12 +48,28 @@ Shared packages:
 
 ## Reading order
 
-1. [Backend](backend.md) — modules, guards, request lifecycle, data flow.
-2. [Database](database.md) — Prisma models, enums, migrations, audit invariants.
-3. [Frontend](frontend.md) — web routes and views, mobile tabs, shared state.
-4. [Integrations](integrations.md) — PostgreSQL, SMTP, Expo push, vision models, Tesseract.
-5. [Workers](workers.md) — notification outbox and reminder sweeps.
-6. [API reference](../api.md) — every route, body schema, role, and response.
+1. [Architecture](ARCHITECTURE.md) — system context, layers, core flows, invariants.
+2. [Modules](MODULES.md) — every package and API module: purpose, files, exports, dependencies.
+3. [Files](FILES.md) — directory structure and the purpose of each source file.
+4. [Backend](backend.md) — modules, guards, request lifecycle, data flow.
+5. [Database](database.md) — Prisma models, enums, migrations, audit invariants.
+6. [Frontend](frontend.md) — web routes and views, mobile tabs, shared state.
+7. [Integrations](integrations.md) — PostgreSQL, SMTP, Expo push, vision models, Tesseract.
+8. [Workers](workers.md) — notification outbox and reminder sweeps.
+9. [API reference](../api.md) — every route, body schema, role, and response.
+
+## Codemap set
+
+| File | Covers | Best for |
+|---|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System context, runtime topology, layers, request lifecycle, seven core flows, invariants | Onboarding; "how does it all fit together?" |
+| [MODULES.md](MODULES.md) | Six shared packages, 14 API modules, common infrastructure, client module boundaries | "Which module owns X and what does it export?" |
+| [FILES.md](FILES.md) | Root, `apps/api`, `apps/web`, `apps/mobile`, `packages/*`, tests, docs | "What does this file do?" |
+| [backend.md](backend.md) | API boot sequence, guards, module details, configuration, test groups | API changes |
+| [database.md](database.md) | 28 models, enums, 23 migrations, constraints, lifecycle, query rules | Schema changes |
+| [frontend.md](frontend.md) | Web routes, nine dashboard tabs, 12 components, mobile screens and libraries | UI changes |
+| [integrations.md](integrations.md) | PostgreSQL, SMTP, Expo push, vision endpoints, Tesseract, deliberate non-integrations | Adding or debugging an external system |
+| [workers.md](workers.md) | Outbox state machine, retry policy, reminder sweep, what is *not* a worker | Background behaviour |
 
 ---
 
@@ -119,7 +135,7 @@ Upload (base64 JSON, ≤10 MiB decoded)
 |---|---|---|
 | `README.md` | **current** | Rebuilt from code on 2026-11-19 |
 | `docs/api.md` | **current** | Generated from controllers + Zod schemas |
-| `docs/CODEMAPS/*` | **current** | This set |
+| `docs/CODEMAPS/*` | **current** | Eight maps: architecture, modules, files, backend, database, frontend, integrations, workers + this index |
 | `docs/document-automation.md` | **current** | Phases DA-1…DA-10 measured; route names match code |
 | `docs/help-affordances.md` | **current** | 63 placements / 56 copy entries |
 | `docs/data-retention.md` | **current** | Endpoints match `users.controller.ts` |

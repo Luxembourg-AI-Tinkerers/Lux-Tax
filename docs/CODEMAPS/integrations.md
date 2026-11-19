@@ -62,7 +62,7 @@ npx prisma migrate diff --from-config-datasource \
 
 ```
 SMTP_HOST set   → SmtpEmailTransport (real protocol, node:net/node:tls)
-SMTP_HOST unset → JsonlEmailTransport (append-only file under tmp/notifications/email.jsonl)
+SMTP_HOST unset → LocalSinkEmailTransport (append-only JSONL under tmp/notifications/email.jsonl)
 ```
 
 The JSONL sink is a real transport, not a mock: it writes a complete RFC 5322 message and nothing leaves the machine.
@@ -111,14 +111,21 @@ Outbox → PushAdapter → ExpoPushTransport
 **Configuration**
 
 ```env
-NOTIFICATION_PUSH_ENABLED=false
-EXPO_ACCESS_TOKEN=            # only if the Expo project requires one
-EXPO_PUSH_ENDPOINT=           # override for a proxy or test server
+NOTIFICATION_PUSH_ENABLED=false   # optional local sink before module init
+NOTIFICATION_PUSH_SINK=          # override the push JSONL path
+EXPO_ACCESS_TOKEN=               # only if the Expo project requires one
+EXPO_PUSH_ENDPOINT=              # override for a proxy or test server
 ```
 
 **Notes**
+- `NotificationDevicesService.onModuleInit()` installs `ExpoPushTransport`
+  unconditionally, so push works as soon as a device registers; a deployment
+  with no device yields `SKIPPED`, not a retry loop.
+- `NOTIFICATION_PUSH_ENABLED=true` only installs the local sink at adapter
+  construction; tests inject their own transport with `useTransport()`.
 - Tokens are validated by the API (`^[A-Za-z0-9\[\]_-]{20,200}$`) and by `isExpoPushToken` in the transport.
-- Re-registering a token is idempotent and reactivates a revoked token.
+- Re-registering a token is idempotent and reactivates a revoked token; a token
+  registered to another account is moved to the caller.
 - `ExpoPushTransport` takes an injectable `fetchImpl`; `expo-push-transport.spec.ts` drives a real HTTP server.
 - No handset was available, so end-to-end delivery to a device is unverified.
 
@@ -214,6 +221,9 @@ The worker is documented in [workers](workers.md).
 
 ## Related
 
+- [Architecture](ARCHITECTURE.md)
+- [Modules](MODULES.md)
+- [Files](FILES.md)
 - [Backend](backend.md)
 - [Workers](workers.md)
 - [Database](database.md)

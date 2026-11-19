@@ -39,7 +39,7 @@ main.ts
 Fastify request
   → @fastify/helmet headers
   → CORS
-  → APP_GUARD RateLimitGuard (IP bucket; credential bucket on login/register/refresh)
+  → APP_GUARD RateLimitGuard (IP bucket; credential bucket on login/register/refresh; enabled unless RATE_LIMIT_ENABLED=false)
   → JwtAuthGuard (per controller)
       → Bearer token → JwtStrategy → req.user { id, email, ... }
   → HouseholdGuard (household/workspace routes)
@@ -73,7 +73,7 @@ Fastify request
 | **Filing** | `/api/workspaces/:workspaceId` | Approval, Form 100 mapping, package + SHA-256, annexes PDF, filing record, assessment, rollover, version history | `AuditModule`, `NotificationsModule`, `ReturnApprovalsModule` |
 | **Freelance** | `/api/workspaces/:workspaceId/freelance` | Business profiles, per-owner metrics, demo dataset | `AuditModule`, `ReturnApprovalsModule` |
 | **Notifications** | `/api/workspaces/:workspaceId/notifications` | In-app notifications, preferences, devices, outbox, reminder sweep | Prisma |
-| **Admin** | `/api/admin` | Overview, rule/form metadata, model registry, routes, connection test, audit | `AuthModule` |
+| **Admin** | `/api/admin` | Overview, tax-rule/form/deadline metadata, model registry, routes, connection test, evaluations, audit | `AuthModule` |
 
 `ReturnApprovalsModule` is a separate module (not the filing module) so documents, facts, questionnaire, calculations, and freelance can invalidate approvals without importing the whole filing surface.
 
@@ -178,13 +178,14 @@ Files: `freelance.service.ts`.
 
 ### Notifications
 
-Files: `notifications.service.ts`, `notification-outbox.service.ts`, `notification-outbox.ts`, `notification-delivery.ts`, `notification-devices.service.ts`, `notification-reminders.service.ts`, `notification-rules.ts`, adapters under `adapters/`.
+Files: `notifications.service.ts`, `notification-outbox.service.ts`, `notification-outbox.ts`, `notification-delivery.ts`, `notification-devices.service.ts`, `notification-devices.ts`, `notification-reminders.service.ts`, `notification-rules.ts`, adapters under `adapters/`.
 
 - In-app notification is written first; delivery rows are enqueued beside it.
 - Preferences are per user per household; `SECURITY_ALERT` cannot be muted.
 - `NotificationOutboxService` polls only when `NOTIFICATION_OUTBOX_ENABLED=true`.
 - `NotificationRemindersService` polls only when `NOTIFICATION_REMINDERS_ENABLED=true`.
-- Adapters: SMTP (`nodemailer`-free custom transport on `node:net`/`tls`) with JSONL sink fallback; Expo Push HTTP transport with sink fallback.
+- Adapters: SMTP (custom transport on `node:net`/`tls`) with a local JSONL sink fallback; Expo Push HTTP transport, wired at module init, with a local sink only when `NOTIFICATION_PUSH_ENABLED=true` is used as a test double.
+- Device routes: `POST /notifications/devices` and `POST /notifications/devices/revoke`.
 - See [workers](workers.md) and [integrations](integrations.md).
 
 ### Admin
@@ -195,6 +196,7 @@ Files: `admin.service.ts`, `model-key-cipher.ts`, `outbound-url-policy.ts`, `dat
 - `outbound-url-policy.ts` blocks non-https (except explicit localhost in development), loopback, link-local, private ranges, and metadata endpoints.
 - `data-class-policy.ts` enforces the route's `maxDataClass` at call time.
 - Built-in model catalog is returned; custom models may override endpoints and keys.
+- `GET /deadlines` returns the statutory filing calendar; `GET /forms` returns the Form 100 mapping catalogue; `GET /evaluations` returns three seeded benchmark-run records (dataset name, exact-match, schema-validity, hallucination rate, latency).
 - Overview/tax-rules metadata is derived from the engine: `activeTaxYears` = non-preview packages (`[2025, 2026]`: 2025's window is still open, 2026 is in force for its own tax year); tax-rules summarises every package and marks 2028 `DRAFT`. Per-year constants are never back-applied (111bis €3,200 → €4,500, renovation 6% → 10% from 2026).
 - Connection probe performs a minimal request and reports latency/status without leaking the key.
 
@@ -231,14 +233,16 @@ A fact that is private to a spouse is only included when the query allows the ac
 | `FRONTEND_URL` | production | `http://localhost:3000` | Verification link base, default CORS origin |
 | `CORS_ORIGINS` | no | `FRONTEND_URL` | Extra allowed browser origins |
 | `ADMIN_EMAILS` | no | empty (fail closed) | Platform admin allowlist |
-| `RATE_LIMIT_*` | no | 60/1 IP, 120/2 user | Token buckets |
+| `RATE_LIMIT_ENABLED` | no | **on** (`false` disables) | Master switch for the token-bucket guard |
+| `RATE_LIMIT_IP_CAPACITY`, `RATE_LIMIT_IP_REFILL` | no | 60 / 1 per second | Per-IP bucket |
+| `RATE_LIMIT_USER_CAPACITY`, `RATE_LIMIT_USER_REFILL` | no | 120 / 2 per second | Per-user bucket (applied only where a controller runs the guard after authentication) |
 | `TRUST_PROXY` | no | off | Hop count or CIDR list for `X-Forwarded-For` |
 | `EXPOSE_ERROR_DETAILS` | no | `false` | Re-enable 5xx text (never DB errors) |
 | `PRISMA_LOG_QUERIES` | no | `false` | Log bound parameters |
 | `MODEL_KEY_ENCRYPTION_KEY` | for custom models | — | 32-byte hex AES-256-GCM key |
 | `SMTP_*`, `NOTIFICATION_EMAIL_SINK` | no | JSONL sink | E-mail transport |
 | `NOTIFICATION_OUTBOX_ENABLED` | no | `false` | Start delivery poller |
-| `NOTIFICATION_PUSH_ENABLED`, `EXPO_*` | no | `false` | Expo push |
+| `NOTIFICATION_PUSH_ENABLED`, `EXPO_*` | no | `false` / — | `NOTIFICATION_PUSH_ENABLED=true` installs the local sink before module init; `NotificationDevicesService` then replaces it with the Expo transport unconditionally. `EXPO_ACCESS_TOKEN` and `EXPO_PUSH_ENDPOINT` configure Expo. |
 | `NOTIFICATION_REMINDERS_ENABLED` | no | `false` | Deadline sweep |
 | `OCR_TESSERACT_PATH`, `OCR_LANGUAGES`, `OCR_PSM` | no | — / `fra` / `6` | Local OCR |
 | `REDIS_URL` | no | — | **Accepted but unused** |
@@ -259,21 +263,29 @@ No native PDF library, no OCR npm package, no model SDK: PDF parsing uses `node:
 
 ## Tests
 
+43 unit/integration files (plus 8 e2e suites) under `apps/api/test/`; 449 cases collected, 447 pass without Tesseract
+(the two real-OCR tests skip and state why).
+
 | File group | Covers |
 |---|---|
-| `auth-hardening.spec.ts`, `mfa-totp.spec.ts`, `platform-admin.spec.ts`, `rate-limit.spec.ts`, `proxy-trust.spec.ts`, `security-headers.spec.ts` | Auth and perimeter |
-| `document-text.spec.ts`, `pdf-text.spec.ts`, `pdf-images.spec.ts`, `ocr-engine.spec.ts`, `ocr-pipeline.spec.ts`, `vision-contract.spec.ts`, `document-pipeline.spec.ts`, `document-upload-guard.spec.ts` | Document pipeline |
-| `fact-visibility.spec.ts`, `fact-return-snapshot.spec.ts`, `param-wiring.spec.ts` | Facts and calculation inputs |
+| `auth-hardening.spec.ts`, `mfa-totp.spec.ts`, `platform-admin.spec.ts`, `rate-limit.spec.ts`, `proxy-trust.spec.ts`, `security-headers.spec.ts`, `error-filter.spec.ts`, `household-guard.spec.ts` | Auth, guards and perimeter |
+| `document-text.spec.ts`, `pdf-text.spec.ts`, `pdf-images.spec.ts`, `ocr-engine.spec.ts`, `ocr-pipeline.spec.ts`, `vision-contract.spec.ts`, `document-pipeline.spec.ts`, `document-upload-guard.spec.ts`, `receipt-scanning.e2e-spec.ts` | Document pipeline |
+| `fact-visibility.spec.ts`, `fact-return-snapshot.spec.ts`, `param-wiring.spec.ts`, `prod2-source-invariant.spec.ts` | Facts and calculation inputs |
 | `calculation-history.spec.ts`, `calculation-snapshot.spec.ts`, `class-resolution.spec.ts` | Calculation persistence and class logic |
 | `form100-case-map.spec.ts`, `form100-fact-lines.spec.ts`, `filing-package-evidence.spec.ts`, `filing-year-guard.spec.ts`, `return-version-history.spec.ts`, `annex-pdf.spec.ts`, `assessment-dates.spec.ts` | Filing |
 | `notification-*.spec.ts`, `smtp-transport.spec.ts`, `expo-push-transport.spec.ts` | Notifications |
 | `admin-*.spec.ts` | Admin governance |
+| `prisma-schema.spec.ts`, `audit-chain.spec.ts`, `audit-activity-redaction.spec.ts` | Schema invariants and audit |
 | `*.e2e-spec.ts` | HTTP journeys (Jest; see README limitation) |
+| `support/*.ts` | Workspace fixture, e-mail verification, PDF fixture, audit purge |
 
 ---
 
 ## Related
 
+- [Architecture](ARCHITECTURE.md)
+- [Modules](MODULES.md)
+- [Files](FILES.md)
 - [API reference](../api.md)
 - [Database](database.md)
 - [Integrations](integrations.md)

@@ -87,16 +87,19 @@ NOTIFICATION_OUTBOX_INTERVAL_MS=60000   # clamped to >= 5000
 
 ### Operation
 
-- `dispatchDue(limit = 25)` is public and idempotent; a real cron/queue consumer can call it.
+- `dispatchDue(limit = 25)` is public and idempotent; the pass clamps the limit to
+  1..100. A real cron/queue consumer can call it.
 - `stats()` returns `{ pending, sent, failed, skipped }`.
 - A failing pass logs and returns zeroes; it never crashes the API.
 - No adapter configured → `SKIPPED` with a reason, not a retry storm.
-- Email: SMTP if `SMTP_HOST` is set, otherwise the JSONL sink (a real file transport).
-- Push: Expo if `NOTIFICATION_PUSH_ENABLED=true`, with a sink fallback for tests.
+- Email: SMTP if `SMTP_HOST` is set, otherwise the local JSONL sink (a real file transport).
+- Push: `NotificationDevicesService` installs the Expo transport at module init,
+  so push is available as soon as a device registers; `NOTIFICATION_PUSH_ENABLED=true`
+  only installs the local sink before that replacement (tests inject a transport).
 
 ### Tests
 
-`notification-outbox.spec.ts` (claiming, retry, stale claim, skipped paths), `notification-delivery.spec.ts` (backoff, channel selection, window), `notification-devices-rules.spec.ts`, `smtp-transport.spec.ts`, `expo-push-transport.spec.ts`. The outbox tests use an in-memory `OutboxStore` double, so the pass executes rather than being described.
+`notification-outbox.spec.ts` (claiming, retry, stale claim, skipped paths), `notification-delivery.spec.ts` (backoff, channel selection, window), `notification-rules.spec.ts`, `notification-devices-rules.spec.ts`, `smtp-transport.spec.ts`, `expo-push-transport.spec.ts`. The outbox tests use an in-memory `OutboxStore` double, so the pass executes rather than being described.
 
 ---
 
@@ -142,7 +145,11 @@ A single assessment that fails to emit (for example, no eligible recipient) is l
 
 ### Test
 
-`notification-rules.spec.ts` covers the window and dedupe-key policy.
+`notification-rules.spec.ts` covers preference defaults and delivery decisions;
+`isWithinReminderWindow` is covered in `notification-delivery.spec.ts`. The
+per-day dedupe key (`objection-deadline:<id>:<day>`) is constructed in
+`notification-reminders.service.ts` and enforced by the notification unique
+index.
 
 ---
 
@@ -164,6 +171,9 @@ If a future change makes extraction asynchronous, it should add a real queue tab
 
 ## Related
 
+- [Architecture](ARCHITECTURE.md)
+- [Modules](MODULES.md)
+- [Files](FILES.md)
 - [Backend](backend.md)
 - [Integrations](integrations.md)
 - [Database](database.md)

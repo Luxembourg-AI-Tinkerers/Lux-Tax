@@ -61,7 +61,7 @@ The dashboard is a single route with a `TabKey` state machine:
 
 | Module | Purpose |
 |---|---|
-| `src/lib/api.ts` | One `LuxTaxApiClient`; API base defaults to the page's hostname on port 3001; localStorage token access; single-flight refresh; `downloadAnnexPdf` |
+| `src/lib/api.ts` | One `LuxTaxApiClient`; `API_BASE_URL` = `NEXT_PUBLIC_API_URL` or the page's hostname on port 3001; localStorage token access (`luxtax_access_token`, `luxtax_refresh_token`); single-flight refresh; `downloadAnnexPdf` |
 | `src/lib/auth-context.tsx` | `AuthProvider` / `useAuth`; loads `/api/users/me`, stores tokens, best-effort logout |
 | `src/lib/auth-redirect.ts` | Safe post-login redirect validation |
 | `src/lib/help-texts.ts` | 56 copy entries; `HelpId` is a compile-time key |
@@ -103,9 +103,10 @@ Tokens live in `localStorage` (`luxtax_access_token`, `luxtax_refresh_token`). T
 
 ### Web tests
 
-`apps/web/test/*.spec.ts`, 80 tests:
+`apps/web/test/*.spec.ts`, 80 collected tests:
 
 - Pure modules: money, auth redirect, document visibility, fact dedup/inclusion, tooltip position, logout URL.
+- Client/auth: `api-client-auth`, `session-refresh`, `logout`, `logout-url`.
 - Render specs: login/register pages, dashboard, questionnaire, calculator, documents, facts, invite, camera modal, help tip.
 - Ten render tests fail when `apps/web/node_modules` exists because `.tools` uses React 18's `react-test-renderer` against React 19. This is a harness mismatch; the pure and non-render specs pass.
 
@@ -160,7 +161,7 @@ Expo SDK 52, React Native 0.76, React 18.3, Expo Router 4. Tabs are defined in `
 
 | Package | Imported by | Notes |
 |---|---|---|
-| `@luxtax/contracts` | API, web, mobile, tax-engine | Type-only in the engine; no runtime dependency |
+| `@luxtax/contracts` | API, web, mobile, tax-engine | Types plus the `TaxClass` enum; no third-party runtime dependency |
 | `@luxtax/validation` | API, web, mobile | Same schema at every boundary |
 | `@luxtax/api-client` | Web, mobile | Single client, configurable token getter/refresh |
 | `@luxtax/design-tokens` | Web, mobile | Tokens + `getTermTranslation` |
@@ -171,6 +172,9 @@ Do not duplicate DTOs in a client. If a field is missing, add it to `packages/co
 
 ## Related
 
+- [Architecture](ARCHITECTURE.md)
+- [Modules](MODULES.md)
+- [Files](FILES.md)
 - [Backend](backend.md)
 - [API reference](../api.md)
 - [Help affordances](../help-affordances.md)
