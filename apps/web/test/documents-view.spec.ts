@@ -3,9 +3,10 @@
  * a single click, with no confirmation and no way back to PRIVATE_DRAFT: a
  * misplaced click silently changed what gets filed.
  *
- * The view is mounted for real (React 18 renderer), `fetch` is stubbed — the
+ * The view is mounted for real (React 19 renderer), `fetch` is stubbed — the
  * PATCH the component sends and the confirmation it asks for are the real ones.
  */
+import './support/render-harness';
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import React from 'react';

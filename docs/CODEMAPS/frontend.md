@@ -108,7 +108,7 @@ Tokens live in `localStorage` (`luxtax_access_token`, `luxtax_refresh_token`). T
 - Pure modules: money, auth redirect, document visibility, fact dedup/inclusion, tooltip position, logout URL.
 - Client/auth: `api-client-auth`, `session-refresh`, `logout`, `logout-url`.
 - Render specs: login/register pages, dashboard, questionnaire, calculator, documents, facts, invite, camera modal, help tip.
-- Ten render tests fail when `apps/web/node_modules` exists because `.tools` uses React 18's `react-test-renderer` against React 19. This is a harness mismatch; the pure and non-render specs pass.
+- Render specs use `tsconfig.web.json`: React 19's `react-test-renderer` resolves to the app's React instance, `next/navigation` is shimmed, and `test/support/render-harness.ts` configures `act`. 80 / 80 pass.
 
 ---
 

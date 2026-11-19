@@ -6,6 +6,7 @@
  * `next/navigation` and the browser storage are harness stand-ins; `fetch` is
  * stubbed. The page, its effects and the error branch are the real ones.
  */
+import './support/render-harness';
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import React from 'react';

@@ -169,10 +169,10 @@ node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.test.json \
 node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.test.json \
   --test apps/api/test/*.spec.ts
 
-# Mobile (134) and web (80; 10 pre-existing render-harness failures)
+# Mobile (134) and web (80 / 80, React 19 renderer)
 node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.test.json \
   --test apps/mobile/test/*.spec.ts
-node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.render.json \
+node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.web.json \
   --test apps/web/test/*.spec.ts
 
 # Builds

@@ -10,10 +10,11 @@
  * known salary and feeds its output to the view — the numbers on screen are the numbers
  * the tax engine produced.
  *
- * Boundary: React 18 renders to host elements ('div', 'button', …); there is no DOM, no
+ * Boundary: React 19 renders to host elements ('div', 'button', …); there is no DOM, no
  * layout, no Tailwind evaluation and no browser. Class names are asserted only where the
  * copy matters, never to prove styling.
  */
+import './support/render-harness';
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import React from 'react';

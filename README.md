@@ -504,7 +504,7 @@ Measured on 2026-11-19 in this workspace:
 | Design tokens & translations | `node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.test.json --test packages/design-tokens/test/*.spec.ts` | **9 / 9** |
 | API unit/integration (`apps/api/test/*.spec.ts`) | `node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.test.json --test apps/api/test/*.spec.ts` | **449 collected, 447 pass, 2 skipped** without Tesseract (the two real-binary tests state why they skip) |
 | Mobile | `node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.test.json --test apps/mobile/test/*.spec.ts` | **134 / 134** |
-| Web | `node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.render.json --test apps/web/test/*.spec.ts` | **80 collected, 70 pass, 10 fail** — the pre-existing React 18 (`react-test-renderer`) / React 19 (`apps/web`) harness mismatch, not a product defect |
+| Web | `node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.web.json --test apps/web/test/*.spec.ts` | **80 / 80** (React 19 `react-test-renderer`, same instance as the app) |
 
 The root scripts:
 
@@ -525,6 +525,11 @@ node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.test.json \
   --test apps/api/test/*.spec.ts
 pnpm --filter @luxtax/api test:e2e     # PostgreSQL required
 
+# Web render and client suites (React 19 renderer)
+node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.web.json \
+  --test apps/web/test/*.spec.ts
+pnpm --filter @luxtax/web test        # same suite through the package script
+
 # Type checking (contracts, validation, design-tokens, api-client, tax-engine)
 pnpm run typecheck
 
@@ -543,7 +548,6 @@ pnpm --filter @luxtax/mobile build
 
 Documented rather than hidden:
 
-- **Web render suite harness:** ten tests fail when `apps/web/node_modules` exists because `.tools` ships React 18's test renderer while the app uses React 19. With that folder absent the same specs pass. This is a harness fix, not a UI bug.
 - **Jest HTTP e2e:** see the note above.
 - **Pending law 8775:** the 2026 CIC table and épargne-logement age-limit removal are explicitly `NOT_IN_FORCE`.
 - **Not modelled / partial:** donations report over two years, CIM pro-rata by months, full treaty progression for non-residents without assimilation, Form 100 category-level splitting (1553, Art. 14 vs 91, foreign income by sheet), and per-child display of the applied relief.

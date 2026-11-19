@@ -6,6 +6,7 @@
  * FileReader and `fetch` are stand-ins; the click path, the upload payload and
  * the dialog semantics are the real ones.
  */
+import './support/render-harness';
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import React from 'react';

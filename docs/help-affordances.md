@@ -87,8 +87,8 @@ Rules the text follows:
 
 | Check | Result |
 |---|---|
-| `node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.render.json --test apps/web/test/help-tip.spec.ts` | **9 / 9**: 5 on placement (centring, both edges, flip, top clamp), 4 on the inventory (re-run 2026-11-19) |
+| `node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.web.json --test apps/web/test/help-tip.spec.ts` | **9 / 9**: 5 on placement (centring, both edges, flip, top clamp), 4 on the inventory (re-run 2026-11-19) |
 | `tsc --noEmit` in `apps/web` | exit 0 |
 | `next build` | compiled, six routes |
 | Browser (Chromium, 440 px viewport) | 25 affordances on the questionnaire; opens on click with the right copy; `aria-expanded=true`, `aria-describedby` set; `position: fixed`, `z-index: 70`, bubble 288 px wide and inside the viewport; `Escape` closes it; clicking a tip does not toggle its checkbox |
-| Pre-existing render-suite failures | Ten web render tests fail when `apps/web/node_modules` exists — the React 18 `react-test-renderer` / React 19 app harness mismatch, not the help layer. This spec passes. |
+| Web render suite | **80 / 80** under `tsconfig.web.json` (React 19 renderer; the help-tip inventory is part of it). |

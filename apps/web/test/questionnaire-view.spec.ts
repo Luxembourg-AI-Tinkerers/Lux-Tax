@@ -5,10 +5,11 @@
  * real `LuxTaxApiClient` with `fetch` stubbed — the URL, the JSON body and the view's
  * reaction to the server's echo are all real.
  *
- * Boundary: React 18 renders host elements ('form', 'input', 'button'); there is no DOM, so
+ * Boundary: React 19 renders host elements ('form', 'input', 'button'); there is no DOM, so
  * events are invoked as the props React would call. That proves the handler wiring and the
  * payload, not browser behaviour.
  */
+import './support/render-harness';
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import React from 'react';

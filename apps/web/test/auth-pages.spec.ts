@@ -8,6 +8,7 @@
  * `next/navigation`, storage and `fetch` are stand-ins; the submit path, the
  * redirect resolution and the label wiring are the real ones.
  */
+import './support/render-harness';
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import React from 'react';

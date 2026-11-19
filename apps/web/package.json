@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start --port 3000",
     "lint": "echo 'Linting web...'",
+    "test": "node ../../.tools/node_modules/tsx/dist/cli.mjs --tsconfig ../../tsconfig.web.json --test test/*.spec.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -28,6 +29,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "postcss": "^8.5.32",
+    "react-test-renderer": "19.3.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.8.2"
   }

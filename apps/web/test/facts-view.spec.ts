@@ -7,6 +7,7 @@
  * `fetch` is stubbed with a store that really accumulates facts, so a duplicate
  * insert is visible in the data, not only in the call list.
  */
+import './support/render-harness';
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import React from 'react';

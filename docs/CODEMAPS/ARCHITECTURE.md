@@ -383,7 +383,7 @@ Every material service action
 | DB drift | `npx prisma migrate diff --from-config-datasource --to-schema apps/api/prisma/schema.prisma --exit-code` | must exit 0 |
 | Engine tests | `node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.test.json --test packages/tax-engine/test/*.spec.ts` | 214 / 214 |
 | API tests | same pattern, `apps/api/test/*.spec.ts` | 449 collected, 2 skip without Tesseract |
-| Web tests | `--tsconfig tsconfig.render.json --test apps/web/test/*.spec.ts` | 80 collected; 10 harness failures |
+| Web tests | `--tsconfig tsconfig.web.json --test apps/web/test/*.spec.ts` | 80 / 80 (React 19 renderer) |
 | Mobile tests | `--tsconfig tsconfig.test.json --test apps/mobile/test/*.spec.ts` | 134 / 134 |
 
 ---

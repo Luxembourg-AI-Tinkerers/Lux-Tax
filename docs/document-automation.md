@@ -207,15 +207,15 @@ DATABASE_URL=postgresql://…/luxtax_check \
   npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
 ```
 
-### The ten failures in the web render suites are pre-existing
+### The web render suite now runs on React 19
 
 `LoginPage`, `RegisterPage`, `DashboardPage`, `QuestionnaireView` and
-`TaxCalculatorView` fail with `Cannot read properties of null (reading 'useContext')`.
-That is the React 18 (`react-test-renderer` in `.tools`) against React 19
-(`apps/web`) mismatch already recorded in `implementation-tracker.md`; it appears
-whenever `apps/web/node_modules` exists and currently accounts for **10 failing tests**
-in an 80-test suite. `documents-view.spec.ts` — the only web spec covering a file this
-pass changed — **passes**. Re-run 2026-11-19: 70 pass, 10 fail.
+`TaxCalculatorView` used to fail with `Cannot read properties of null (reading
+'useContext')` because `.tools` supplied React 18's `react-test-renderer` while
+`apps/web` ran React 19. The suite now uses `tsconfig.web.json`, which resolves
+`react`, `react/jsx-runtime` and `react-test-renderer` to the app's own React 19
+instance and maps `next/navigation` to the render harness. Re-run 2026-11-19:
+**80 / 80 pass**.
 
 ### The HTTP e2e could not run here
 

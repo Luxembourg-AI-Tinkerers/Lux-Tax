@@ -4,6 +4,7 @@
  * refresh token was revoked when the call fails — while still ending the local
  * session, which is what the user asked for.
  */
+import './support/render-harness';
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import React from 'react';
@@ -98,6 +99,10 @@ describe('sign-out', () => {
 
     const messages: unknown[] = [];
     console.error = (...args: unknown[]) => {
+      // React 19's test renderer announces its own deprecation on first use;
+      // only application errors belong in this assertion.
+      const first = typeof args[0] === 'string' ? args[0] : '';
+      if (first.startsWith('react-test-renderer is deprecated')) return;
       messages.push(args[0]);
     };
 

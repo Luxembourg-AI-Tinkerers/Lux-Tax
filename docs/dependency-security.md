@@ -90,7 +90,7 @@ were found by re-running the real build rather than the type checker:
 | `node .tools/audit_vulns.mjs` | 71 advisories across 19 packages → **5 across 3** (all documented above) |
 | `pnpm audit` | **3 vulnerabilities** — glob, minimatch (moderate), deepmerge (low) |
 | `tsc -p tsconfig.test.json` · `tsconfig.render.json` · `apps/api/tsconfig.json` | **0 · 0 · 0** |
-| Unit suite | **826 / 826** at the time of this pass; re-measured 2026-11-19 across all six suites: **920 collected — 908 pass, 10 pre-existing web render-harness failures, 2 skipped without Tesseract** |
+| Unit suite | **826 / 826** at the time of this pass; re-measured 2026-11-19 across all six suites: **920 collected — 918 pass, 2 skipped without Tesseract** |
 | `next build` (Next 16.4.6) | **6 routes, exit 0** |
 | `apps/mobile` bundle | **not re-verified** — see below |
 

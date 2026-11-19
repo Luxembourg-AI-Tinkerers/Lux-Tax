@@ -21,7 +21,8 @@ Related: [Architecture](ARCHITECTURE.md) · [Modules](MODULES.md) · [Backend](b
 | `tsconfig.build-contracts.json` | Contracts build |
 | `tsconfig.build-validation.json` | Validation build |
 | `tsconfig.packages.json` | Shared packages project |
-| `tsconfig.render.json` | Web/mobile render-test transform |
+| `tsconfig.render.json` | Mobile render-test transform (React 18 + react-native shim) |
+| `tsconfig.web.json` | Web render/client suites (React 19 + `next/navigation` shim) |
 | `tsconfig.test.json` | Node-test transform for `.tools` |
 | `.env.example` | Every supported environment variable, with defaults and failure behaviour |
 | `.npmrc` | pnpm settings |
@@ -319,9 +320,10 @@ App-level config: `next.config.ts`, `postcss.config.mjs`, `tsconfig.json`,
 `logout-url`, `logout`, `money`, `questionnaire-view`, `session-refresh`,
 `tax-calculator-view`.
 
-Ten render specs fail when `apps/web/node_modules` is present: `.tools` ships
-React 18's `react-test-renderer` while the app uses React 19. This is a harness
-mismatch, not a product defect.
+The render specs run under `tsconfig.web.json`: `react` and
+`react-test-renderer` resolve to the app's React 19 install, `next/navigation`
+maps to `test/support/next-navigation-shim.ts`, and `test/support/render-harness.ts`
+sets the act environment. 80 / 80 pass.
 
 ---
 

@@ -3,6 +3,7 @@
  * primary flow: it must be a real dialog to assistive technology (role, aria,
  * Escape) and its two fields must be labelled.
  */
+import './support/render-harness';
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import React from 'react';
