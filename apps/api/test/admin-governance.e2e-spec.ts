@@ -112,12 +112,13 @@ describe('Admin Governance & Model Registry (e2e)', () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.payload);
     expect(body.serviceHealth).toBe('HEALTHY');
-    expect(body.activeTaxYears).toContain(2025);
+    expect(body.activeTaxYears).toEqual(expect.arrayContaining([2025, 2026]));
+    expect(body.activeTaxYears).not.toContain(2028);
     expect(body.registeredModelsCount).toBeGreaterThan(0);
     expect(body.activeRoutesCount).toBeGreaterThan(0);
   });
 
-  it('GET /api/admin/tax-rules returns immutable 2025 rule package with checksum', async () => {
+  it('GET /api/admin/tax-rules derives every engine package, with 2028 as draft', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/admin/tax-rules',
@@ -127,13 +128,24 @@ describe('Admin Governance & Model Registry (e2e)', () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.payload);
     expect(Array.isArray(body)).toBe(true);
-    expect(body.length).toBeGreaterThan(0);
+    expect(body.map((r: any) => r.taxYear)).toEqual([2025, 2026, 2028]);
+
     const rule2025 = body.find((r: any) => r.taxYear === 2025);
     expect(rule2025).toBeDefined();
     expect(rule2025.progressiveScaleBrackets).toBe(23);
     expect(rule2025.splittingMethodEnabled).toBe(true);
     expect(rule2025.packageChecksum).toHaveLength(64); // SHA-256
     expect(rule2025.status).toBe('ACTIVE');
+
+    // 2026 is in force from tax year 2026; the 2025 package stays active.
+    const rule2026 = body.find((r: any) => r.taxYear === 2026);
+    expect(rule2026.status).toBe('ACTIVE');
+    expect(rule2026.effectiveDate).toBe('2026-01-01');
+
+    // 2028 is the single-class preview: visible to admins, not filing-ready.
+    const rule2028 = body.find((r: any) => r.taxYear === 2028);
+    expect(rule2028.status).toBe('DRAFT');
+    expect(rule2028.splittingMethodEnabled).toBe(false);
   });
 
   it('GET /api/admin/deadlines returns official filing dates and statutory deadlines', async () => {

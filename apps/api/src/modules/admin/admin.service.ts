@@ -17,6 +17,7 @@ import {
   UpdateModelRouteDto,
 } from '@luxtax/contracts';
 import * as crypto from 'crypto';
+import { getRulePackage, SUPPORTED_TAX_YEARS } from '@luxtax/tax-engine';
 import {
   MODEL_KEY_ENCRYPTION_ENV,
   ModelKeyStorageUnavailableError,
@@ -46,6 +47,41 @@ function maskStoredApiKey(stored?: string | null): string | undefined {
   if (!stored) return undefined;
   if (isEncryptedModelKey(stored)) return MASKED_API_KEY;
   return maskApiKey(stored);
+}
+
+/**
+ * Tax years with a filing-ready rule package.
+ *
+ * 2025 is still open, so it stays listed alongside 2026. A year is excluded
+ * only when its package is a modelling preview (the 2028 "classe U" package);
+ * retiring a year is a deliberate metadata change, not a clock-driven one.
+ */
+function filingReadyTaxYears(): readonly number[] {
+  return SUPPORTED_TAX_YEARS.filter((year) => !getRulePackage(year).singleClass);
+}
+
+/** Admin-facing summary derived from the immutable engine package. */
+function describeRulePackage(taxYear: number): TaxRulePackageDto {
+  const pkg = getRulePackage(taxYear);
+  const packageChecksum = crypto.createHash('sha256').update(JSON.stringify(pkg)).digest('hex');
+
+  return {
+    id: `pkg-lux-${pkg.taxYear}-v${pkg.singleClass ? '0-preview' : '1'}`,
+    taxYear: pkg.taxYear,
+    version: pkg.version,
+    effectiveDate: `${pkg.taxYear}-01-01`,
+    progressiveScaleBrackets: pkg.scale.length,
+    splittingMethodEnabled: !pkg.singleClass,
+    standardDeductionFrais: pkg.fraisObtention.salaryForfait.toFixed(2),
+    primaryResidenceMortgageCap: pkg.mortgage.band4000.toFixed(2),
+    specialExpensesForfait: pkg.specialExpenses.forfaitSingle.toFixed(2),
+    legalSourceUrls: [
+      'https://impotsdirects.public.lu/fr/baremes.html',
+      'https://legilux.public.lu/eli/etat/leg/loi/1967/12/04/n1/jo',
+    ],
+    packageChecksum,
+    status: pkg.singleClass ? 'DRAFT' : 'ACTIVE',
+  };
 }
 
 /** AES-256-GCM envelope for a submitted key; fail closed when the key is missing. */
@@ -284,7 +320,7 @@ export class AdminService implements OnModuleInit {
 
     return {
       serviceHealth: 'HEALTHY',
-      activeTaxYears: [2025],
+      activeTaxYears: filingReadyTaxYears(),
       registeredModelsCount: BUILT_IN_MODELS.length + customModelsCount,
       activeRoutesCount: routesCount > 0 ? routesCount : 5,
       totalWorkspaces: workspacesCount,
@@ -292,34 +328,13 @@ export class AdminService implements OnModuleInit {
     };
   }
 
+  /**
+   * Describes every rule package the engine ships. ACTIVE packages have begun
+   * their tax year and may produce filing output; DRAFT marks the 2028 preview,
+   * which is modelling-only.
+   */
   getTaxRules(): readonly TaxRulePackageDto[] {
-    const rulesJson = JSON.stringify({
-      taxYear: 2025,
-      brackets: 23,
-      splittingMethod: true,
-      standardDeductions: { frais: 540, mortgageCap: 4000, specialExpenses: 960 },
-    });
-    const packageChecksum = crypto.createHash('sha256').update(rulesJson).digest('hex');
-
-    return [
-      {
-        id: 'pkg-lux-2025-v1',
-        taxYear: 2025,
-        version: '2025.1.0',
-        effectiveDate: '2025-01-01',
-        progressiveScaleBrackets: 23,
-        splittingMethodEnabled: true,
-        standardDeductionFrais: '540.00',
-        primaryResidenceMortgageCap: '4000.00',
-        specialExpensesForfait: '960.00',
-        legalSourceUrls: [
-          'https://impotsdirects.public.lu/fr/baremes.html',
-          'https://legilux.public.lu/eli/etat/leg/loi/1967/12/04/n1/jo',
-        ],
-        packageChecksum,
-        status: 'ACTIVE',
-      },
-    ];
+    return SUPPORTED_TAX_YEARS.map((taxYear) => describeRulePackage(taxYear));
   }
 
   getForms(): readonly FormMappingDto[] {

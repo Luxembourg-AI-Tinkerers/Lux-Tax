@@ -195,7 +195,7 @@ Files: `admin.service.ts`, `model-key-cipher.ts`, `outbound-url-policy.ts`, `dat
 - `outbound-url-policy.ts` blocks non-https (except explicit localhost in development), loopback, link-local, private ranges, and metadata endpoints.
 - `data-class-policy.ts` enforces the route's `maxDataClass` at call time.
 - Built-in model catalog is returned; custom models may override endpoints and keys.
-- The overview/tax-rules metadata still advertises the 2025 package only, while the engine ships 2025/2026/2028; the calculation path selects by workspace year. This is recorded in the API reference.
+- Overview/tax-rules metadata is derived from the engine: `activeTaxYears` = non-preview packages (`[2025, 2026]`: 2025's window is still open, 2026 is in force for its own tax year); tax-rules summarises every package and marks 2028 `DRAFT`. Per-year constants are never back-applied (111bis €3,200 → €4,500, renovation 6% → 10% from 2026).
 - Connection probe performs a minimal request and reports latency/status without leaking the key.
 
 ---

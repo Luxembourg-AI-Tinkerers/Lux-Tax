@@ -302,7 +302,7 @@ Every route requires `JwtAuthGuard` **and** `PlatformAdminGuard`: the account's 
 
 Model credentials are encrypted with AES-256-GCM using `MODEL_KEY_ENCRYPTION_KEY` (32 bytes hex). Endpoint URLs must pass `outbound-url-policy.ts`, which blocks loopback, link-local, and private ranges. A model route's `maxDataClass` is re-checked at call time, not only at registration.
 
-> **Caveat:** `GET /admin/overview` and `GET /admin/tax-rules` currently report the **2025 package only** (`activeTaxYears: [2025]`, `pkg-lux-2025-v1`), even though `@luxtax/tax-engine` ships 2025, 2026 and 2028 rule packages. The calculation path selects the workspace year correctly; the admin metadata is behind the engine.
+Admin metadata is derived from `@luxtax/tax-engine`, not hardcoded. `GET /admin/overview` lists every **filing-ready** package: `activeTaxYears: [2025, 2026]` — 2025 stays listed because its filing window has not closed, and 2026 is in force from tax year 2026. `GET /admin/tax-rules` returns one entry per shipped package with a SHA-256 checksum of the package itself: 2025 and 2026 are `ACTIVE`, while 2028 is `DRAFT` (`singleClass`, modelling-only). Tax-year constants such as the Art. 111bis cap (€3,200 in 2025, €4,500 from 2026) and the energy-renovation amortisation rate (6% → 10% in 2026) live in the per-year packages and are never back-applied to 2025.
 
 ---
 
