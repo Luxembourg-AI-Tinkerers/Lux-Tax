@@ -1,5 +1,7 @@
 # Data retention, erasure and export
 
+**Last updated:** 2026-11-19. The endpoints below match `apps/api/src/modules/users/users.controller.ts`.
+
 The policy behind the M10 finding. It is written down because it is a product decision, not something
 a patch can settle by itself.
 

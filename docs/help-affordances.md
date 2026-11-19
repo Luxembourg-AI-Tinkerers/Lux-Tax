@@ -5,7 +5,7 @@ says, in one or two sentences, what it changes. The taxpayer should never have t
 guess what "CIM", "ASRD", "Art. 111bis" or "Proposed for return" means — and
 should never have to leave the page to find out.
 
-**Last updated:** 2026-11-10 · 63 affordances across 9 screens.
+**Last updated:** 2026-11-19 · 63 affordance placements across 9 screens, backed by 56 unique copy entries.
 
 ---
 
@@ -36,7 +36,8 @@ checkbox it sits beside.
 
 One source of truth: [`apps/web/src/lib/help-texts.ts`](../apps/web/src/lib/help-texts.ts).
 An id is a compile-time key, so a component cannot ask for help that does not
-exist.
+exist. The file holds **56 entries**; they are rendered as **63 placements**, because a
+few ids (CIM, savings housing, filing route) appear on more than one screen.
 
 Rules the text follows:
 
@@ -86,8 +87,8 @@ Rules the text follows:
 
 | Check | Result |
 |---|---|
-| `node --test apps/web/test/help-tip.spec.ts` | 9 tests: 5 on placement (centring, both edges, flip, top clamp), 4 on the inventory |
+| `node .tools/node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.render.json --test apps/web/test/help-tip.spec.ts` | **9 / 9**: 5 on placement (centring, both edges, flip, top clamp), 4 on the inventory (re-run 2026-11-19) |
 | `tsc --noEmit` in `apps/web` | exit 0 |
 | `next build` | compiled, six routes |
 | Browser (Chromium, 440 px viewport) | 25 affordances on the questionnaire; opens on click with the right copy; `aria-expanded=true`, `aria-describedby` set; `position: fixed`, `z-index: 70`, bubble 288 px wide and inside the viewport; `Escape` closes it; clicking a tip does not toggle its checkbox |
-| Pre-existing render-suite failures | unchanged (5 suites, 27 tests — the React 18/19 harness mismatch, not this work) |
+| Pre-existing render-suite failures | Ten web render tests fail when `apps/web/node_modules` exists — the React 18 `react-test-renderer` / React 19 app harness mismatch, not the help layer. This spec passes. |

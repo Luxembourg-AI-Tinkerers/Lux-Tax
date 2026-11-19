@@ -2,9 +2,9 @@
  * TOTP MFA and recovery codes (API-8).
  *
  * RFC 6238 / RFC 4226 implemented directly on `node:crypto` — no dependency, no
- * network, and the RFC test vectors are asserted in the suite. MFA is behind a
- * configuration flag (`MFA_ENABLED`); when the flag is off the API behaves exactly
- * as before, so enabling it is an operational decision rather than a code change.
+ * network, and the RFC test vectors are asserted in the suite. MFA is per
+ * account (`mfaEnabled`): there is no deployment-wide switch, so the endpoints
+ * behave normally until a user enrols.
  */
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 

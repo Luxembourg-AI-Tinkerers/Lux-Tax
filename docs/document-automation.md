@@ -4,7 +4,7 @@
 without the taxpayer retyping anything, and every figure can be traced back to the
 line it was printed on.
 
-**Last updated:** 2026-11-10 · **Phases DA-1 … DA-10 implemented and measured.**
+**Last updated:** 2026-11-19 (code re-verified) · **Phases DA-1 … DA-10 implemented and measured.**
 
 Status legend: ✅ done · 🟡 partial · ⬜ todo · ⛔ blocked by the environment
 
@@ -172,7 +172,7 @@ Three guards, each for a failure that would be silent:
 
 | Check | Result |
 |---|---|
-| API unit suite (`apps/api/test/*.spec.ts`) | **449 / 449** across 44 spec files, with a real Tesseract configured |
+| API unit suite (`apps/api/test/*.spec.ts`) | **449 collected / 449 pass** with a real Tesseract configured (88 test suites) |
 | Same suite without `OCR_TESSERACT_PATH` | **447 pass, 2 skipped** — both real-binary tests report why they cannot run |
 | Baseline before this work | 364 / 364 — so **85 tests were added**, none removed |
 | Packages, web and mobile specs | 426 / 453 — see the note below |
@@ -207,14 +207,15 @@ DATABASE_URL=postgresql://…/luxtax_check \
   npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
 ```
 
-### The 27 failures in the web render suites are pre-existing
+### The ten failures in the web render suites are pre-existing
 
 `LoginPage`, `RegisterPage`, `DashboardPage`, `QuestionnaireView` and
 `TaxCalculatorView` fail with `Cannot read properties of null (reading 'useContext')`.
 That is the React 18 (`react-test-renderer` in `.tools`) against React 19
 (`apps/web`) mismatch already recorded in `implementation-tracker.md`; it appears
-whenever `apps/web/node_modules` exists. `documents-view.spec.ts` — the only web
-spec covering a file this pass changed — **passes**.
+whenever `apps/web/node_modules` exists and currently accounts for **10 failing tests**
+in an 80-test suite. `documents-view.spec.ts` — the only web spec covering a file this
+pass changed — **passes**. Re-run 2026-11-19: 70 pass, 10 fail.
 
 ### The HTTP e2e could not run here
 

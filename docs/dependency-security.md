@@ -90,16 +90,8 @@ were found by re-running the real build rather than the type checker:
 | `node .tools/audit_vulns.mjs` | 71 advisories across 19 packages → **5 across 3** (all documented above) |
 | `pnpm audit` | **3 vulnerabilities** — glob, minimatch (moderate), deepmerge (low) |
 | `tsc -p tsconfig.test.json` · `tsconfig.render.json` · `apps/api/tsconfig.json` | **0 · 0 · 0** |
-| Unit suite | **826 / 826** in 159 suites |
+| Unit suite | **826 / 826** at the time of this pass; re-measured 2026-11-19 across all six suites: **920 collected — 908 pass, 10 pre-existing web render-harness failures, 2 skipped without Tesseract** |
 | `next build` (Next 16.4.6) | **6 routes, exit 0** |
 | `apps/mobile` bundle | **not re-verified** — see below |
 
-**Mobile.** The app's `node_modules` was a hand-assembled flat tree because `pnpm install`
-never completed in this environment. With a real pnpm install, Metro 0.81 follows
-`expo-router`'s symlink to its store realpath and then searches the workspace root, where the
-package is not linked: `Unable to resolve module expo-router`. Adding the store to
-`watchFolders` fixes the entry point but the next bare import (`query-string`, from inside the
-store) fails the same way. The overrides that land in the mobile tree (`tar`, `image-size`,
-`uuid`, `@xmldom/xmldom`) are build-time tooling, and the bundle was last green on the
-previous dependency set; re-verifying it needs either a hoisted `node_modules` for this app or
-a Metro/pnpm fix, which is its own task.
+**Mobile.** The earlier note in this section said the bundle could not be re-verified because Metro followed pnpm's store symlink. That was corrected in `build-verification-2026-11-10.md`: the real blocker was a truncated `caniuse-lite` copy inside `browserslist`, plus missing `babel.config.js`, `@babel/runtime` and `expo-asset`. With those fixed, `apps/mobile` bundles for **iOS (957 modules, 2.5 MB Hermes)** and **Android (954 modules, 2.5 MB)** — `npm run build` exits 0. The bundle was produced with npm in an out-of-tree sandbox because a full pnpm install for the mobile app could not complete in that environment; the overrides that land in the mobile tree (`tar`, `image-size`, `uuid`, `@xmldom/xmldom`) are build-time tooling. On-device execution is still unverified (no hardware).

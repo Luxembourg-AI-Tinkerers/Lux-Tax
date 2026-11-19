@@ -5,7 +5,7 @@
 **Years:** Tax year 2025 (return filed 7 April – 31 December 2026) and tax year 2026.  
 **App compared:** `packages/tax-engine/src/{engine,deductions,credits,scale2025}.ts`, `packages/contracts/src/enums.ts` (`FactCategory`).  
 **Legal status of this note:** Research checklist. Not tax advice. Every number is tagged. Where ACD, guichet and LIR disagree, the conflict is written out; the app should follow the higher-grade source named in that row.  
-**Revision:** 8 November 2026 — §11.1 added after the LEG-6/API-3 pass (Art. 119 n° 3 window, Class 2 without spouse, 111bis clamp); §11.2 added after the LEG-8 pass (Class 2 vs 2 × Class 1 comparison); §11.3 added after the LEG-7 pass (certificate 160 table, Form 100F case map, and the limits of both); §11.4 added after the API-4 pass (in-app notification foundation; no delivery); §11.5 added after the API-5 pass (approval invalidation on material changes, visible return-version history). §1, the per-section **App.** notes in §3–§10 and §15 predate the engine rebuild and are stale where they describe app behaviour; §11 is the current matrix.
+**Revision:** 8 November 2026 — §11.1 added after the LEG-6/API-3 pass (Art. 119 n° 3 window, Class 2 without spouse, 111bis clamp); §11.2 added after the LEG-8 pass (Class 2 vs 2 × Class 1 comparison); §11.3 added after the LEG-7 pass (certificate 160 table, Form 100F case map, and the limits of both); §11.4 added after the API-4 pass (in-app notification foundation; no delivery); §11.5 added after the API-5 pass (approval invalidation on material changes, visible return-version history). §1, the per-section **App.** notes in §3–§10 and §15 predate the engine rebuild and are stale where they describe app behaviour; §11 is the current matrix. **2026-11-19 — §11.6 supersedes every earlier App flag with a code-verified status after the engine rebuild and the 2025/2026/2028 rule packages.**
 
 **Confidence labels used below**
 
@@ -27,6 +27,8 @@
 ---
 
 ## 1. Conclusion summary
+
+> **Historical verdict (2026-11-08).** The paragraph below describes the pre-rebuild engine. The engine was subsequently rebuilt with 2025/2026/2028 rule packages; **§11.6 is the current coverage matrix**. Read the paragraph as the audit that motivated the rebuild, not as a description of today's code.
 
 A resident employee or class-2 couple can legally reduce 2025/2026 tax through **forfaits and frais réels** (Art. 105/105bis/107), **dépenses spéciales** (Art. 109–113, including 111bis 3 200 € / 4 500 €, épargne-logement 1 344/672 €, LRCP 1 200 €, ASRD prime unique), **dons Art. 112 (additive to the 480 € forfait)**, **charges extraordinaires garde 5 400 €**, **AEP Art. 110bis 4 500 €**, **AMVP Art. 129g 9 000 € (2026 only)**, **timing of December payments**, **loss reports Art. 114 (17 years)**, **plus-values holding periods** and **résidence principale Art. 102bis**. Bëllegen Akt (40 000 €/person) and prime jeune salarié (Art. 115 n° 13d) are **not** IR deductions; they sit in registration duties / salary exemption.
 
@@ -255,7 +257,7 @@ Already in §4.1. Owner-occupier mortgage is **not** here (see §7). Second-home
 
 ### 5.5 CIP + CI-CO2 pensionné; modération 922,50 €; no “CIAC”
 
-See [research/2025-2026-lu-tax-credits-and-classes.md](research/2025-2026-lu-tax-credits-and-classes.md). There is **no** official “CIAC”. Dégrèvement 922,50 €/child is **not refundable** and only if no family allowance/CEDIES/SNJ was paid. Bonification Art. 123bis after expiry, with a 2025–2026 résidence alternée transitional rule. **App:** superseded — see §11 row 18: CIP and the Art. 122 / 123bis reliefs are implemented; the per-child-history limit is stated there.
+See [research/2025-2026-lu-tax-credits-and-classes.md](../research/2025-2026-lu-tax-credits-and-classes.md). There is **no** official “CIAC”. Dégrèvement 922,50 €/child is **not refundable** and only if no family allowance/CEDIES/SNJ was paid. Bonification Art. 123bis after expiry, with a 2025–2026 résidence alternée transitional rule. **App:** implemented — see §11.6 row 18: CIP, the Art. 122 dégrèvement, the Art. 123bis bonification and the per-child history are in the engine.
 
 ### 5.6 AMVP — abattement de maintien dans la vie professionnelle, 9 000 € (2026 only)
 
@@ -441,7 +443,7 @@ This is the shared-context case: one spouse salarié, the other (or the same per
 - **Class 2** = 2 × Tarif(RIA/2) (Art. 121). Married residents: **collective by default** unless both elect Art. 3ter by 31 December N+1. Partners: separate by default; class 2 only on joint request if common home + partnership all year.  
 - **Class 1a** (Art. 120bis, rewritten for 2025): Tarif applied to RIA − (79 380 − RIA)/4 for RIA ≤ 79 380, with 39/40/41/42 % marginal caps. 65+ = completed 64th year **on 1 January**. Widows 1a (3-year class 2 window after death). Divorcé without child = class 1, possibly class 2 for 3 years.  
 - **Barème 2025 = barème 2026** (Art. 118, loi 20 décembre 2024, Mémorial A 589). First exempt bracket 13 230 € (class 1) / 26 460 € (1a and 2). Fonds pour l’emploi 7 % / 9 % at 150 000 / 300 000 (class 2).  
-- **App.** 🟡/❌ — see [docs/lir-118-121-bareme-2025-2026.md](docs/lir-118-121-bareme-2025-2026.md). Class 1 brackets wrong from 14 %; class 1a is an unofficial midpoint, not Art. 120bis; no class assignment logic.
+- **App.** ✅ — see §11.6 row 30. Official 23-bracket Art. 118 scale, Art. 120bis Class 1a, Art. 121 splitting, Art. 124/126 rounding, and class assignment from the questionnaire (`class-resolution.ts`).
 
 ---
 
@@ -571,6 +573,51 @@ No matrix row changed status in this pass: rows 1–3, 5–9, 11–16, 19, 21, 2
 
 ---
 
+### 11.6 Current engine coverage after the rebuild (verified 2026-11-19)
+
+This table **supersedes every App flag above**, including the `stale — see tracker` rows. It was produced by reading the current code, not by carrying forward an earlier pass. Legend: ✅ implemented · 🟡 partial / caveat · ❌ deliberately absent or blocked.
+
+| # | Checklist item | App | Where it is, and where it stops |
+|---|---|---|---|
+| 1 | FFO 540 / 300 / 25, monthly, invalidity, blindness | ✅ | `deductions.ts` `salaryForfaitFor`, `RULES_2025.fraisObtention`. Per-person `max(forfait, actual)`, pension and capital forfaits, invalidity replaces the normal forfait, blindness €1,515. Not modelled: Art. 107 al. 5 cap after travel, partial-year monthly switch. |
+| 2 | Déplacement 99 € / 2 574 € | ✅ | `travelFor`: first 4 units free, 26-unit / €2,574 cap, applied per person with salary. |
+| 3 | Invalidity forfaits 645–1,515 | ✅ | `fo.invalidity` bands, selected by `invalidityRate`. |
+| 4 | Télétravail forfait | ❌ (correct: taxable) | No legal PIT forfait exists; nothing to implement. |
+| 5 | Home office frais réels 105/2 | 🟡 | Only through a generic `actualFraisObtention` amount; no 90 % / surface attestation workflow. |
+| 6 | Formation Fortbildung | 🟡 | Same generic actual-frais field; no dedicated fact type or Fortbildung/Ausbildung gate. |
+| 7 | FDS 480 / 960 | ✅ | `specialExpensesDeduction = max(forfait, covered) + LRCP + donations`; couple forfait requires two professional incomes. |
+| 8 | Art. 111 €672 envelope | ✅ | `art111CapPerPerson × (1 + collectif + enfants modérés)`. |
+| 9 | LRCP 1,200 | ✅ | `lrcpDeduction`, separate from the 480/960 forfait. |
+| 10 | Art. 111bis 3,200 / 4,500 | ✅ | `art111bisCapPerPerson` per souscripteur, clamped to assessed persons (1 or 2). |
+| 11 | Épargne-logement 1,344 / 672 | ✅ | Age-aware cap (`savingsHousingYoungMaxAge = 40`), × household multiplier. The 8775 age-limit removal remains gated. |
+| 12 | ASRD prime unique table | ✅ | €6,000 + €1,200/child, + 8 % per year above 30, max 160 %. |
+| 13 | Dons Art. 112 additive, 120 / 20 % / 1 M€ / report | ✅ / 🟡 | Minimum, 20 % and €1,000,000 cap implemented and additive. The two-year report (`donations.reportYears`) is in the rule package but **not** carried across years by the engine. |
+| 14 | AEP Art. 110bis 4,500 | ✅ | `aepDeduction`, three routes (both professional, conjoint-aidant, recent retiree), capped at the lower professional net. |
+| 15 | CIS official formula | ✅ | `creditFromScale`: 0 below 936, build-up to 11,265, €600 plateau to 40,000, phase-out to 80,000. |
+| 16 | CI-CO2 192 / 216 | ✅ | `ciCo2ForSalary` / pension / independent; 2025 €192 / 0.0048, 2026 €216 / 0.0054. |
+| 17 | CIM 3,504 / 0.0612 / 750 | ✅ | `cimFor`; Class 1a + single parent + moderated child + not both parents at home. Refundable excess split into `cimApplied` / `cimRefund`. Not modelled: pro-rata by months, the “married during the year” exclusion, per-child allocation detail. |
+| 18 | CIP / modération 922.50 | ✅ | `cipForPension`, `degrevementForChildren`, `bonificationForChildren`. Per-child history (`child-relief.ts`) enforces the two-bonification lifetime cap, the one-relief-per-child rule, and the 2025–2026 résidence-alternée rule. |
+| 19 | AMVP 9,000 (2026) | ✅ | `RULES_2026.amvp`, `amvpDeduction` when `amvpEligible`. Absent from the 2025 package. |
+| 20 | CIC 2026 | ❌ (publication gate) | `cicForSalary` exists but returns 0 while `CIC_2026` is `NOT_IN_FORCE`; the engine warns. `cicForMonthlySalary` distinguishes `NOT_IN_FORCE` from zero-by-law. |
+| 21 | Start-up credit 20 % / 100 k€ | ✅ | `startupInvestment`, 20 % capped at €100,000 investment, 2026 package only (2025 rate is 0). |
+| 22 | Prime jeune salarié 75 % / 5,000 | ✅ | `youngEmployeePrimeEligible` + `youngEmployeePrime`, band caps €5,000 / €3,750 / €2,500, zero above €100,000. Eligibility remains an explicit input, not inferred. |
+| 23 | Bëllegen Akt 40,000 | ❌ (non-IR by design) | Registration duties, not income tax; no housing-duties module. |
+| 24 | Garde CE 5,400 | ✅ / 🟡 | `CHILDCARE_EXPENSE` and `HOUSEHOLD_HELP_EXPENSE` map to `extraordinaryChargesDeduction`, capped at the €5,400 forfait. The real-CE percentage table above the forfait is not modelled. |
+| 25 | Owner-occupier interest ACD schedule | ✅ | `mortgageCap`: years 1–2 unlimited, 3–6 €4,000, 7–11 €3,000, 12+ €2,000, × (1 + spouse + moderated children). A missing fixation year refuses the deduction with a warning; a pre-disposition home is fully deductible. |
+| 26 | Rental 35 % / 2,700 | ✅ | `computeRental` forfait, plus a per-building `rentalProperties` register with age-based and energy-renovation amortisation, charges and interest. |
+| 27 | Social rental 90 % | ✅ | `rentalSocial` → 90 % of positive net excluded, provenance `LIR-ART-115-22a`. |
+| 28 | Plus-values 6 months / 10 % / 102bis | ✅ | `movableGains`, `realEstateGains`: speculation vs Art. 100 / 99ter, principal-residence exemption, €50,000/€100,000 abattement, demi-taux. |
+| 29 | Art. 114 losses 17 years | ✅ | `lossCarryForward` ledger by year, rejects future-dated entries, 17-year window, capped at available income; excess remains in the carry-forward with a warning. |
+| 30 | Barème Art. 118 / 120bis / 121 | ✅ | Official 23 brackets, Art. 126 floor, Art. 124 cote floor, Class 2 `2 × Tarif(R/2)`, Class 1a reduced base + caps. Regression tests pin the ACD examples. |
+| 31 | taxYear 2025 vs 2026 routing | ✅ | `getRulePackage` for 2025/2026/2028; unknown years throw rather than fall back. 2026 carries the 111bis €4,500, AMVP, CI-CO2 €216 and start-up credit. |
+| 32 | Pension / capital / foreign income | ✅ | Pension withholding separated from gross pension; securities ledger with 50 % qualifying dividends, RELIBI final option, per-holding credit; treaty exemption/credit by country. |
+| 33 | NON_RESIDENT refusal | 🟡 | Art. 157ter assimilation is tested; without assimilation, only Luxembourg-source income is taxed and the result is labelled an estimate. Treaty progression mechanics are not automated. |
+| 34 | Form 100 official sheets | ✅ / 🟡 | Page / sheet / case map, spouse columns, computed vs instruction rows, annex PDF, SHA-256 package. Remaining caveats: 1553 not split, Art. 14 vs 91 not distinguished, foreign income not split by sheet, `unsupportedCertificateCodes` returned but not rendered. |
+
+**Where §11.6 and an earlier row disagree, §11.6 is correct.** The legal analysis in §3–§10 remains useful for the rule itself; only its “App.” sentence is historical.
+
+---
+
 ## 12. Optimisation priority for a resident couple (legal)
 
 Ordered by typical euro impact for a salarié + side-business class-2 household. Not personalised advice.
@@ -641,7 +688,7 @@ Ordered by typical euro impact for a salarié + side-business class-2 household.
 - Charges extraordinaires: <https://impotsdirects.public.lu/fr/az/c/charg_extra.html>  
 - Garde forfaitaire: <https://impotsdirects.public.lu/fr/az/a/abat_forf_dom.html>  
 - AEP: <https://impotsdirects.public.lu/fr/az/a/abat_extrapro.html>  
-- CIS 2025 / 2026, CIM, CIP, classes: see [research/2025-2026-lu-tax-credits-and-classes.md](research/2025-2026-lu-tax-credits-and-classes.md)  
+- CIS 2025 / 2026, CIM, CIP, classes: see [research/2025-2026-lu-tax-credits-and-classes.md](../research/2025-2026-lu-tax-credits-and-classes.md)
 - Prime jeune salarié: <https://impotsdirects.public.lu/fr/az/p/prime-jeune-salarie.html>  
 - Newsletter 25.02.2026 (AMVP): <https://impotsdirects.public.lu/fr/archive/newsletter/2026/nl25022026.html>  
 - Newsletter 30.10.2026 (CIC 2026 / 8775): <https://impotsdirects.public.lu/fr/archive/newsletter/2026/nl301020261.html>  
@@ -662,20 +709,36 @@ Ordered by typical euro impact for a salarié + side-business class-2 household.
 
 **Workspace files this note is written with**
 
-- [lux-deductions-2025-2026-research.md](lux-deductions-2025-2026-research.md)  
-- [luxembourg-resident-tax-research.md](luxembourg-resident-tax-research.md)  
-- [research-filing-2025-2026.md](research-filing-2025-2026.md)  
-- [luxembourg-tax-resident-gap-analysis.md](luxembourg-tax-resident-gap-analysis.md)  
-- [docs/lir-118-121-bareme-2025-2026.md](docs/lir-118-121-bareme-2025-2026.md)  
-- [research/2025-2026-lu-tax-credits-and-classes.md](research/2025-2026-lu-tax-credits-and-classes.md)  
-- Engine: [packages/tax-engine/src/engine.ts](packages/tax-engine/src/engine.ts), [packages/tax-engine/src/deductions.ts](packages/tax-engine/src/deductions.ts), [packages/tax-engine/src/credits.ts](packages/tax-engine/src/credits.ts)
+- [lux-deductions-2025-2026-research.md](../lux-deductions-2025-2026-research.md)
+- [luxembourg-resident-tax-research.md](../luxembourg-resident-tax-research.md)
+- [research-filing-2025-2026.md](../research-filing-2025-2026.md)
+- [luxembourg-tax-resident-gap-analysis.md](../luxembourg-tax-resident-gap-analysis.md)
+- [docs/lir-118-121-bareme-2025-2026.md](lir-118-121-bareme-2025-2026.md)
+- [research/2025-2026-lu-tax-credits-and-classes.md](../research/2025-2026-lu-tax-credits-and-classes.md)
+- Engine: [packages/tax-engine/src/engine.ts](../packages/tax-engine/src/engine.ts), [packages/tax-engine/src/deductions.ts](../packages/tax-engine/src/deductions.ts), [packages/tax-engine/src/credits.ts](../packages/tax-engine/src/credits.ts)
 
 ---
 
 ## 15. Suggested next steps
 
-1. **Do not** present the current engine’s RIA or final tax as “filing-ready”. Add a hard warning on the calculator view until P0 items in [luxembourg-tax-resident-gap-analysis.md](luxembourg-tax-resident-gap-analysis.md) are closed.  
-2. Implement, in order: official Art. 118/120bis/121 scale + Art. 124/126 rounding → CIS/CI-CO2/CIM → split FO 105/107 / DS 109–113 / CE 127 / AEP 110bis / 111bis by year → dons additive → ACD habitation schedule → Art. 105bis déplacement → invalidity forfaits → garde CE → AMVP 2026 → 111bis 3 200/4 500.  
-3. Add fact keys the engine currently drops: `CHILDCARE_EXPENSE`, `PENSION_INCOME`, plus new categories for 111bis, épargne-logement, déplacement, dons report, losses Art. 114, rental, plus-values.  
-4. Keep CIC 2026, épargne-logement age-limit suppression and any 45 000 € Bëllegen Akt **unimplemented** until a Mémorial PDF is pinned.  
-5. Build a December-timing reminder (111bis, dons, LRCP, garde, AMVP certificate) as a product feature — that is legal optimisation, not evasion.
+> **Status 2026-11-19.** The five steps below were the pre-rebuild plan; steps 1–4 are **done**.
+> What remains is product/coverage polish, not a broken calculator.
+
+1. ~~Do not present the engine as filing-ready until P0 items close.~~ **Done:** the official Art. 118
+   scale, Art. 120bis Class 1a, Art. 121 splitting and Art. 124/126 rounding are implemented and
+   pinned by regression tests. The UI still presents the result as an estimate, not a filed return,
+   which is the correct product boundary.
+2. ~~Implement the scale, CIS/CI-CO2/CIM, FO/DS/CE/AEP/111bis, dons, habitation, déplacement,
+   invalidity and AMVP.~~ **Done** in `rules/2025.ts`, `rules/2026.ts`, `deductions.ts`, `credits.ts`,
+   `scale.ts`, `engine.ts`.
+3. ~~Add the missing fact keys/categories.~~ **Done:** pension, childcare, 111bis, savings housing,
+   LRCP, donations, travel/invalidity inputs, prior losses, rental, securities and plus-values all
+   reach the engine.
+4. ~~Keep CIC 2026, épargne-logement age-limit suppression and any €45,000 Bëllegen Akt
+   unimplemented until a Mémorial PDF is pinned.~~ **Still the rule:** CIC and the 8775 age limit are
+   `NOT_IN_FORCE`; Bëllegen Akt remains non-IR. See
+   [`8775-activation-handoff.md`](8775-activation-handoff.md).
+5. **Open product work:** a December-timing reminder for 111bis/dons/LRCP/garde/AMVP; the donations
+   two-year report; real-CE above the €5,400 forfait; CIM pro-rata by months; and Form 100
+   category-level splitting (1553, Art. 14 vs 91, foreign income by sheet). These are recorded in
+   §11.6 and in [`CODEMAPS/INDEX.md`](CODEMAPS/INDEX.md).
