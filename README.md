@@ -34,7 +34,12 @@ Available as a responsive **Next.js 16** web application, a **NestJS 12** backen
   - [4. Seed Database with Test Accounts](#4-seed-database-with-test-accounts)
   - [5. Run Development Servers](#5-run-development-servers)
 - [Default Seed Credentials](#default-seed-credentials)
-- [Document Automation & OCR Pipeline](#document-automation--ocr-pipeline)
+- [How AI Works in Lux-Tax](#how-ai-works-in-lux-tax)
+  - [Design Boundary: Extraction vs. Statutory Law](#design-boundary-extraction-vs-statutory-law)
+  - [Document Automation & OCR Pipeline](#document-automation--ocr-pipeline)
+  - [Vision Model Contract and Output Guardrails](#vision-model-contract-and-output-guardrails)
+  - [Model Registry, Task Routing, and Evaluations](#model-registry-task-routing-and-evaluations)
+  - [AI Security, Data-Class Policy, and Privacy Lifecycle](#ai-security-data-class-policy-and-privacy-lifecycle)
 - [Contextual Tax Help Affordances](#contextual-tax-help-affordances)
 - [Luxembourg Tax Law Alignment (LIR)](#luxembourg-tax-law-alignment-lir)
 - [Assessment Modes and the Tax Engine](#assessment-modes-and-the-tax-engine)
@@ -322,47 +327,101 @@ All three standard accounts are seeded as e-mail-verified. The API still enforce
 
 ---
 
-## Document Automation & OCR Pipeline
+## How AI Works in Lux-Tax
 
-The ingestion pipeline removes manual data entry while preserving mathematical auditability:
+Lux-Tax treats AI as an **untrusted extraction boundary**, never as a tax calculator. Every design choice in the pipeline isolates probabilistic document reading from deterministic Luxembourg tax law, enforces strict schema and security controls around model I/O, and keeps a human filer in control before any number affects a return.
+
+### Design Boundary: Extraction vs. Statutory Law
+
+| Concern | Handled by | Guarantee |
+|---|---|---|
+| **Document perception** (photos, scanned PDFs, multi-layout receipts) | Tiered pipeline: native PDF text reader → optional vision LLM chain → local Tesseract OCR | Always returns typed candidate proposals (`ExtractedFact`) or an explicit `NEEDS_OCR` state — never silent zeroes |
+| **Classification & field mapping** | Deterministic keyword/code parser (`extractLocally`) or pinned vision JSON contract (`parseVisionExtraction`) + shared `factCategoryForFieldName` | Unknown field names are dropped and logged in `rejectedFields[]`; amounts are normalized before storage |
+| **Human verification** | Explicit user review in Web/Mobile vaults (`confirm` or `confirm-bulk`, max 50 IDs) | Extracted values remain proposals (`isConfirmed: false`) until accepted by a household filer |
+| **Tax brackets, caps & Form 100 math** | Pure `@luxtax/tax-engine` (`LuxembourgTaxEngine.calculate`) | Zero LLM calls, zero probabilistic arithmetic, immutable per-year `RulePackage` definitions with line-item provenance |
+
+### Document Automation & OCR Pipeline
+
+Every upload (`POST /api/workspaces/:workspaceId/documents`, up to `10 MiB` decoded) first passes [`upload-guard.ts`](apps/api/src/modules/documents/upload-guard.ts): `decodeBase64Upload` checks strict base64 round-trip integrity before allocating full payloads, and `assertDeclaredMimeMatches` sniffs file magic bytes (`%PDF`, PNG, JPEG, WebP, or strict UTF-8 plain text without control characters) so spoofed content types are rejected before hitting disk or a model endpoint.
 
 ```mermaid
 flowchart TD
-    A["Uploaded Document<br/>(PDF, image or text)"] --> B{"File kind?"}
+    A["Uploaded Document<br/>(base64 ≤ 10 MiB)"] --> B["upload-guard.ts<br/>base64 & magic-byte MIME check"]
+    B --> C["readDocumentText()<br/>document-text.ts"]
 
-    B -->|"PDF with text layer"| C["Tier 1: Native stream reader<br/>pdf-text.ts"]
-    B -->|"Image or scanned PDF"| D{"Vision model<br/>registered?"}
-    B -->|"Plain text"| E["PLAIN_TEXT source"]
+    C -->|"PDF text layer<br/>(≥40 chars, ≥0.75 printable)"| D["Tier 1: Native PDF reader<br/>pdf-text.ts (TEXT_LAYER)"]
+    C -->|"UTF-8 text / image sidecar"| E["Tier 1: PLAIN_TEXT / EMBEDDED_TEXT"]
+    C -->|"needsOcr = true<br/>(photo or scanned PDF)"| F{"Vision route chain<br/>document.ocr.receipt_scan?"}
 
-    D -->|"Yes"| F["Tier 2: Validated vision contract<br/>vision-contract.ts"]
-    D -->|"No"| G{"Tesseract<br/>configured?"}
+    D --> G["extractLocally()<br/>Luxembourg rule & code parser"]
+    E --> G
 
-    G -->|"Yes"| H["Tier 3: Local OCR<br/>ocr-engine.ts + pdf-images.ts"]
-    G -->|"No"| I["Status: NEEDS_OCR<br/>explicit, not silent"]
+    F -->|"Eligible VISION model(s)"| H["Tier 2: Vision contract<br/>buildVisionPrompt → HTTP JSON → parseVisionExtraction"]
+    F -->|"Empty chain / all failed"| I{"OCR_TESSERACT_PATH<br/>configured?"}
+    H -->|"Unusable / empty JSON"| I
 
-    C --> J["Field & code extraction<br/>(101, 103, 105, 141, …)"]
-    E --> J
-    F --> J
-    H --> J
+    I -->|"Yes"| J["Tier 3: Local OCR<br/>pdf-images.ts (scans) → TesseractCliOcrEngine"]
+    I -->|"No"| K["Status: NEEDS_OCR<br/>source: NONE + explicit reason"]
+    J -->|"TEXT"| G
+    J -->|"EMPTY / FAILED / NOT_CONFIGURED"| K
 
-    J --> K["Extracted facts (proposals)<br/>status: EXTRACTED"]
-    K --> L{"User action"}
-    L -->|"Confirm all"| M["POST .../facts/confirm-bulk<br/>max 50 ids, skipped ids reported"]
-    L -->|"Confirm one"| N["POST .../facts/confirm"]
-    M --> O["Tax engine and Form 100"]
-    N --> O
+    G --> L["ExtractedFact proposals + DocumentExtraction provenance"]
+    H -->|"Validated fields"| L
+
+    L --> M{"Human-in-the-loop review"}
+    M -->|"Confirm one / confirm-bulk (≤50)"| N["ConfirmedFact + clear extractedText/rawJson<br/>when all facts confirmed"]
+    N --> O["Deterministic @luxtax/tax-engine & Form 100"]
 ```
 
-### Pipeline Highlights
+#### Tier 1 — Zero-Dependency Text Layer & Deterministic Parser (No Model Call)
 
-1. **Native PDF text extraction:** Zero external libraries. Decodes object streams (`/ObjStm`), FlateDecode streams, `/ToUnicode` CMaps, Identity-H two-byte codes, and WinAnsi/Latin-1 fallback. Measured on a 20-page Form 100 and the 359-page LIR.
-2. **Scanned PDFs reach OCR:** `pdf-images.ts` walks the page tree and returns the largest image per page. `/DCTDecode` JPEGs pass through untouched; `/FlateDecode` images are inflated and wrapped in a minimal PNG. Unsafe formats (predictors, JPEG 2000, CCITT, CMYK, 1-bit) are skipped, and pages/pixels are capped.
-3. **Validated vision contract:** Field allowlist, amount normalisation for `1.234,56` and `1,234.56`, rejection of prose and unknown fields with a report, primary → fallback model chain, and a per-call `maxDataClass` check.
-4. **Honest states:** an upload is processed synchronously and lands as `EXTRACTED` or `NEEDS_OCR` (or `FAILED` if the reader throws); confirming its figures moves it to `CONFIRMED`. `Document.extractionSource` records `TEXT_LAYER`, `EMBEDDED_TEXT`, `PLAIN_TEXT`, `VISION`, `OCR`, or `NONE`. The enum retains `UPLOADED` and `PROCESSING` for a future asynchronous queue, but the current pipeline does not persist an intermediate state.
-5. **One-click batch confirmation:** `POST /api/workspaces/:workspaceId/facts/confirm-bulk` confirms up to 50 proposals atomically per fact, preserving the audit row, approval invalidation, visibility checks, and retention trigger. Already-confirmed, foreign-workspace, and unreadable ids return a per-id reason.
-6. **Audited re-extraction:** `POST /api/workspaces/:workspaceId/documents/:documentId/reextract` re-reads a stored file after an engine or model change. Confirmed figures are never replaced; the event is recorded as `DOCUMENT_REEXTRACTED`.
+- **Native PDF stream reader ([`pdf-text.ts`](apps/api/src/modules/documents/text/pdf-text.ts)):** Decodes classic and cross-reference-stream PDFs using only `node:zlib`: object streams (`/ObjStm`), `/FlateDecode` streams, `/ToUnicode` CMaps (`bfchar`, `bfrange`, array forms), Identity-H two-byte glyph codes, and WinAnsi/CP1252/Latin-1 fallbacks. Measured on a 20-page Form 100 (`43,148` non-whitespace chars, `99.76%` printable) and the 359-page LIR (`597,847` chars, `98.6%` printable).
+- **Text quality gate (`assessTextQuality`):** Requires at least `40` non-whitespace characters and a `0.75` printable ratio before trusting a PDF text layer. `findEmbeddedText` (for OCR text sidecars `≥ 100` chars) is intentionally **disabled for PDFs** because raw PDF object dictionaries (`/Type /Page ...`) mimic printable prose.
+- **Deterministic certificate & receipt parser (`extractLocally` in [`receipt-ai-vision.service.ts`](apps/api/src/modules/documents/receipt-ai-vision.service.ts)):** Normalizes accents (`stripAccents`) and matches numbered Luxembourg certificate lines (`codeAmount` for Form 160 codes `101`, `102`, `103`, `105`, `141` with two-line column lookahead) across 15 document types — salary certificates, modèle 170 pensions, mortgage interest attestations, Art. 111bis/111ter third-pillar pensions vs. Art. 111 private insurance, crèche/childcare, Art. 112 donations, training courses, work expenses, Art. 127 medical invoices, Art. 14/91 freelance invoices, business expenses, VAT returns, P&L statements, and general receipts. Digital PDFs incur zero model latency, cost, or external data egress.
 
-> For architecture, benchmark evidence, and the explicit backlog, see [`docs/document-automation.md`](docs/document-automation.md).
+#### Tier 2 — Vision Models Behind a Validated Contract
+
+Runs only when `needsOcr` is true (camera photos, raster images without embedded text, or scanned PDFs) and an active, policy-cleared vision route exists for `document.ocr.receipt_scan`. See [Vision Model Contract and Output Guardrails](#vision-model-contract-and-output-guardrails) below.
+
+#### Tier 3 — Scanned-PDF Image Extraction & Local Tesseract OCR
+
+- **Page-image extraction ([`pdf-images.ts`](apps/api/src/modules/documents/text/pdf-images.ts)):** For scanned PDFs with no text layer, `extractPdfPageImages` walks the page tree and selects the largest `/Subtype /Image` XObject (`≥ 200 px` edge, skipping logos). `/DCTDecode` JPEGs pass through byte-for-byte with zero recompression; `/FlateDecode` 8-bit greyscale/RGB streams are wrapped in a minimal lossless PNG (`encodePng` with CRC32). Unsupported encodings (`/Predictor`, JPEG 2000, CCITT, CMYK, 1-bit) are skipped rather than decoded into noise, bounded at `10` pages and `60M` total pixels.
+- **In-process OCR port ([`ocr-engine.ts`](apps/api/src/modules/documents/ocr/ocr-engine.ts)):** `TesseractCliOcrEngine` spawns `OCR_TESSERACT_PATH` (`-l <OCR_LANGUAGES>`, default `fra`; `--psm <OCR_PSM>`, default `6`; `30 s` timeout) inside a per-request temp directory removed in `finally`. Missing or nonexistent binaries return `NOT_CONFIGURED` before spawning. Recognized text is normalized (`normaliseOcrText`) and piped through Tier 1's `extractLocally` parser so scanned figures still retain printed line snippets.
+- **Honest failure states:** Unreadable scans land as `DocumentStatus.NEEDS_OCR` (`extractionSource: 'NONE'`, `ocrRequired: true`) with an actionable `reason` rather than an empty-looking success. Vector drawings with neither a text layer nor embedded page images are likewise flagged `NEEDS_OCR` (no MuPDF/pdfium rasteriser is bundled).
+- **Client capture & re-extraction:** Web ([`CameraScanModal.tsx`](apps/web/src/components/CameraScanModal.tsx), [`DocumentsView.tsx`](apps/web/src/components/DocumentsView.tsx)) supports live webcam capture, mobile browser camera fallback, document-type hints, confidence-sorted candidate review, one-click *Confirm all N* (`confirm-bulk`), `Needs OCR` badges, and *Re-scan* (`POST .../documents/:documentId/reextract`). Mobile ([`DocumentCameraScanner.tsx`](apps/mobile/src/components/DocumentCameraScanner.tsx)) queues `UPLOAD_DOCUMENT` scans offline when disconnected and replays them automatically on reconnect.
+
+### Vision Model Contract and Output Guardrails
+
+External or local multimodal endpoints sit behind pure contract functions in [`vision-contract.ts`](apps/api/src/modules/documents/extraction/vision-contract.ts) so a model cannot invent schema fields, corrupt number formats, or poison calculations:
+
+- **Chain resolution (`resolveVisionChain`):** Resolves `primaryModelId` followed by `fallbackModelIds` (deduplicated) for `document.ocr.receipt_scan`. Skips models that are not `ACTIVE`, lack `VISION` capability, have no `endpointUrl` (including the four built-in catalog stubs until an operator configures a live endpoint), or fail `modelMaySeeDataClass`.
+- **Pinned extraction prompt (`buildVisionPrompt`):** Fixes the exact `DocumentType` enum values and a **24-field allowlist** (`EXTRACTION_FIELD_NAMES`), prohibits guessing, rounding, or summing unprinted totals, enforces `.` decimals in EUR, and passes any non-`UNKNOWN` uploader hint for confirmation or correction.
+- **Deterministic transport (`callModel`):** Dispatches OpenAI-compatible JSON-mode requests (`temperature: 0`, `response_format: { type: 'json_object' }`, base64 `image_url`) with a `20 s` per-model `AbortSignal.timeout`, falling through to the next fallback model or Tier 3 OCR on HTTP error or unparseable output.
+- **Untrusted-output sanitization (`parseVisionExtraction`):**
+  1. Extracts the first JSON object (`extractJsonObject`), tolerating markdown fences or preambles while returning `null` on pure prose or broken JSON.
+  2. Rejects any field outside the 24-name allowlist and records its name in `rejectedFields[]` inside `DocumentExtraction.rawJson`.
+  3. Normalizes both European (`76.800,00`, `1 234,56`) and international (`1,234.56`) separators via `normalizeAmount`, drops negative signs (`Math.abs`) so a credit never inverts into a tax-increasing deduction, and discards `'0.00'` values.
+  4. Normalizes percentage confidence scores (`1–100` → `0–1`), deduplicates repeated field names by keeping the highest-confidence candidate, caps results at 25 fields, refuses empty `UNKNOWN` payloads, and maps accepted fields to `FactCategory` via [`fact-category.ts`](packages/contracts/src/fact-category.ts).
+
+### Model Registry, Task Routing, and Evaluations
+
+Platform administrators (gated by `PlatformAdminGuard` on `ADMIN_EMAILS` + verified e-mail) manage AI configuration through `/api/admin` and [`AdminConsoleView.tsx`](apps/web/src/components/AdminConsoleView.tsx):
+
+- **Model catalog (`custom_ai_models`):** Ships four built-in definitions (`Docling Document Parser`, `PaddleOCR Layout & Scans`, `Qwen3.5-4B Narrow Field Extractor`, `Qwen3-VL-4B Vision Specialist` as endpoint-less catalog entries) alongside custom model registration with presets for Mistral Large (EU Sovereign), OpenAI GPT-4o, Anthropic Claude 3.5 Sonnet, Groq Llama 3.3 70B, local Ollama/vLLM (`http://localhost:11434/v1`), or custom OpenAI/Anthropic-compatible endpoints.
+- **Task-based routing (`custom_ai_routes`):** Maintains seven named routes (`document.ocr.receipt_scan`, `document.extract.salary_certificate`, `document.extract.mortgage_certificate`, `document.extract.freelance_invoice`, `document.extract.business_expense`, `return.missing_information`, `assessment.compare_bulletin`) tracking primary/fallback chains, `promptVersion`, `outputSchemaVersion`, `timeoutMs`, `maxDataClass`, and `activeRolloutPercentage`. At runtime, `ReceiptAiVisionService` actively resolves `document.ocr.receipt_scan`; the remaining tasks are currently served deterministically in-process by the certificate/receipt parsers and questionnaire readiness rules while preserving route governance metadata.
+- **Evaluations & confidence honesty (`GET /api/admin/evaluations`):** Tracks benchmark runs (`luxembourg-salary-golden-50`, `luxembourg-scans-golden-30`, `luxembourg-reasoning-golden-40`) with exact-match rate, schema validity, hallucination rate, and average latency. In live extraction, deterministic parsers emit fixed confidence (`0.88–0.96`) and vision models report clamped raw scores — confidence calibration against a labelled multi-document production corpus remains explicitly in the [document automation backlog](docs/document-automation.md#backlog-explicitly-not-done) rather than being fabricated.
+
+### AI Security, Data-Class Policy, and Privacy Lifecycle
+
+- **Four-tier data-class gate ([`data-class-policy.ts`](apps/api/src/modules/admin/data-class-policy.ts)):** Orders sensitivity as `PUBLIC < SYNTHETIC < REDACTED_CUSTOMER < CUSTOMER_DOCUMENT` (fail-closed on unknown values). Enforced at **three** checkpoints: route assignment (`updateModelRoute`), model modification/health probing (`updateModel` / `testModelConnection`), and call-time chain resolution (`resolveVisionChain`). A `PUBLIC` or `SYNTHETIC` model can never be wired into a customer-document route even as a fallback.
+- **Encrypted API keys at rest ([`model-key-cipher.ts`](apps/api/src/modules/admin/model-key-cipher.ts)):** Custom model keys are sealed as `v1:<iv>:<authTag>:<ciphertext>` AES-256-GCM envelopes using `MODEL_KEY_ENCRYPTION_KEY` (32-byte hex). Writes fail closed if the encryption key is missing, stored secrets are masked (`••••••••`) in API responses, and admin probes (`POST /api/admin/models/test`) decrypt stored keys only in-memory for the probe call (failing closed if decryption fails). *(Note: `AdminService.getModels()` exposes the masked DTO view, so `ReceiptAiVisionService.callModel` currently dispatches to vision endpoints that do not require stored-secret decryption unless wired with decrypted key lookup.)*
+- **SSRF protection on model probes ([`outbound-url-policy.ts`](apps/api/src/modules/admin/outbound-url-policy.ts)):** `assertEndpointUrlAllowed` rejects non-`https:` schemes (permitting loopback `http:` only outside `NODE_ENV=production`), embedded URL credentials, cloud metadata hostnames (`metadata.google.internal`, `instance-data`, etc.), and RFC 1918, loopback, link-local, CGNAT, multicast, or reserved IPv4/IPv6 ranges (including IPv4-mapped `::ffff:` addresses), performs pre-flight DNS resolution, and sets `redirect: 'manual'` so 3xx redirects cannot pivot into internal networks.
+- **Idempotent re-extraction & data minimisation:**
+  - `POST /api/workspaces/:workspaceId/documents/:documentId/reextract` constrains `storagePath` inside the workspace upload directory, leaves already-confirmed `ConfirmedFact` rows intact (`onDelete: SetNull`, skipping `fieldKey`s already confirmed for that document so figures are never double-counted), replaces only unconfirmed candidates in a transaction, and audits `DOCUMENT_REEXTRACTED`.
+  - **Automatic staging cleanup:** Once every `ExtractedFact` on a document is confirmed (`remaining === 0`), [`FactsService.confirmFact`](apps/api/src/modules/facts/facts.service.ts) nulls `DocumentExtraction.extractedText` and clears `rawJson` so sensitive raw document text is not persisted beyond review.
+  - Facts confirmed from a `PRIVATE_DRAFT` document stay unshared (`isSharedWithHousehold: false`, `isIncludedInReturn: false`) and have field keys and amounts redacted from household-visible audit logs.
+
+> For phase-by-phase measurements (DA-1 … DA-10), Tesseract fixture tests, and the explicit backlog, see [`docs/document-automation.md`](docs/document-automation.md) and [`docs/CODEMAPS/integrations.md`](docs/CODEMAPS/integrations.md).
 
 ---
 
@@ -414,12 +473,6 @@ The `@luxtax/tax-engine` package implements the Luxembourg *Loi de l'impôt sur 
 | **Art. 152ter / 154ter / 154quater / 154quinquies** | Credits | CIS / CIP / CII + CO2, non-cumulative per person; CIM refundable; CISSM |
 | **Art. 157ter** | Non-resident assimilation | ≥ 90 % worldwide income in Luxembourg, or foreign net < €13,000 |
 | **2026 start-up credit** | Equity investment | 20 % of a capped €100,000 annual investment (2026 package) |
-
-### Pending measures
-
-Projet de loi **8775** (2026 CIC table and removal of the épargne-logement age limit) is **not published**. Both measures are represented in the 2026 package as `NOT_IN_FORCE`; the engine emits an explicit warning rather than a silent zero, and `checkPendingConsistency()` rejects a package that declares a measure in force without its data. Activation is documented in [`docs/8775-activation-handoff.md`](docs/8775-activation-handoff.md).
-
-> The historical audit that found the original scale and Class 1a defects in the pre-rebuild engine is preserved in [`docs/lir-118-121-bareme-2025-2026.md`](docs/lir-118-121-bareme-2025-2026.md). Its resolution status is recorded at the top of that file; the current implementation is in `rules/2025.ts`, `scale.ts`, and `engine.ts`.
 
 ---
 
