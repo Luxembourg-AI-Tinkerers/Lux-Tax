@@ -1,9 +1,0 @@
-{
-  "bands": [
-    { "from": 0, "to": 2500, "slope": 0, "offset": 84 },
-    { "from": 2500.01, "to": 3500, "slope": 0.02, "offset": 34 },
-    { "from": 3500.01, "to": 4500, "slope": 0.01, "offset": 69 }
-  ],
-  "topAmount": 68,
-  "topUpTo": 6000
-}

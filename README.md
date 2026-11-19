@@ -426,7 +426,6 @@ For specialized technical designs, legal citations, and audit reports, refer to 
 - [`docs/luxembourg-resident-tax-optimisation-checklist-2025-2026.md`](docs/luxembourg-resident-tax-optimisation-checklist-2025-2026.md) — Comprehensive deduction and tax optimization checklist for Luxembourg residents.
 - [`docs/dependency-security.md`](docs/dependency-security.md) — Security audit trail, dependency overrides, and CVE remediation.
 - [`docs/data-retention.md`](docs/data-retention.md) — GDPR data retention policies, erasure workflows, and legal audit trail rules.
-- [`luxembourg-personal-tax-app-plan.md`](luxembourg-personal-tax-app-plan.md) — Master product specification and technical roadmap.
 
 ---
 

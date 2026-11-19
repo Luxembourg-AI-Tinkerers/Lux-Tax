@@ -4,30 +4,53 @@ node_modules/
 .pnp
 .pnp.js
 
-# Local verification toolchain (JS dependencies, database clusters, probes)
-.tools/node_modules/
-.tools/pgdata/
-.tools/pgdata2/
-.tools/types/
-.tmp-build/
-.tmp-lir/
+# Local verification toolchain (keep only rn-shim and package manifests)
+/.tools/*
+!/.tools/package.json
+!/.tools/package-lock.json
+!/.tools/rn-shim/
+
+# Temp, scratch & agent artifacts
+/.tmp-build/
+/.tmp-lir/
+/.zwork/
+/workflows/
+/extract_100.py
+/lir_arts.txt
 tmp/
+*.tmp
+*.temp
+*.bak
+*.err
+*.orig
+*.pid
+__pycache__/
+*.py[cod]
+
+# Non-code reports, audits, trackers & research markdown
+/*.md
+!/README.md
+/audit/
+/research/
+/docs/8775-activation-handoff.md
 
 # Testing and Coverage
 coverage/
 *.lcov
 .nyc_output/
 
-# Build Outputs
+# Build Outputs & Caches
 dist/
 build/
 .next/
 out/
 .turbo/
+*.tsbuildinfo
+.eslintcache
 uploads/
 apps/api/uploads/
 
-# Research source PDFs (large, cited by path in the tracker)
+# Research source PDFs
 100f-2025.pdf
 lir2025.pdf
 lir2026.pdf
@@ -61,6 +84,7 @@ lerna-debug.log*
 # OS & Editor
 .DS_Store
 Thumbs.db
+desktop.ini
 .idea/
 .vscode/
 *.suo
@@ -68,6 +92,3 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
-
-# Agent runtime state
-.zwork/
