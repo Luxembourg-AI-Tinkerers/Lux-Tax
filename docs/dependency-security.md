@@ -49,29 +49,26 @@ in v4 — and `error.issues` (v3 and v4 both expose it); the 20 controller call 
 `error.errors` were moved to `error.issues` in this pass. `.email()` and `.nativeEnum()` remain,
 deprecated but functional.
 
-## 2. Still open, and why
+## 2. Resolved on 2026-11-23 (previously open + `.tools` + `effect`)
 
-| Package | Copies | Advisories | Why it is not fixed | Exit condition |
-|---|---|---|---|---|
-| `glob` | 10.5.0, 13.0.6 | 1 moderate | Pinned by `@expo/*` (10.x) and `@fastify/static` (13.x). The fix is `glob@14`, a major that each owner must adopt; forcing it breaks their file matching. The `7.2.3` copies under jest are **not** affected (the range starts at 9). | `@fastify/static` ≥ 11 / expo SDK 53 |
-| `minimatch` | 9.0.9, 10.2.6 | 1 moderate | Same owners as `glob`, and `glob@14` still accepts older `minimatch` inside its own tree. `minimatch@11` changes option handling for `9.x`/`10.x` callers. The `3.1.5` copies are outside the affected range. | same as above |
-| `deepmerge` | 4.3.1 | 1 low | The advisory names `>=4.3.2` as the patched range, but **4.3.1 is the newest published version** — no fix exists yet. It arrives through `@expo/config` and `jest-config`. | a 4.3.2 release, or the owners dropping it |
+All **8** remaining GitHub Dependabot alerts (#30–#33, #74–#77) are cleared:
 
-These three are **development / build-time only**: they run in the test runner, the Expo
-toolchain and Fastify's static-file plugin, none of which parses untrusted input from a
-request. That does not make them harmless, but it is why they are documented rather than
-forced.
+| Package | Where | Resolution | Advisories cleared |
+|---|---|---|---|
+| `effect` | `pnpm-lock.yaml` | Overridden `3.20.0` → **`3.22.5`** in `pnpm-workspace.yaml` (`@prisma/config@7.10.0` pinned `3.20.0` exact) | 1 high (`GHSA-7589-6fvf-x4pw`) |
+| `glob` | `pnpm-lock.yaml` | `@fastify/static` overridden `10.1.4` → **`10.1.12`**, `rimraf` updated to **`6.1.4`**, `sucrase` overridden to **`3.35.1`**, and `glob@10.5.0` overridden to **`14.0.6`** | 1 moderate (`GHSA-3g3m-2fjr-6pw4`) |
+| `minimatch` | `pnpm-lock.yaml` | `@nestjs/cli` updated to **`12.0.15`** (`minimatch@11.0.9`) and `glob@14.0.6` pulls `minimatch@11.0.9` natively | 1 moderate (`GHSA-g3hv-75wg-m249`) |
+| `deepmerge` | `pnpm-lock.yaml` | `4.3.1` remains (`jest-config`, `@expo/config`); no active advisory in npm bulk DB or Dependabot | — |
+| `zod`, `tsx`/`esbuild`, `prisma` | `.tools/package.json` | Updated `zod` to **`^4.6.7`** (aligned with `@luxtax/validation`) and `tsx` to **`^4.23.15`** (`esbuild@0.28.2`), and removed obsolete `prisma@^6.16.2` (`effect@3.16.12`, `deepmerge-ts@7.1.5`) | 3 high, 1 medium (`#30–#33`, `#76`) |
 
 ## 3. Re-checking
 
 ```powershell
 node .tools/audit_vulns.mjs                 # per-copy report from the lockfile
 node .tools/audit_vulns.mjs --json tmp/a.json
-pnpm audit --json                           # pnpm's own view, same advisory source
+pnpm audit --audit-level=low                # override .npmrc audit=false with npm_config_audit=true
+npm audit --prefix .tools
 ```
-
-When the three owners above move, delete the corresponding `overrides` entry (if any) and
-this section's row in the same commit.
 
 ## 4. What the upgrade surfaced
 
@@ -87,11 +84,12 @@ were found by re-running the real build rather than the type checker:
 
 | Gate | Result |
 |---|---|
-| `node .tools/audit_vulns.mjs` | 71 advisories across 19 packages → **5 across 3** (all documented above) |
-| `pnpm audit` | **3 vulnerabilities** — glob, minimatch (moderate), deepmerge (low) |
-| `tsc -p tsconfig.test.json` · `tsconfig.render.json` · `apps/api/tsconfig.json` | **0 · 0 · 0** |
-| Unit suite | **826 / 826** at the time of this pass; re-measured 2026-11-19 across all six suites: **920 collected — 918 pass, 2 skipped without Tesseract** |
-| `next build` (Next 16.4.6) | **6 routes, exit 0** |
-| `apps/mobile` bundle | **not re-verified** — see below |
+| `node .tools/audit_vulns.mjs` | **0 vulnerabilities across 0 packages** (2026-11-23) |
+| `pnpm audit --audit-level=low` (`npm_config_audit=true`) | **No known vulnerabilities found** |
+| `npm audit --prefix .tools` | **0 vulnerabilities** |
+| `pnpm --filter @luxtax/api prisma:generate` | **Generated Prisma Client v7.10.0, exit 0** |
+| Typechecks (`tsc -b`, `tsconfig.test/web/render/api`, `apps/api`, `apps/web`) | **0 errors** (`apps/mobile` full `tsc` retains pre-existing tab-screen errors outside `tsconfig.render.json`) |
+| Unit suites (`tax-engine`, `validation`, `design-tokens`, `mobile`, `web`, `api`) | **924 collected — 922 pass, 2 skipped without Tesseract** (214 + 34 + 9 + 134 + 84 + 449) |
+| `apps/api` build (`rimraf` + `nest build`) & `next build` (Next 16.4.6) | **Exit 0, 6 web routes** |
 
 **Mobile.** The earlier note in this section said the bundle could not be re-verified because Metro followed pnpm's store symlink. That was corrected in `build-verification-2026-11-10.md`: the real blocker was a truncated `caniuse-lite` copy inside `browserslist`, plus missing `babel.config.js`, `@babel/runtime` and `expo-asset`. With those fixed, `apps/mobile` bundles for **iOS (957 modules, 2.5 MB Hermes)** and **Android (954 modules, 2.5 MB)** — `npm run build` exits 0. The bundle was produced with npm in an out-of-tree sandbox because a full pnpm install for the mobile app could not complete in that environment; the overrides that land in the mobile tree (`tar`, `image-size`, `uuid`, `@xmldom/xmldom`) are build-time tooling. On-device execution is still unverified (no hardware).
