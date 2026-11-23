@@ -3,15 +3,18 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuth } from '../../../lib/auth-context';
 import { apiClient } from '../../../lib/api';
 import { resolvePostAuthPath } from '../../../lib/auth-redirect';
+import { AuthShell, BrandLogo } from '../../../components/ui/AuthShell';
 
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -54,22 +57,27 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 border border-slate-100">
-        <div className="text-center mb-8">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-sky-50 text-sky-600 font-bold text-xl mb-3">
-            LT
+    <AuthShell>
+      <div className="rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_3px_rgba(9,9,11,0.05)] sm:p-8">
+        <div className="mb-7">
+          <div className="mb-5 lg:hidden">
+            <BrandLogo />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Luxembourg Tax Workspace</h1>
-          <p className="text-sm text-slate-500 mt-1">Sign in to your personal or joint return</p>
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-950 text-balance">
+            Sign in to your workspace
+          </h1>
+          <p className="mt-1.5 text-sm text-zinc-500 text-pretty">
+            Access your personal or joint Luxembourg tax return.
+          </p>
         </div>
 
         {error && (
           <div
             role="alert"
-            className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-sm"
+            className="mb-5 flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800"
           >
-            {error}
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
+            <span>{error}</span>
           </div>
         )}
 
@@ -77,7 +85,7 @@ export default function LoginPage() {
           <div>
             <label
               htmlFor="login-email"
-              className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
             >
               Email Address
             </label>
@@ -85,47 +93,76 @@ export default function LoginPage() {
               id="login-email"
               type="email"
               required
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="e.g. spouse@example.lu"
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm"
+              className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
             />
           </div>
 
           <div>
             <label
               htmlFor="login-password"
-              className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
             >
               Password
             </label>
-            <input
-              id="login-password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm"
-            />
+            <div className="relative">
+              <input
+                id="login-password"
+                type={showPassword ? 'text' : 'password'}
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 pl-3.5 pr-11 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="absolute inset-y-0 right-1.5 my-auto flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <Eye className="h-4 w-4" aria-hidden="true" />
+                )}
+              </button>
+            </div>
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-medium text-sm transition shadow-sm disabled:opacity-50"
+            className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 focus-visible:ring-offset-2 disabled:opacity-60"
           >
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                <span>Signing in...</span>
+              </>
+            ) : (
+              <>
+                <span>Sign In</span>
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </>
+            )}
           </button>
         </form>
 
-        <div className="mt-8 text-center text-sm text-slate-500">
-          Don't have an account yet?{' '}
-          <Link href="/register" className="text-sky-600 hover:text-sky-700 font-semibold">
+        <div className="mt-7 border-t border-zinc-100 pt-5 text-center text-sm text-zinc-500">
+          Don&apos;t have an account yet?{' '}
+          <Link
+            href="/register"
+            className="font-semibold text-zinc-950 transition hover:text-sky-700 hover:underline"
+          >
             Create account
           </Link>
         </div>
       </div>
-    </div>
+    </AuthShell>
   );
 }

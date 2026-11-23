@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft, Bell, CheckCheck, SlidersHorizontal } from 'lucide-react';
 import {
   NotificationDto,
   NotificationListDto,
@@ -282,153 +283,144 @@ export function NotificationCenter({ workspaceId }: NotificationCenterProps) {
         aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
         aria-haspopup="true"
         aria-expanded={open}
-        className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+        className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
       >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.8}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-5 w-5"
-          aria-hidden="true"
-        >
-          <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-          <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-        </svg>
+        <Bell className="h-4.5 w-4.5" strokeWidth={1.8} aria-hidden="true" />
         {unreadCount > 0 && (
-          <span className="absolute -right-1 -top-1 min-w-[16px] rounded-full bg-rose-500 px-1 text-center text-[10px] font-bold leading-4 text-white">
+          <span className="tabular-nums absolute -right-1 -top-1 min-w-[17px] rounded-full bg-rose-600 px-1 text-center text-[10px] font-bold leading-[17px] text-white ring-2 ring-white">
             {badgeLabel}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-[360px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
+        <div className="animate-ui-in absolute right-0 z-50 mt-2 w-[370px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <div>
               <p className="text-xs font-bold text-slate-900">Notifications</p>
-              <p className="text-[10px] text-slate-400">
+              <p className="tabular-nums text-[11px] text-slate-500">
                 {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {unreadCount > 0 && (
+              {unreadCount > 0 && !showPreferences && (
                 <button
                   type="button"
                   onClick={handleMarkAllRead}
-                  className="text-[10px] font-semibold text-sky-600 hover:text-sky-700"
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-sky-700 transition hover:bg-sky-50"
                 >
-                  Mark all read
+                  <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Mark all read</span>
                 </button>
               )}
               <button
                 type="button"
                 onClick={handleTogglePreferences}
                 aria-pressed={showPreferences}
-                className={`rounded-md px-2 py-1 text-[10px] font-semibold transition ${
+                className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
                   showPreferences
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? 'bg-zinc-950 text-white'
+                    : 'border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
                 }`}
               >
-                Preferences
+                <SlidersHorizontal className="h-3 w-3" aria-hidden="true" />
+                <span>Preferences</span>
               </button>
             </div>
           </div>
 
           {error && (
-            <p className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-[11px] text-rose-700">
+            <p className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs text-rose-700">
               {error}
             </p>
           )}
 
           {showPreferences ? (
-            <div className="max-h-[420px] space-y-3 overflow-y-auto px-4 py-3">
+            <div className="max-h-[420px] space-y-3 overflow-y-auto px-4 py-3.5">
               <div className="flex items-center justify-between">
-                <p className="text-[11px] font-bold text-slate-700">Notification preferences</p>
+                <p className="text-xs font-bold text-slate-800">Notification preferences</p>
                 <button
                   type="button"
                   onClick={() => setShowPreferences(false)}
-                  className="text-[10px] font-semibold text-slate-500 hover:text-slate-800"
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-900"
                 >
-                  Back
+                  <ArrowLeft className="h-3 w-3" aria-hidden="true" />
+                  <span>Back</span>
                 </button>
               </div>
 
-              <p className="text-[10px] leading-snug text-slate-400">
+              <p className="text-[11px] leading-snug text-slate-500">
                 Email and push are stored as preferences only — no message is delivered through those
                 channels yet.
               </p>
 
               {!preferences ? (
-                <p className="py-4 text-center text-[11px] text-slate-400">
+                <p className="py-4 text-center text-xs text-slate-400">
                   {error ? 'Preferences unavailable.' : 'Loading preferences…'}
                 </p>
               ) : (
                 <>
-                  <label className="flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50/60 p-2.5">
+                  <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 transition hover:bg-slate-50">
                     <input
                       type="checkbox"
                       checked={preferences.emailEnabled}
                       onChange={(e) => updatePreference({ emailEnabled: e.target.checked })}
-                      className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-sky-600"
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
                     />
                     <span className="min-w-0">
-                      <span className="block text-[11px] font-semibold text-slate-700">
+                      <span className="block text-xs font-semibold text-slate-800">
                         Email notifications
                       </span>
-                      <span className="block text-[10px] text-slate-400">
+                      <span className="block text-[11px] text-slate-500">
                         Preference only; email delivery is not implemented.
                       </span>
                     </span>
                   </label>
 
-                  <label className="flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50/60 p-2.5">
+                  <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 transition hover:bg-slate-50">
                     <input
                       type="checkbox"
                       checked={preferences.pushEnabled}
                       onChange={(e) => updatePreference({ pushEnabled: e.target.checked })}
-                      className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-sky-600"
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
                     />
                     <span className="min-w-0">
-                      <span className="block text-[11px] font-semibold text-slate-700">
+                      <span className="block text-xs font-semibold text-slate-800">
                         Push notifications
                       </span>
-                      <span className="block text-[10px] text-slate-400">
+                      <span className="block text-[11px] text-slate-500">
                         Preference only; push delivery is not implemented.
                       </span>
                     </span>
                   </label>
 
                   <div className="space-y-2 pt-1">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                       Mute notification types
                     </p>
                     {MUTE_OPTIONS.map((option) => (
-                      <label key={option.type} className="flex items-start gap-2">
+                      <label key={option.type} className="flex cursor-pointer items-start gap-2.5 py-0.5">
                         <input
                           type="checkbox"
                           checked={preferences.mutedTypes.includes(option.type)}
                           onChange={() => toggleMutedType(option.type)}
-                          className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-sky-600"
+                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
                         />
                         <span className="min-w-0">
-                          <span className="block text-[11px] font-semibold text-slate-700">
+                          <span className="block text-xs font-semibold text-slate-700">
                             {option.label}
                           </span>
-                          <span className="block text-[10px] text-slate-400">{option.hint}</span>
+                          <span className="block text-[11px] text-slate-500">{option.hint}</span>
                         </span>
                       </label>
                     ))}
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 pt-1">
+                  <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
                     <span
                       aria-live="polite"
-                      className={`text-[10px] ${
-                        preferenceFeedback?.type === 'success' ? 'text-emerald-600' : 'text-rose-600'
+                      className={`text-[11px] font-medium ${
+                        preferenceFeedback?.type === 'success' ? 'text-emerald-700' : 'text-rose-700'
                       }`}
                     >
                       {preferenceFeedback?.message ?? ''}
@@ -437,7 +429,7 @@ export function NotificationCenter({ workspaceId }: NotificationCenterProps) {
                       type="button"
                       onClick={handleSavePreferences}
                       disabled={savingPrefs}
-                      className="rounded-lg bg-sky-600 px-3 py-1.5 text-[10px] font-bold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-lg bg-zinc-950 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {savingPrefs ? 'Saving…' : 'Save preferences'}
                     </button>
@@ -448,11 +440,14 @@ export function NotificationCenter({ workspaceId }: NotificationCenterProps) {
           ) : (
             <div className="max-h-[420px] overflow-y-auto">
               {loading && items.length === 0 ? (
-                <p className="px-4 py-6 text-center text-xs text-slate-400">Loading notifications…</p>
+                <p className="px-4 py-8 text-center text-xs text-slate-400">Loading notifications…</p>
               ) : visibleItems.length === 0 ? (
-                <div className="px-4 py-8 text-center">
-                  <p className="text-xs font-semibold text-slate-600">No notifications yet</p>
-                  <p className="mt-1 text-[11px] text-slate-400">
+                <div className="px-4 py-10 text-center">
+                  <div className="mx-auto mb-2.5 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+                    <Bell className="h-4.5 w-4.5" aria-hidden="true" />
+                  </div>
+                  <p className="text-xs font-semibold text-slate-700">No notifications yet</p>
+                  <p className="mt-1 text-[11px] text-slate-500">
                     Updates about your return will appear here.
                   </p>
                 </div>
@@ -464,7 +459,7 @@ export function NotificationCenter({ workspaceId }: NotificationCenterProps) {
                         type="button"
                         onClick={() => handleItemClick(item)}
                         className={`flex w-full items-start gap-2.5 px-4 py-3 text-left transition hover:bg-slate-50 ${
-                          item.isRead ? 'bg-white' : 'bg-sky-50/60'
+                          item.isRead ? 'bg-white' : 'bg-sky-50/50'
                         }`}
                       >
                         <span
@@ -482,7 +477,7 @@ export function NotificationCenter({ workspaceId }: NotificationCenterProps) {
                             >
                               {item.title}
                             </span>
-                            <span className="shrink-0 text-[10px] text-slate-400">
+                            <span className="tabular-nums shrink-0 text-[10px] text-slate-400">
                               {notificationAge(item.createdAt)}
                             </span>
                           </span>

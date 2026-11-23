@@ -1,12 +1,29 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Check,
+  Euro,
+  Landmark,
+  Pencil,
+  Plus,
+  Receipt,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
 import { HelpTip } from './HelpTip';
 import { apiClient } from '../lib/api';
 import { ConfirmedFactDto, FactCategory } from '@luxtax/contracts';
 import { FACT_INCLUSION_DOWNGRADE_MESSAGE, factInclusionWarning } from '../lib/fact-inclusion';
 import { splitNewFacts } from '../lib/fact-dedup';
 import { formatEuro } from '../lib/money';
+import { ToastBanner, type ToastMessage } from './ui/ToastBanner';
+import { Modal } from './ui/Modal';
+import { ConfirmDialog } from './ui/ConfirmDialog';
+import { TableSkeleton } from './ui/Skeleton';
+import { EmptyState } from './ui/EmptyState';
 
 interface FactsViewProps {
   workspaceId: string;
@@ -48,6 +65,15 @@ const PRESET_FIELDS = [
   { category: FactCategory.HOUSEHOLD_HELP_EXPENSE, fieldKey: 'householdHelp', label: 'Household help — Art. 127' },
 ];
 
+const INCOME_CATEGORIES = new Set<FactCategory>([
+  FactCategory.EMPLOYMENT_INCOME,
+  FactCategory.FREELANCE_INCOME,
+  FactCategory.PENSION_INCOME,
+  FactCategory.CAPITAL_INCOME,
+  FactCategory.RENTAL_INCOME,
+  FactCategory.FOREIGN_INCOME,
+]);
+
 /** The demo set, at module scope so the button can tell whether it is fully loaded. */
 const DEMO_FACTS = [
   { category: FactCategory.EMPLOYMENT_INCOME, fieldKey: 'grossSalary', amount: '75000.00', description: '2025 Annual Employment Gross Salary' },
@@ -58,15 +84,22 @@ const DEMO_FACTS = [
   { category: FactCategory.DONATION_DEDUCTION, fieldKey: 'donations', amount: '500.00', description: 'Donation to Croix-Rouge Luxembourgeoise' },
 ];
 
+type FactFilter = 'ALL' | 'INCOME' | 'DEDUCTIONS' | 'EXCLUDED';
+
 export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
   const [confirmedFacts, setConfirmedFacts] = useState<ConfirmedFactDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState('');
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addingFact, setAddingFact] = useState(false);
   const [loadingDemo, setLoadingDemo] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [pendingDeleteFact, setPendingDeleteFact] = useState<ConfirmedFactDto | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState<FactFilter>('ALL');
+  const [feedback, setFeedback] = useState<ToastMessage | null>(null);
 
   const [newFact, setNewFact] = useState<NewFactForm>({
     category: FactCategory.EMPLOYMENT_INCOME,
@@ -78,7 +111,7 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
 
   const showFeedback = (type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
-    setTimeout(() => setFeedback(null), 4000);
+    setTimeout(() => setFeedback((curr) => (curr?.message === message ? null : curr)), 4500);
   };
 
   const refresh = async () => {
@@ -120,9 +153,41 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
     }
   };
 
-  const handleDelete = async (factId: string) => {
-    if (!confirm('Are you sure you want to remove this fact from your return?')) return;
-    const res = await apiClient.deleteFact(workspaceId, factId);
+  const handleToggleInclusion = async (fact: ConfirmedFactDto) => {
+    const nextIncluded = !fact.isIncludedInReturn;
+    setTogglingId(fact.id);
+    const res = await apiClient.updateFact(workspaceId, fact.id, {
+      isIncludedInReturn: nextIncluded,
+    });
+    setTogglingId(null);
+
+    if (res.error) {
+      showFeedback('error', res.error);
+      return;
+    }
+
+    const warning = factInclusionWarning(nextIncluded, res.data?.isIncludedInReturn);
+    if (warning) {
+      showFeedback('error', warning);
+    } else {
+      showFeedback(
+        'success',
+        nextIncluded
+          ? `"${fact.fieldKey}" is now included in the return.`
+          : `"${fact.fieldKey}" excluded from the return (kept for reference).`,
+      );
+    }
+    await refresh();
+    onFactsChanged();
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDeleteFact) return;
+    setDeleting(true);
+    const res = await apiClient.deleteFact(workspaceId, pendingDeleteFact.id);
+    setDeleting(false);
+    setPendingDeleteFact(null);
+
     if (res.error) {
       showFeedback('error', res.error);
     } else {
@@ -164,7 +229,7 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
     if (inclusionWarning) {
       showFeedback('error', inclusionWarning);
     } else {
-      showFeedback('success', `Added ${newFact.fieldKey} of €${num.toFixed(2)} to return`);
+      showFeedback('success', `Added ${newFact.fieldKey} of ${formatEuro(num)} to return`);
     }
 
     setIsAddModalOpen(false);
@@ -250,69 +315,94 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
     .filter((f) => (f.fieldKey === 'withholdingTax' || f.fieldKey === 'code_105') && f.isIncludedInReturn)
     .reduce((sum, f) => sum + parseFloat(f.amount || '0'), 0);
 
+  const filteredFacts = useMemo(() => {
+    return confirmedFacts.filter((fact) => {
+      if (activeFilter === 'INCOME' && !INCOME_CATEGORIES.has(fact.category)) return false;
+      if (activeFilter === 'DEDUCTIONS' && INCOME_CATEGORIES.has(fact.category)) return false;
+      if (activeFilter === 'EXCLUDED' && fact.isIncludedInReturn) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const hit =
+          fact.fieldKey.toLowerCase().includes(q) ||
+          fact.category.toLowerCase().includes(q) ||
+          (fact.description || '').toLowerCase().includes(q);
+        if (!hit) return false;
+      }
+      return true;
+    });
+  }, [confirmedFacts, activeFilter, searchQuery]);
+
   return (
     <div className="space-y-6">
-      {/* Toast Feedback */}
-      {feedback && (
-        <div
-          className={`p-4 rounded-xl text-sm font-semibold flex items-center justify-between border ${
-            feedback.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border-rose-200'
-          }`}
-        >
-          <span>{feedback.message}</span>
-          <button
-            onClick={() => setFeedback(null)}
-            aria-label="Dismiss notification"
-            className="text-xs opacity-60 hover:opacity-100"
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      <ToastBanner feedback={feedback} onDismiss={() => setFeedback(null)} />
 
       {/* Summary Cards */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Total Confirmed Gross Salary
-          </span>
-          <div className="mt-2 text-2xl font-black text-slate-900">{formatEuro(totalGrossSalary)}</div>
-          <p className="mt-1 text-xs text-slate-500">Case 101 - Base for Luxembourg PIT</p>
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              Total Confirmed Gross Salary
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+              <Euro className="h-4 w-4" aria-hidden="true" />
+            </div>
+          </div>
+          <div className="tabular-nums mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
+            {formatEuro(totalGrossSalary)}
+          </div>
+          <p className="mt-1 text-xs text-slate-500">Case 101 — Base for Luxembourg PIT</p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Tax Withheld at Source
-          </span>
-          <div className="mt-2 text-2xl font-black text-amber-600">{formatEuro(totalWithholdingTax)}</div>
-          <p className="mt-1 text-xs text-slate-500">Case 105 - Prepaid tax deducted on salary slips</p>
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              Tax Withheld at Source
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
+              <Landmark className="h-4 w-4" aria-hidden="true" />
+            </div>
+          </div>
+          <div className="tabular-nums mt-2 text-2xl font-extrabold tracking-tight text-amber-700">
+            {formatEuro(totalWithholdingTax)}
+          </div>
+          <p className="mt-1 text-xs text-slate-500">Case 105 — Prepaid tax deducted on salary slips</p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Confirmed Deductible Expenses
-          </span>
-          <div className="mt-2 text-2xl font-black text-emerald-600">{formatEuro(totalDeductions)}</div>
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              Confirmed Deductible Expenses
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+              <Receipt className="h-4 w-4" aria-hidden="true" />
+            </div>
+          </div>
+          <div className="tabular-nums mt-2 text-2xl font-extrabold tracking-tight text-emerald-700">
+            {formatEuro(totalDeductions)}
+          </div>
           <p className="mt-1 text-xs text-slate-500">Mortgage interest, insurance, and donations</p>
         </div>
       </div>
 
       {/* Action Header & Facts Table */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xs">
+        <div className="flex flex-col justify-between gap-4 border-b border-slate-200 px-6 py-4 lg:flex-row lg:items-center">
           <div>
-            <h3 className="text-sm font-bold text-slate-900">
-              Confirmed Tax Facts
-                    {" "}<HelpTip id="confirmedFacts" /> ({confirmedFacts.length})
+            <h3 className="flex items-center gap-1.5 text-sm font-bold text-slate-900">
+              <span>Confirmed Tax Facts</span>
+              <HelpTip id="confirmedFacts" />
+              <span className="tabular-nums rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                {confirmedFacts.length}
+              </span>
             </h3>
-            <p className="text-xs text-slate-500">
-              All financial values confirmed here are injected into the versioned calculation engine and the Form 100 package for the workspace tax year.
+            <p className="mt-0.5 text-xs text-slate-500">
+              All financial values confirmed here feed the versioned calculation engine and the Form 100 package.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex flex-wrap items-center gap-2">
             <button
+              type="button"
               onClick={handleQuickLoadDemo}
               disabled={loadingDemo || demoAlreadyLoaded}
               title={
@@ -320,244 +410,478 @@ export function FactsView({ workspaceId, onFactsChanged }: FactsViewProps) {
                   ? 'Every demo fact is already recorded in this workspace'
                   : 'Insert the demo facts that are not recorded yet'
               }
-              className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-700 hover:bg-sky-100 transition disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-800 transition hover:bg-zinc-50 active:scale-[0.98] disabled:opacity-50"
             >
-              {loadingDemo
-                ? 'Populating...'
-                : demoAlreadyLoaded
-                  ? '✓ Demo Facts Loaded'
-                  : '⚡ Quick Load 2025 Demo Facts'}
+              {demoAlreadyLoaded ? (
+                <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+              )}
+              <span>
+                {loadingDemo
+                  ? 'Populating...'
+                  : demoAlreadyLoaded
+                    ? 'Demo Facts Loaded'
+                    : 'Quick Load 2025 Demo Facts'}
+              </span>
             </button>
             <button
+              type="button"
               onClick={() => setIsAddModalOpen(true)}
-              className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-sky-500 shadow-sm transition"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98]"
             >
-              + Add Fact
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Add Fact</span>
             </button>
             <button
+              type="button"
               onClick={refresh}
               aria-label="Refresh confirmed facts"
-              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 font-semibold"
+              className="inline-flex h-8.5 w-8.5 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-600 transition hover:bg-zinc-50 hover:text-zinc-950"
             >
-              ↻
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </div>
         </div>
 
+        {/* Filter & Search Bar */}
+        {confirmedFacts.length > 0 && (
+          <div className="flex flex-col justify-between gap-3 border-b border-slate-100 bg-slate-50/50 px-6 py-3 sm:flex-row sm:items-center">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(
+                [
+                  { id: 'ALL', label: 'All Facts' },
+                  { id: 'INCOME', label: 'Income' },
+                  { id: 'DEDUCTIONS', label: 'Deductions & Prepayments' },
+                  { id: 'EXCLUDED', label: 'Excluded' },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveFilter(tab.id)}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                    activeFilter === tab.id
+                      ? 'bg-zinc-950 text-white shadow-xs'
+                      : 'bg-white text-zinc-600 border border-zinc-200 hover:bg-zinc-50 hover:text-zinc-950'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400"
+                aria-hidden="true"
+              />
+              <input
+                type="text"
+                aria-label="Filter facts"
+                placeholder="Search box, category, or note..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-xl border border-zinc-200 bg-white py-1.5 pr-3 pl-8 text-xs text-zinc-950 placeholder:text-zinc-400 focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:w-60"
+              />
+            </div>
+          </div>
+        )}
+
         {loading ? (
-          <div className="p-8 text-center text-sm text-slate-500">Loading facts...</div>
+          <TableSkeleton rows={5} />
         ) : confirmedFacts.length === 0 ? (
-          <div className="p-12 text-center text-slate-500">
-            <div className="h-12 w-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3 text-xl font-bold">
-              💶
-            </div>
-            <h4 className="text-sm font-bold text-slate-800">No Tax Facts Recorded Yet</h4>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto mb-5">
-              Add your salary, mortgage interest, or insurance contributions manually, or click Quick Load to test with realistic 2025 numbers.
-            </p>
-            <div className="flex justify-center gap-3">
+          <EmptyState
+            icon={<Euro className="h-5 w-5" aria-hidden="true" />}
+            title="No Tax Facts Recorded Yet"
+            description="Add your salary, mortgage interest, or insurance contributions manually, or load realistic 2025 demo numbers to explore the calculation engine."
+            actions={
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800"
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Add Fact Manually</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleQuickLoadDemo}
+                  disabled={loadingDemo}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-semibold text-zinc-800 shadow-2xs transition hover:bg-zinc-50"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+                  <span>{loadingDemo ? 'Populating...' : 'Load 2025 Demo Facts'}</span>
+                </button>
+              </>
+            }
+          />
+        ) : filteredFacts.length === 0 ? (
+          <EmptyState
+            icon={<Search className="h-5 w-5" aria-hidden="true" />}
+            title="No matching facts"
+            description="No confirmed facts match your current search or category filter."
+            actions={
               <button
-                onClick={() => setIsAddModalOpen(true)}
-                className="rounded-lg bg-sky-600 px-4 py-2 text-xs font-bold text-white hover:bg-sky-500 shadow-sm"
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setActiveFilter('ALL');
+                }}
+                className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
               >
-                + Add Fact Manually
+                Reset filters
               </button>
-              <button
-                onClick={handleQuickLoadDemo}
-                disabled={loadingDemo}
-                className="rounded-lg border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-bold text-sky-700 hover:bg-sky-100"
-              >
-                {loadingDemo ? 'Populating...' : '⚡ Load 2025 Demo Facts'}
-              </button>
-            </div>
-          </div>
+            }
+          />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 border-b border-slate-200">
-                <tr>
-                  <th className="px-6 py-3">Category{" "}<HelpTip id="factCategory" /></th>
-                  <th className="px-6 py-3">Field / Box</th>
-                  <th className="px-6 py-3">Description</th>
-                  <th className="px-6 py-3">Amount (EUR)</th>
-                  <th className="px-6 py-3">Included{" "}<HelpTip id="factInclusion" /></th>
-                  <th className="px-6 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {confirmedFacts.map((fact) => (
-                  <tr key={fact.id} className="hover:bg-slate-50/50">
-                    <td className="px-6 py-4">
-                      <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                        {fact.category.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 font-mono text-xs font-bold text-slate-900">
-                      {fact.fieldKey}
-                    </td>
-                    <td className="px-6 py-4 text-xs text-slate-600">
-                      {fact.description || '—'}
-                    </td>
-                    <td className="px-6 py-4 font-bold text-slate-900">
-                      {editingId === fact.id ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={editAmount}
-                            onChange={(e) => setEditAmount(e.target.value)}
-                            className="w-28 rounded border border-slate-300 px-2 py-1 text-xs"
-                          />
-                          <button
-                            onClick={() => handleSaveEdit(fact.id)}
-                            className="rounded bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-emerald-500"
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={() => setEditingId(null)}
-                            className="rounded bg-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        formatEuro(fact.amount)
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="rounded bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                        {fact.isIncludedInReturn ? 'Yes' : 'No'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      {editingId !== fact.id && (
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => handleStartEdit(fact)}
-                            className="text-xs text-sky-600 hover:text-sky-700 font-semibold"
-                          >
-                            Edit
-                          </button>
-                          <span className="text-slate-300">|</span>
-                          <button
-                            onClick={() => handleDelete(fact.id)}
-                            className="text-xs text-rose-600 hover:text-rose-700 font-semibold"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      )}
-                    </td>
+          <>
+            {/* Mobile Card List (< 768px) */}
+            <div className="divide-y divide-zinc-100 md:hidden">
+              {filteredFacts.map((fact) => (
+                <div
+                  key={fact.id}
+                  className={`space-y-3 p-4 ${!fact.isIncludedInReturn ? 'opacity-65' : ''}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-zinc-950">
+                          {fact.fieldKey}
+                        </span>
+                        <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-700">
+                          {fact.category.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-zinc-500">{fact.description || '—'}</p>
+                    </div>
+                    <div className="tabular-nums shrink-0 text-sm font-extrabold text-zinc-950">
+                      {formatEuro(fact.amount)}
+                    </div>
+                  </div>
+
+                  {editingId === fact.id ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        aria-label={`Edit amount for ${fact.fieldKey}`}
+                        value={editAmount}
+                        onChange={(e) => setEditAmount(e.target.value)}
+                        className="w-32 rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-base font-semibold text-zinc-950 focus:border-zinc-950 focus:outline-none sm:text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveEdit(fact.id)}
+                        className="rounded-xl bg-zinc-950 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-zinc-800"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingId(null)}
+                        className="rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleInclusion(fact)}
+                        disabled={togglingId === fact.id}
+                        className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition disabled:opacity-50 ${
+                          fact.isIncludedInReturn
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            : 'border-zinc-200 bg-zinc-100 text-zinc-600'
+                        }`}
+                      >
+                        {togglingId === fact.id
+                          ? 'Saving…'
+                          : fact.isIncludedInReturn
+                            ? 'Included: Yes'
+                            : 'Included: No'}
+                      </button>
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleStartEdit(fact)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
+                        >
+                          <Pencil className="h-3 w-3" aria-hidden="true" />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPendingDeleteFact(fact)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                        >
+                          <Trash2 className="h-3 w-3" aria-hidden="true" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop / Tablet Table (>= 768px) */}
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-zinc-200 bg-zinc-50/90 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                  <tr>
+                    <th className="px-6 py-3">
+                      Category <HelpTip id="factCategory" />
+                    </th>
+                    <th className="px-6 py-3">Field / Box</th>
+                    <th className="px-6 py-3">Description</th>
+                    <th className="px-6 py-3">Amount (EUR)</th>
+                    <th className="px-6 py-3">
+                      Included <HelpTip id="factInclusion" />
+                    </th>
+                    <th className="px-6 py-3 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {filteredFacts.map((fact) => (
+                    <tr
+                      key={fact.id}
+                      className={`transition-colors hover:bg-zinc-50/70 ${
+                        !fact.isIncludedInReturn ? 'opacity-65' : ''
+                      }`}
+                    >
+                      <td className="px-6 py-3.5">
+                        <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-700">
+                          {fact.category.replace(/_/g, ' ')}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3.5 font-mono text-xs font-bold text-zinc-950">
+                        {fact.fieldKey}
+                      </td>
+                      <td className="px-6 py-3.5 text-xs text-zinc-600 max-w-xs truncate">
+                        {fact.description || '—'}
+                      </td>
+                      <td className="tabular-nums px-6 py-3.5 font-bold text-zinc-950">
+                        {editingId === fact.id ? (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              step="0.01"
+                              aria-label={`Edit amount for ${fact.fieldKey}`}
+                              value={editAmount}
+                              onChange={(e) => setEditAmount(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  void handleSaveEdit(fact.id);
+                                } else if (e.key === 'Escape') {
+                                  setEditingId(null);
+                                }
+                              }}
+                              className="w-28 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-950 focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/15"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEdit(fact.id)}
+                              className="rounded-lg bg-zinc-950 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-zinc-800"
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingId(null)}
+                              className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          formatEuro(fact.amount)
+                        )}
+                      </td>
+                      <td className="px-6 py-3.5">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleInclusion(fact)}
+                          disabled={togglingId === fact.id}
+                          title={
+                            fact.isIncludedInReturn
+                              ? 'Click to exclude from return'
+                              : 'Click to include in return'
+                          }
+                          className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition active:scale-[0.97] disabled:opacity-50 ${
+                            fact.isIncludedInReturn
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                              : 'border-zinc-200 bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                          }`}
+                        >
+                          {togglingId === fact.id
+                            ? 'Saving…'
+                            : fact.isIncludedInReturn
+                              ? 'Yes'
+                              : 'No'}
+                        </button>
+                      </td>
+                      <td className="px-6 py-3.5 text-right whitespace-nowrap">
+                        {editingId !== fact.id && (
+                          <div className="inline-flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEdit(fact)}
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 transition hover:text-sky-800"
+                            >
+                              <Pencil className="h-3 w-3" aria-hidden="true" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPendingDeleteFact(fact)}
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 transition hover:text-rose-700"
+                            >
+                              <Trash2 className="h-3 w-3" aria-hidden="true" />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
       {/* Add Fact Modal */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden">
-            <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between">
-              <h3 className="font-bold text-slate-900 text-base">Add Confirmed Tax Fact</h3>
-              <button
-                onClick={() => setIsAddModalOpen(false)}
-                aria-label="Close add-fact dialog"
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateFact} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
-                  Tax Item Type
-                </label>
-                <select
-                  value={`${newFact.category}:::${newFact.fieldKey}`}
-                  onChange={(e) => {
-                    const [cat, key] = e.target.value.split(':::');
-                    setNewFact({
-                      ...newFact,
-                      category: cat as FactCategory,
-                      fieldKey: key,
-                    });
-                  }}
-                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 font-medium"
+      <Modal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        titleId="add-fact-modal-title"
+        title="Add Confirmed Tax Fact"
+        subtitle="Values added here feed the Luxembourg calculation engine and Form 100 mapping."
+        icon={<Plus className="h-4.5 w-4.5" aria-hidden="true" />}
+        closeLabel="Close add-fact dialog"
+        maxWidthClass="max-w-lg"
+      >
+        <form onSubmit={handleCreateFact} className="space-y-4">
+          <div>
+            <label
+              htmlFor="fact-preset-select"
+              className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-600"
+            >
+              Tax Item Type
+            </label>
+            <select
+              id="fact-preset-select"
+              value={`${newFact.category}:::${newFact.fieldKey}`}
+              onChange={(e) => {
+                const [cat, key] = e.target.value.split(':::');
+                setNewFact({
+                  ...newFact,
+                  category: cat as FactCategory,
+                  fieldKey: key,
+                });
+              }}
+              className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm font-medium text-zinc-950 focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
+            >
+              {PRESET_FIELDS.map((preset) => (
+                <option
+                  key={`${preset.category}:::${preset.fieldKey}`}
+                  value={`${preset.category}:::${preset.fieldKey}`}
                 >
-                  {PRESET_FIELDS.map((preset) => (
-                    <option key={`${preset.category}:::${preset.fieldKey}`} value={`${preset.category}:::${preset.fieldKey}`}>
-                      {preset.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
-                  Amount in EUR (€)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  placeholder="e.g. 75000.00"
-                  value={newFact.amount}
-                  onChange={(e) => setNewFact({ ...newFact, amount: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 font-bold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
-                  Description / Note (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Annual certificate from Employer S.A."
-                  value={newFact.description}
-                  onChange={(e) => setNewFact({ ...newFact, description: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="includeCheck"
-                  checked={newFact.isIncludedInReturn}
-                  onChange={(e) => setNewFact({ ...newFact, isIncludedInReturn: e.target.checked })}
-                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-                />
-                <label htmlFor="includeCheck" className="text-xs font-medium text-slate-700 cursor-pointer">
-                  Include in 2025 Luxembourg Tax Return calculation
-                </label>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={addingFact}
-                  className="rounded-xl bg-sky-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-sky-500 shadow-sm disabled:opacity-50"
-                >
-                  {addingFact ? 'Saving Fact...' : 'Save Confirmed Fact'}
-                </button>
-              </div>
-            </form>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
-      )}
+
+          <div>
+            <label
+              htmlFor="fact-amount-input"
+              className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-600"
+            >
+              Amount in EUR (€)
+            </label>
+            <input
+              id="fact-amount-input"
+              type="number"
+              step="0.01"
+              required
+              placeholder="e.g. 75000.00"
+              value={newFact.amount}
+              onChange={(e) => setNewFact({ ...newFact, amount: e.target.value })}
+              className="tabular-nums w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm font-bold text-zinc-950 focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="fact-description-input"
+              className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-600"
+            >
+              Description / Note <span className="font-normal normal-case text-zinc-400">(optional)</span>
+            </label>
+            <input
+              id="fact-description-input"
+              type="text"
+              placeholder="e.g. Annual certificate from Employer S.A."
+              value={newFact.description}
+              onChange={(e) => setNewFact({ ...newFact, description: e.target.value })}
+              className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-950 focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
+            />
+          </div>
+
+          <div className="flex items-center gap-2.5 rounded-xl border border-zinc-200/80 bg-zinc-50/70 p-3">
+            <input
+              type="checkbox"
+              id="includeCheck"
+              checked={newFact.isIncludedInReturn}
+              onChange={(e) => setNewFact({ ...newFact, isIncludedInReturn: e.target.checked })}
+              className="h-4 w-4 rounded border-zinc-300 text-zinc-950 focus:ring-zinc-950"
+            />
+            <label htmlFor="includeCheck" className="cursor-pointer text-xs font-medium text-zinc-700">
+              Include in Luxembourg Tax Return calculation
+            </label>
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5 border-t border-zinc-100 pt-4">
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(false)}
+              className="rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={addingFact}
+              className="rounded-xl bg-zinc-950 px-5 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50"
+            >
+              {addingFact ? 'Saving Fact...' : 'Save Confirmed Fact'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={pendingDeleteFact !== null}
+        title="Remove fact from return?"
+        description={
+          pendingDeleteFact
+            ? `Are you sure you want to remove "${pendingDeleteFact.fieldKey}" (${formatEuro(pendingDeleteFact.amount)}) from your confirmed tax facts?`
+            : ''
+        }
+        confirmLabel="Remove Fact"
+        busy={deleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setPendingDeleteFact(null)}
+      />
     </div>
   );
 }

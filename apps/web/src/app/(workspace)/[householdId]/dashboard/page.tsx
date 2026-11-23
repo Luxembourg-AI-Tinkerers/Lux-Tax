@@ -1,6 +1,18 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import {
+  Activity,
+  AlertCircle,
+  ArrowRight,
+  Briefcase,
+  Check,
+  ClipboardList,
+  FileText,
+  PackageCheck,
+  RefreshCw,
+  UserPlus,
+} from 'lucide-react';
 import { HelpTip } from '../../../../components/HelpTip';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '../../../../lib/auth-context';
@@ -11,6 +23,7 @@ import {
   WorkspaceReadinessDto,
   AuditEventDto,
   HouseholdRole,
+  WorkspaceStatus,
 } from '@luxtax/contracts';
 import { InviteModal } from '../../../../components/InviteModal';
 import { DocumentsView } from '../../../../components/DocumentsView';
@@ -21,19 +34,40 @@ import { TaxCalculatorView } from '../../../../components/TaxCalculatorView';
 import { FilingPackageView } from '../../../../components/FilingPackageView';
 import { AssessmentView } from '../../../../components/AssessmentView';
 import { AdminConsoleView } from '../../../../components/AdminConsoleView';
-import { NotificationCenter } from '../../../../components/NotificationCenter';
+import { WorkspaceShell, type TabKey } from '../../../../components/WorkspaceShell';
 import { NO_AMOUNT, formatEuro } from '../../../../lib/money';
+import { CardGridSkeleton, Skeleton } from '../../../../components/ui/Skeleton';
+import { StatusBadge, type BadgeTone } from '../../../../components/ui/StatusBadge';
 
-type TabKey =
-  | 'overview'
-  | 'documents'
-  | 'freelance'
-  | 'facts'
-  | 'questionnaire'
-  | 'calculator'
-  | 'filing'
-  | 'assessment'
-  | 'admin';
+function workspaceStatusTone(status?: WorkspaceStatus): BadgeTone {
+  switch (status) {
+    case WorkspaceStatus.APPROVED:
+    case WorkspaceStatus.FILING_PACKAGE_READY:
+    case WorkspaceStatus.ASSESSED:
+      return 'success';
+    case WorkspaceStatus.FILED:
+    case WorkspaceStatus.CLOSED:
+      return 'indigo';
+    case WorkspaceStatus.NEEDS_REVIEW:
+      return 'warning';
+    case WorkspaceStatus.CALCULATED:
+    case WorkspaceStatus.READY_TO_CALCULATE:
+    case WorkspaceStatus.HOUSEHOLD_REVIEW:
+      return 'info';
+    default:
+      return 'neutral';
+  }
+}
+
+function initialsFrom(firstName?: string, lastName?: string, email?: string, fallback = 'U'): string {
+  if (firstName || lastName) {
+    return `${firstName?.[0] ?? ''}${lastName?.[0] ?? ''}`.toUpperCase() || fallback;
+  }
+  if (email) {
+    return email.slice(0, 2).toUpperCase();
+  }
+  return fallback;
+}
 
 export default function DashboardPage() {
   const params = useParams();
@@ -52,6 +86,17 @@ export default function DashboardPage() {
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState('');
 
+  const didMountTabEffect = useRef(false);
+  useEffect(() => {
+    if (!didMountTabEffect.current) {
+      didMountTabEffect.current = true;
+      return;
+    }
+    if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }, [activeTab]);
+
   const loadData = useCallback(async () => {
     if (!householdId) {
       // Nothing can be loaded without a household: say so instead of leaving
@@ -69,9 +114,6 @@ export default function DashboardPage() {
       apiClient.getWorkspaces(householdId),
     ]);
 
-    // A failed read clears what it used to show: the previous household, its
-    // activity trail or the previous year's workspace must not stay mounted
-    // behind an error.
     if (hhRes.data) {
       setHousehold(hhRes.data);
     } else {
@@ -105,7 +147,6 @@ export default function DashboardPage() {
       setReadiness(null);
     }
 
-    // The workspace read decides whether the tabs have anything to render.
     const firstError = wsRes.error || hhRes.error || wsListRes.error || actRes.error;
     if (firstError) {
       setPageError(firstError);
@@ -125,10 +166,30 @@ export default function DashboardPage() {
 
   if (pageLoading || isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-sky-600 border-t-transparent mx-auto mb-2" />
-          <p className="text-slate-500 text-sm">Loading tax workspace...</p>
+      <div className="flex min-h-dvh bg-[#f6f7f9]">
+        <aside className="hidden w-[264px] shrink-0 border-r border-zinc-200/85 bg-[#fcfcfd] p-4 lg:flex lg:flex-col lg:gap-5">
+          <div className="flex items-center gap-2.5 pb-3 border-b border-zinc-200/70">
+            <Skeleton className="h-9 w-9 rounded-xl" />
+            <div className="space-y-1.5 flex-1">
+              <Skeleton className="h-3.5 w-28" />
+              <Skeleton className="h-2.5 w-20" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <Skeleton key={idx} className="h-8 w-full rounded-xl" />
+            ))}
+          </div>
+        </aside>
+        <div className="flex-1">
+          <div className="h-15 border-b border-zinc-200/80 bg-[#f6f7f9] px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-8 w-24 rounded-xl" />
+          </div>
+          <main className="mx-auto max-w-[1360px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+            <p className="text-xs font-medium text-zinc-500">Loading tax workspace...</p>
+            <CardGridSkeleton count={3} />
+          </main>
         </div>
       </div>
     );
@@ -139,14 +200,19 @@ export default function DashboardPage() {
   const coFiler = members.find((m) => m.role === HouseholdRole.CO_FILER);
 
   const balance = workspace?.estimatedTaxBalance;
+  const hasBalance = balance !== undefined && balance !== null && balance !== '';
+  const balanceNumeric = hasBalance ? Number(balance) : null;
+  const isRefund = balanceNumeric !== null && balanceNumeric < 0;
+
   // A missing balance is not a zero: show a dash until the engine has produced
   // a figure.
-  const balanceLabel =
-    balance === undefined || balance === null || balance === ''
-      ? NO_AMOUNT
-      : Number(balance) < 0
-        ? `Refund: ${formatEuro(Math.abs(Number(balance)))}`
-        : `Due: ${formatEuro(Number(balance))}`;
+  const balanceLabel = !hasBalance
+    ? NO_AMOUNT
+    : isRefund
+      ? `Refund: ${formatEuro(Math.abs(balanceNumeric!))}`
+      : `Due: ${formatEuro(balanceNumeric!)}`;
+
+  const completionScore = workspace?.completionScore ?? 0;
 
   /** Keyboard activation for the cards that behave like buttons. */
   const cardKeyboard = (tab: TabKey) => (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -156,230 +222,303 @@ export default function DashboardPage() {
     }
   };
 
+  // Determine contextual recommended next action
+  const nextRecommendation: { label: string; tab: TabKey; hint: string } = !workspace
+    ? { label: 'Open Tax Profile', tab: 'questionnaire', hint: 'Configure your household profile' }
+    : completionScore < 50
+    ? {
+        label: 'Complete Profile & Facts',
+        tab: 'questionnaire',
+        hint: 'Finish your household questionnaire or upload certificates so the engine has all inputs.',
+      }
+    : !hasBalance
+    ? {
+        label: `Calculate ${selectedYear} Tax`,
+        tab: 'calculator',
+        hint: 'Run the deterministic Luxembourg scale to preview your refund or balance due.',
+      }
+    : workspace.status !== WorkspaceStatus.APPROVED &&
+      workspace.status !== WorkspaceStatus.FILING_PACKAGE_READY &&
+      workspace.status !== WorkspaceStatus.FILED
+    ? {
+        label: 'Review & Approve Return',
+        tab: 'filing',
+        hint: 'Confirm your calculation and generate your Form 100 MyGuichet package.',
+      }
+    : workspace.status !== WorkspaceStatus.FILED
+    ? {
+        label: 'Record Filing & Assessment',
+        tab: 'assessment',
+        hint: 'Freeze the approved version once submitted on MyGuichet, or import your ACD notice.',
+      }
+    : {
+        label: 'Manage Assessment & Rollover',
+        tab: 'assessment',
+        hint: 'Compare your official ACD bulletin or roll over into the next tax year.',
+      };
+
+  const userDisplayName =
+    user?.firstName || user?.lastName
+      ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim()
+      : user?.email;
+
+  const userInitials = initialsFrom(user?.firstName, user?.lastName, user?.email, 'U');
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Top Header */}
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-600 text-white font-bold text-sm">
-              LT
-            </div>
-            <div>
-              <h1 className="text-sm font-bold text-slate-900 leading-tight">
-                {household?.name || 'Tax Household'}
-              </h1>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                <span className="text-xs text-slate-500">Tax Year:
-                    {" "}<HelpTip id="taxYearWorkspace" /></span>
-                {workspaces.length > 1 ? (
-                  <select
-                    value={selectedYear}
-                    onChange={(e) => setSelectedYear(Number(e.target.value))}
-                    className="text-xs font-bold text-slate-800 bg-slate-100 rounded px-1.5 py-0.5 border border-slate-200 cursor-pointer"
-                  >
-                    {workspaces.map((w) => (
-                      <option key={w.id} value={w.taxYear}>
-                        {w.taxYear} ({w.status})
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <strong className="text-xs text-slate-700">{selectedYear}</strong>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            {workspace && <NotificationCenter workspaceId={workspace.id} />}
-            <div className="hidden sm:block text-right">
-              <p className="text-xs font-semibold text-slate-800">{user?.email}</p>
-              <p className="text-[10px] text-slate-400">Resident Taxpayer</p>
-            </div>
-            <button
-              onClick={() => logout()}
-              className="text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 transition"
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
-
-        {/* Navigation Tabs */}
-        <div className="border-t border-slate-200 bg-white px-4 sm:px-6">
-          <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto py-2">
-            {[
-              { key: 'overview', label: 'Overview & Readiness' },
-              { key: 'documents', label: 'Document Vault' },
-              { key: 'freelance', label: 'Freelance & Business' },
-              { key: 'facts', label: 'Confirmed Facts' },
-              { key: 'questionnaire', label: 'Tax Profile & Checklist' },
-              { key: 'calculator', label: `${selectedYear} Tax Engine` },
-              { key: 'filing', label: 'Approvals & Filing Package' },
-              { key: 'assessment', label: 'Assessment & Rollover' },
-              { key: 'admin', label: 'Admin & Models' },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key as TabKey)}
-                className={`whitespace-nowrap rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
-                  activeTab === tab.key
-                    ? 'bg-sky-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content Area */}
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 space-y-8">
+    <>
+      <WorkspaceShell
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        householdName={household?.name || 'Tax Household'}
+        selectedYear={selectedYear}
+        onSelectYear={setSelectedYear}
+        workspaces={workspaces}
+        workspace={workspace}
+        statusTone={workspaceStatusTone(workspace?.status)}
+        completionScore={completionScore}
+        hasBalance={hasBalance}
+        isRefund={isRefund}
+        balanceLabel={balanceLabel}
+        hasCoFiler={Boolean(coFiler)}
+        onOpenInvite={() => setIsInviteOpen(true)}
+        userDisplayName={userDisplayName}
+        userEmail={user?.email}
+        userInitials={userInitials}
+        onLogout={() => logout()}
+      >
         {pageError && (
           <div
             role="alert"
-            className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-800"
+            className="flex flex-col justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-900 shadow-2xs sm:flex-row sm:items-center"
           >
-            {pageError}
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
+              <span>{pageError}</span>
+            </div>
+            {householdId && (
+              <button
+                type="button"
+                onClick={() => loadData()}
+                className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-xl border border-rose-300 bg-white px-3 py-1.5 text-xs font-bold text-rose-800 transition hover:bg-rose-100 sm:self-center"
+              >
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Retry</span>
+              </button>
+            )}
           </div>
         )}
 
         {activeTab === 'overview' && (
           <>
-            {/* Top Metrics Grid */}
-            <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Readiness Card */}
-              <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
-                  Return Readiness
-                </h2>
-                <div className="flex items-baseline gap-2 mb-3">
-                  <span className="text-3xl font-extrabold text-slate-900">
-                    {workspace?.completionScore ?? 0}%
-                  </span>
-                  <span className="text-xs text-slate-500 font-medium">overall completion</span>
-                </div>
-                <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden mb-4">
-                  <div
-                    className="bg-sky-600 h-2.5 rounded-full transition-all duration-500"
-                    style={{ width: `${workspace?.completionScore ?? 0}%` }}
-                  />
-                </div>
-                <p className="text-xs text-slate-500">
-                  Status:{' '}
-                  <strong className="text-slate-700 font-semibold uppercase">
-                    {workspace?.status || 'Draft'}
-                  </strong>
-                </p>
-              </div>
-
-              {/* Tax Estimate Card */}
-              <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Estimated Outcome
-                  </h2>
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
-                    Deterministic engine
-                  </span>
-                </div>
-                <div className="flex items-baseline gap-2 mb-2">
-                  <span className="text-3xl font-extrabold text-slate-900">{balanceLabel}</span>
-                </div>
-                <button
-                  onClick={() => setActiveTab('calculator')}
-                  className="mt-2 text-xs font-semibold text-sky-600 hover:text-sky-700"
-                >
-                  View full calculation breakdown &rarr;
-                </button>
-              </div>
-
-              {/* Household Co-Filer Card */}
-              <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Household Co-Filers
-                    {" "}<HelpTip id="householdMembers" />
-                  </h2>
-                  {!coFiler && (
-                    <button
-                      onClick={() => setIsInviteOpen(true)}
-                      className="text-xs text-sky-600 hover:text-sky-700 font-semibold"
-                    >
-                      + Invite Spouse
-                    </button>
-                  )}
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                    <div className="flex items-center gap-2.5">
-                      <div className="h-7 w-7 rounded-lg bg-sky-100 text-sky-700 font-bold text-xs flex items-center justify-center">
-                        1
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-slate-800">
-                          {primaryFiler?.user?.email || 'Primary Filer'}
-                        </p>
-                        <p className="text-[10px] text-slate-400">Primary Taxpayer</p>
-                      </div>
+            {/* Asymmetric Spotlight Bento Row */}
+            <section className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+              {/* Guided Preparation Stepper & Contextual CTA */}
+              {workspace ? (
+                <div className="flex flex-col justify-between rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_2px_rgba(9,9,11,0.03)] xl:col-span-7">
+                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                        Recommended Next Step
+                      </p>
+                      <h2 className="mt-1 text-lg font-bold tracking-tight text-zinc-950">
+                        {nextRecommendation.label}
+                      </h2>
+                      <p className="mt-1 max-w-xl text-xs leading-relaxed text-zinc-500">
+                        {nextRecommendation.hint}
+                      </p>
                     </div>
-                    <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-                      Active
-                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab(nextRecommendation.tab)}
+                      className="inline-flex shrink-0 items-center gap-2 self-start rounded-xl bg-zinc-950 px-4 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98]"
+                    >
+                      <span>{nextRecommendation.label}</span>
+                      <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
                   </div>
 
-                  {coFiler ? (
-                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                      <div className="flex items-center gap-2.5">
-                        <div className="h-7 w-7 rounded-lg bg-purple-100 text-purple-700 font-bold text-xs flex items-center justify-center">
-                          2
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-slate-800">{coFiler.user?.email}</p>
-                          <p className="text-[10px] text-slate-400">Spouse (Co-Filer)</p>
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-                        Active
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="p-3 rounded-xl border border-dashed border-slate-200 text-center">
-                      <p className="text-xs text-slate-500 mb-2">No spouse linked yet</p>
+                  <div className="mt-6 grid grid-cols-2 gap-2 border-t border-zinc-100 pt-5 sm:grid-cols-5">
+                    {[
+                      {
+                        step: 1,
+                        label: 'Documents',
+                        tab: 'documents' as TabKey,
+                        done: completionScore >= 25,
+                      },
+                      {
+                        step: 2,
+                        label: 'Facts',
+                        tab: 'facts' as TabKey,
+                        done: completionScore >= 40,
+                      },
+                      {
+                        step: 3,
+                        label: 'Profile',
+                        tab: 'questionnaire' as TabKey,
+                        done: completionScore >= 60,
+                      },
+                      {
+                        step: 4,
+                        label: 'Engine',
+                        tab: 'calculator' as TabKey,
+                        done: hasBalance,
+                      },
+                      {
+                        step: 5,
+                        label: 'Approve',
+                        tab: 'filing' as TabKey,
+                        done:
+                          workspace.status === WorkspaceStatus.APPROVED ||
+                          workspace.status === WorkspaceStatus.FILING_PACKAGE_READY ||
+                          workspace.status === WorkspaceStatus.FILED,
+                      },
+                    ].map((item) => (
                       <button
-                        onClick={() => setIsInviteOpen(true)}
-                        className="py-1.5 px-3 rounded-lg bg-sky-50 text-sky-600 font-semibold text-xs hover:bg-sky-100 transition"
+                        key={item.step}
+                        type="button"
+                        onClick={() => setActiveTab(item.tab)}
+                        className="flex items-center gap-1.5 rounded-xl border border-zinc-200/80 bg-zinc-50/70 px-2 py-2 text-left transition hover:border-zinc-300 hover:bg-white"
                       >
-                        Send Spousal Invitation
+                        <span
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                            item.done
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-zinc-200 text-zinc-700'
+                          }`}
+                        >
+                          {item.done ? <Check className="h-3 w-3" aria-hidden="true" /> : item.step}
+                        </span>
+                        <span className="truncate text-[11px] font-semibold text-zinc-800">
+                          {item.label}
+                        </span>
                       </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col justify-between rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_2px_rgba(9,9,11,0.03)] xl:col-span-7">
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                      Workspace Setup
+                    </p>
+                    <h2 className="mt-1 text-lg font-bold tracking-tight text-zinc-950">
+                      {household?.name || 'Tax Household'}
+                    </h2>
+                    <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                      Select an available tax year in the sidebar or resolve any household loading issue above to begin preparation.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Financial Outcome + Return Readiness Card */}
+              <div className="flex flex-col justify-between rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_2px_rgba(9,9,11,0.03)] xl:col-span-5">
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                      Estimated Outcome
+                    </h2>
+                    <StatusBadge tone="success">Deterministic engine</StatusBadge>
+                  </div>
+                  <div className="mt-2.5 flex items-baseline gap-2">
+                    <span
+                      className={`tabular-nums text-3xl font-extrabold tracking-tight ${
+                        !hasBalance
+                          ? 'text-zinc-400'
+                          : isRefund
+                          ? 'text-emerald-700'
+                          : 'text-zinc-950'
+                      }`}
+                    >
+                      {balanceLabel}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {hasBalance
+                      ? isRefund
+                        ? 'Estimated reimbursement after withholding & credits.'
+                        : 'Estimated balance payable upon ACD assessment.'
+                      : 'No calculation run yet for this workspace.'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('calculator')}
+                    className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 transition hover:text-sky-800"
+                  >
+                    <span>View full calculation breakdown</span>
+                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+
+                <div className="mt-5 border-t border-zinc-100 pt-4">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h2 className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                      Return Readiness
+                    </h2>
+                    {workspace?.status && (
+                      <StatusBadge tone={workspaceStatusTone(workspace.status)}>
+                        {workspace.status}
+                      </StatusBadge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100">
+                      <div
+                        className={`h-2 rounded-full transition-all duration-500 ${
+                          completionScore >= 80
+                            ? 'bg-emerald-500'
+                            : completionScore >= 40
+                            ? 'bg-sky-600'
+                            : 'bg-amber-500'
+                        }`}
+                        style={{ width: `${completionScore}%` }}
+                      />
                     </div>
-                  )}
+                    <span className="tabular-nums text-xs font-bold text-zinc-950">
+                      {completionScore}%
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-zinc-500">
+                    Status:{' '}
+                    <strong className="font-semibold uppercase text-zinc-800">
+                      {workspace?.status || 'Draft'}
+                    </strong>
+                    {readiness && readiness.criticalWarningsCount > 0 && (
+                      <span className="ml-2 font-semibold text-amber-700">
+                        · {readiness.criticalWarningsCount} warning(s)
+                      </span>
+                    )}
+                    {readiness && readiness.missingDocumentsCount > 0 && (
+                      <span className="ml-2 font-semibold text-zinc-600">
+                        · {readiness.missingDocumentsCount} doc(s) needed
+                      </span>
+                    )}
+                  </p>
                 </div>
               </div>
             </section>
 
-            {/* Quick Feature Cards */}
-            <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Quick Feature Cards (keep exact 4 div[role="button"] cards for accessibility & test parity) */}
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <div
                 role="button"
                 tabIndex={0}
                 onClick={() => setActiveTab('documents')}
                 onKeyDown={cardKeyboard('documents')}
-                className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-sky-300 transition cursor-pointer"
+                className="group cursor-pointer rounded-2xl border border-zinc-200/85 bg-white p-5 shadow-[0_1px_2px_rgba(9,9,11,0.03)] transition hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
               >
-                <div className="h-10 w-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center font-bold text-lg mb-4">
-                  📄
+                <div className="mb-3.5 flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 text-sky-700 ring-1 ring-sky-200/70">
+                  <FileText className="h-5 w-5" aria-hidden="true" />
                 </div>
-                <h3 className="font-bold text-slate-900 text-sm mb-1">Document Vault</h3>
-                <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                <h3 className="mb-1 text-sm font-bold text-zinc-950">Document Vault</h3>
+                <p className="mb-3.5 text-xs leading-relaxed text-zinc-500">
                   Upload salary certificates, mortgage interest slips, and verify extracted figures.
                 </p>
-                <span className="text-xs font-semibold text-sky-600">Open Vault &rarr;</span>
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-zinc-900 group-hover:translate-x-0.5 transition-transform">
+                  <span>Open Vault</span>
+                  <ArrowRight className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+                </span>
               </div>
 
               <div
@@ -387,16 +526,19 @@ export default function DashboardPage() {
                 tabIndex={0}
                 onClick={() => setActiveTab('freelance')}
                 onKeyDown={cardKeyboard('freelance')}
-                className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-indigo-300 transition cursor-pointer"
+                className="group cursor-pointer rounded-2xl border border-zinc-200/85 bg-white p-5 shadow-[0_1px_2px_rgba(9,9,11,0.03)] transition hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
               >
-                <div className="h-10 w-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-lg mb-4">
-                  💼
+                <div className="mb-3.5 flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-100 text-zinc-900 ring-1 ring-zinc-200/80">
+                  <Briefcase className="h-5 w-5" aria-hidden="true" />
                 </div>
-                <h3 className="font-bold text-slate-900 text-sm mb-1">Freelance & Business</h3>
-                <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                <h3 className="mb-1 text-sm font-bold text-zinc-950">Freelance &amp; Business</h3>
+                <p className="mb-3.5 text-xs leading-relaxed text-zinc-500">
                   Track client invoices, deductible operating expenses, and VAT per spouse.
                 </p>
-                <span className="text-xs font-semibold text-indigo-600">Open Business Hub &rarr;</span>
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-zinc-900 group-hover:translate-x-0.5 transition-transform">
+                  <span>Open Business Hub</span>
+                  <ArrowRight className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+                </span>
               </div>
 
               <div
@@ -404,16 +546,19 @@ export default function DashboardPage() {
                 tabIndex={0}
                 onClick={() => setActiveTab('questionnaire')}
                 onKeyDown={cardKeyboard('questionnaire')}
-                className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-purple-300 transition cursor-pointer"
+                className="group cursor-pointer rounded-2xl border border-zinc-200/85 bg-white p-5 shadow-[0_1px_2px_rgba(9,9,11,0.03)] transition hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
               >
-                <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-lg mb-4">
-                  📝
+                <div className="mb-3.5 flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-700 ring-1 ring-amber-200/70">
+                  <ClipboardList className="h-5 w-5" aria-hidden="true" />
                 </div>
-                <h3 className="font-bold text-slate-900 text-sm mb-1">Tax Profile & Checklist</h3>
-                <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                <h3 className="mb-1 text-sm font-bold text-zinc-950">Tax Profile &amp; Checklist</h3>
+                <p className="mb-3.5 text-xs leading-relaxed text-zinc-500">
                   Answer residency and deduction questions, and resolve missing evidence tasks.
                 </p>
-                <span className="text-xs font-semibold text-purple-600">Open Checklist &rarr;</span>
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-zinc-900 group-hover:translate-x-0.5 transition-transform">
+                  <span>Open Checklist</span>
+                  <ArrowRight className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+                </span>
               </div>
 
               <div
@@ -421,46 +566,141 @@ export default function DashboardPage() {
                 tabIndex={0}
                 onClick={() => setActiveTab('filing')}
                 onKeyDown={cardKeyboard('filing')}
-                className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs hover:border-emerald-300 transition cursor-pointer"
+                className="group cursor-pointer rounded-2xl border border-zinc-200/85 bg-white p-5 shadow-[0_1px_2px_rgba(9,9,11,0.03)] transition hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
               >
-                <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg mb-4">
-                  📦
+                <div className="mb-3.5 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/70">
+                  <PackageCheck className="h-5 w-5" aria-hidden="true" />
                 </div>
-                <h3 className="font-bold text-slate-900 text-sm mb-1">Approvals & Filing</h3>
-                <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                <h3 className="mb-1 text-sm font-bold text-zinc-950">Approvals &amp; Filing</h3>
+                <p className="mb-3.5 text-xs leading-relaxed text-zinc-500">
                   Review dual spousal approvals, Form 100 boxes, and MyGuichet manual filing guide.
                 </p>
-                <span className="text-xs font-semibold text-emerald-600">View Filing Package &rarr;</span>
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-zinc-900 group-hover:translate-x-0.5 transition-transform">
+                  <span>View Filing Package</span>
+                  <ArrowRight className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+                </span>
               </div>
             </section>
 
-            {/* Recent Activity Audit Trail */}
-            <section className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
-                Immutable Household Activity Trail
-              </h2>
-              {activity.length === 0 ? (
-                <p className="text-xs text-slate-400">No activity recorded yet.</p>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {activity.map((event) => (
-                    <div key={event.id} className="py-3 flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-xs font-semibold text-slate-800">{event.description}</p>
-                        <span className="text-[10px] text-slate-400">
-                          {/* A USER_LOGIN_FAILED event has no actor: the address matched no
-                              account. Falling back to "system" keeps the feed renderable. */}
-                          Actor: {event.actorEmail || event.actorId?.slice(0, 8) || 'system'} •{' '}
-                          {new Date(event.createdAt).toLocaleString()}
-                        </span>
-                      </div>
-                      <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 shrink-0">
-                        {event.eventType}
-                      </span>
-                    </div>
-                  ))}
+            {/* Bottom Row: Co-Filers + Immutable Audit Trail */}
+            <section className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+              {/* Household Co-Filer Card */}
+              <div className="rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_2px_rgba(9,9,11,0.03)] xl:col-span-4">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                    <span>Household Co-Filers</span>
+                    <HelpTip id="householdMembers" />
+                  </h2>
+                  {!coFiler && (
+                    <button
+                      type="button"
+                      onClick={() => setIsInviteOpen(true)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 transition hover:text-sky-800"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>Invite</span>
+                    </button>
+                  )}
                 </div>
-              )}
+
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between rounded-xl border border-zinc-200/70 bg-zinc-50/70 p-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-950 text-xs font-bold text-white">
+                        {initialsFrom(
+                          primaryFiler?.user?.firstName,
+                          primaryFiler?.user?.lastName,
+                          primaryFiler?.user?.email,
+                          'P1',
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold text-zinc-950">
+                          {primaryFiler?.user?.email || 'Primary Filer'}
+                        </p>
+                        <p className="text-[11px] text-zinc-500">Primary Taxpayer</p>
+                      </div>
+                    </div>
+                    <StatusBadge tone="success">Active</StatusBadge>
+                  </div>
+
+                  {coFiler ? (
+                    <div className="flex items-center justify-between rounded-xl border border-zinc-200/70 bg-zinc-50/70 p-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-xs font-bold text-sky-900">
+                          {initialsFrom(
+                            coFiler.user?.firstName,
+                            coFiler.user?.lastName,
+                            coFiler.user?.email,
+                            'P2',
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-semibold text-zinc-950">
+                            {coFiler.user?.email}
+                          </p>
+                          <p className="text-[11px] text-zinc-500">Spouse (Co-Filer)</p>
+                        </div>
+                      </div>
+                      <StatusBadge tone="success">Active</StatusBadge>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50/50 p-3.5 text-center">
+                      <p className="mb-2 text-xs text-zinc-500">No spouse linked yet</p>
+                      <button
+                        type="button"
+                        onClick={() => setIsInviteOpen(true)}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-zinc-900 ring-1 ring-zinc-200 transition hover:bg-zinc-100"
+                      >
+                        <UserPlus className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+                        <span>Send Spousal Invitation</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Recent Activity Audit Trail */}
+              <div className="rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_2px_rgba(9,9,11,0.03)] xl:col-span-8">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                    <Activity className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
+                    <span>Immutable Household Activity Trail</span>
+                  </h2>
+                  <span className="tabular-nums text-[11px] text-zinc-400">
+                    Latest {activity.length} event(s)
+                  </span>
+                </div>
+
+                {activity.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-zinc-200 py-8 text-center text-xs text-zinc-400">
+                    No activity recorded yet.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-zinc-100">
+                    {activity.map((event) => (
+                      <div
+                        key={event.id}
+                        className="flex flex-col justify-between gap-2 py-3 sm:flex-row sm:items-center"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-zinc-900">{event.description}</p>
+                          <span className="tabular-nums text-[11px] text-zinc-500">
+                            Actor: {event.actorEmail || event.actorId?.slice(0, 8) || 'system'} •{' '}
+                            {new Date(event.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <StatusBadge
+                          tone="neutral"
+                          className="self-start sm:self-center font-mono text-[10px]"
+                        >
+                          {event.eventType}
+                        </StatusBadge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </section>
           </>
         )}
@@ -510,11 +750,15 @@ export default function DashboardPage() {
         )}
 
         {activeTab === 'assessment' && workspace && (
-          <AssessmentView workspace={workspace} onRefresh={loadData} />
+          <AssessmentView
+            workspace={workspace}
+            onRefresh={loadData}
+            onNavigateToFiling={() => setActiveTab('filing')}
+          />
         )}
 
         {activeTab === 'admin' && <AdminConsoleView />}
-      </main>
+      </WorkspaceShell>
 
       {/* Invite Modal */}
       {household && (
@@ -525,6 +769,6 @@ export default function DashboardPage() {
           onSuccess={() => loadData()}
         />
       )}
-    </div>
+    </>
   );
 }

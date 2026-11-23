@@ -1,13 +1,176 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  color-scheme: light;
+  --background: #f6f7f9;
+  --surface: #ffffff;
+  --surface-muted: #f8fafc;
+  --rail-surface: #fcfcfd;
+  --foreground: #09090b;
+  --muted-foreground: #52525b;
+  --border-subtle: rgba(15, 23, 42, 0.08);
+  --accent: #0284c7;
+  --accent-strong: #0369a1;
+  --ease-out-snappy: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+html {
+  color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
+/* Guarantee crisp light form fields and prevent browser autofill/UA dark overrides */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
+select,
+textarea {
+  background-color: #ffffff;
+  color: #09090b;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+select:-webkit-autofill,
+textarea:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  -webkit-text-fill-color: #09090b !important;
+  caret-color: #09090b;
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  touch-action: manipulation;
+  overscroll-behavior-y: none;
+  overflow-x: clip;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent accidental iOS Safari auto-zoom when tapping form controls on mobile */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Safe-area utilities for notched phones & mobile bottom app docks */
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Crisp tabular alignment for all currency, box numbers, and percentages */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle UI transitions that stay snappy (<240ms) */
+@keyframes ui-fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes ui-dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes ui-drawer-left {
+  from {
+    opacity: 0.4;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-ui-in {
+  animation: ui-fade-slide-in 180ms var(--ease-out-snappy) both;
+}
+
+.animate-dialog-in {
+  animation: ui-dialog-in 200ms var(--ease-out-snappy) both;
+}
+
+.animate-drawer-in {
+  animation: ui-drawer-left 240ms var(--ease-drawer) both;
+}
+
+/* Subtle scrollbar polish for wide data tables and sidebar navigation */
+.scrollbar-subtle::-webkit-scrollbar {
+  height: 5px;
+  width: 5px;
+}
+
+.scrollbar-subtle::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-subtle::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.45);
+  border-radius: 9999px;
+}
+
+.scrollbar-subtle::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(100, 116, 139, 0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Clean print formatting for Form 100 boxes and ACD preparation annexes */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #09090b !important;
+  }
+
+  .no-print,
+  header,
+  nav,
+  aside,
+  button {
+    display: none !important;
+  }
+
+  main {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
 }

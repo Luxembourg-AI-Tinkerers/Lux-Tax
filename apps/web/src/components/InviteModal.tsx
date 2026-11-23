@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import { Check, Copy, Loader2, MailCheck, UserPlus } from 'lucide-react';
 import { apiClient } from '../lib/api';
 import { HouseholdRole } from '@luxtax/contracts';
+import { Modal } from './ui/Modal';
 
 interface InviteModalProps {
   householdId: string;
@@ -17,18 +19,7 @@ export function InviteModal({ householdId, isOpen, onClose, onSuccess }: InviteM
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [invitationLink, setInvitationLink] = useState('');
-
-  // Escape closes the dialog like any other modal.
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
+  const [copied, setCopied] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,119 +43,137 @@ export function InviteModal({ householdId, isOpen, onClose, onSuccess }: InviteM
 
   const handleCopy = () => {
     if (invitationLink) {
-      navigator.clipboard.writeText(invitationLink);
-      alert('Invitation link copied to clipboard!');
+      navigator.clipboard?.writeText(invitationLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="invite-modal-title"
-        className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl border border-slate-100"
-      >
-        <h3 id="invite-modal-title" className="text-lg font-bold text-slate-900 mb-1">
-          Invite Household Co-Filer
-        </h3>
-        <p className="text-xs text-slate-500 mb-5">
-          Spouses have separate accounts but can collaborate on the same joint return.
-        </p>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      titleId="invite-modal-title"
+      title="Invite Household Co-Filer"
+      subtitle="Spouses have separate accounts and collaborate on the same joint return."
+      icon={<UserPlus className="h-4.5 w-4.5" aria-hidden="true" />}
+      closeLabel="Close invite dialog"
+      maxWidthClass="max-w-md"
+    >
+      {error && (
+        <div
+          role="alert"
+          className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-800"
+        >
+          {error}
+        </div>
+      )}
 
-        {error && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-xs">
-            {error}
-          </div>
-        )}
-
-        {invitationLink ? (
-          <div className="space-y-4">
-            <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-800">
-              <p className="font-semibold mb-1">Invitation Created Successfully!</p>
-              <p>Share this secure, single-use link with your spouse:</p>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs font-mono break-all text-slate-800">
-              {invitationLink}
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={handleCopy}
-                className="flex-1 py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-medium text-xs transition"
-              >
-                Copy Link
-              </button>
-              <button
-                onClick={() => {
-                  setInvitationLink('');
-                  setEmail('');
-                  onClose();
-                }}
-                className="py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-xs transition"
-              >
-                Done
-              </button>
+      {invitationLink ? (
+        <div className="space-y-4">
+          <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs text-emerald-900">
+            <MailCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
+            <div>
+              <p className="font-bold">Invitation Created Successfully</p>
+              <p className="mt-0.5 text-emerald-800">
+                Share this secure, single-use link with your spouse:
+              </p>
             </div>
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label
-                htmlFor="invite-email"
-                className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
-              >
-                Spouse's Email
-              </label>
-              <input
-                id="invite-email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="spouse@example.lu"
-                className="w-full px-3.5 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm"
-              />
-            </div>
 
-            <div>
-              <label
-                htmlFor="invite-role"
-                className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
-              >
-                Role
-              </label>
-              <select
-                id="invite-role"
-                value={role}
-                onChange={(e) => setRole(e.target.value as HouseholdRole)}
-                className="w-full px-3.5 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm"
-              >
-                <option value={HouseholdRole.CO_FILER}>Co-Filer (Equal joint return rights)</option>
-                <option value={HouseholdRole.VIEWER}>Viewer (Read-only)</option>
-              </select>
-            </div>
+          <div className="break-all rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800 select-all">
+            {invitationLink}
+          </div>
 
-            <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-xs transition"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex-1 py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-medium text-xs transition shadow-sm disabled:opacity-50"
-              >
-                {loading ? 'Sending...' : 'Generate Invite Link'}
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
+          <div className="flex gap-2.5">
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98]"
+            >
+              {copied ? (
+                <>
+                  <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Link Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Copy Link</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setInvitationLink('');
+                setEmail('');
+                setCopied(false);
+                onClose();
+              }}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label
+              htmlFor="invite-email"
+              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
+            >
+              Spouse&apos;s Email
+            </label>
+            <input
+              id="invite-email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="spouse@example.lu"
+              className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="invite-role"
+              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
+            >
+              Role
+            </label>
+            <select
+              id="invite-role"
+              value={role}
+              onChange={(e) => setRole(e.target.value as HouseholdRole)}
+              className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
+            >
+              <option value={HouseholdRole.CO_FILER}>Co-Filer (Equal joint return rights)</option>
+              <option value={HouseholdRole.VIEWER}>Viewer (Read-only)</option>
+            </select>
+          </div>
+
+          <div className="flex gap-2.5 border-t border-zinc-100 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50"
+            >
+              {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+              <span>{loading ? 'Sending...' : 'Generate Invite Link'}</span>
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }

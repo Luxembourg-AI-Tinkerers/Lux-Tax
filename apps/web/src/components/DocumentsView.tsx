@@ -1,6 +1,19 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Camera,
+  Check,
+  CheckCheck,
+  FileText,
+  Loader2,
+  RefreshCw,
+  RotateCw,
+  Search,
+  Sparkles,
+  Trash2,
+  UploadCloud,
+} from 'lucide-react';
 import { HelpTip } from './HelpTip';
 import { apiClient } from '../lib/api';
 import {
@@ -14,6 +27,12 @@ import {
 import { CameraScanModal } from './CameraScanModal';
 import { factInclusionWarning } from '../lib/fact-inclusion';
 import { nextDocumentVisibility, removesFromReturn } from '../lib/document-visibility';
+import { formatEuro } from '../lib/money';
+import { ToastBanner, type ToastMessage } from './ui/ToastBanner';
+import { ConfirmDialog } from './ui/ConfirmDialog';
+import { TableSkeleton } from './ui/Skeleton';
+import { EmptyState } from './ui/EmptyState';
+import { StatusBadge } from './ui/StatusBadge';
 
 interface DocumentsViewProps {
   workspaceId: string;
@@ -25,18 +44,23 @@ export function DocumentsView({ workspaceId, members = [], onFactsChanged }: Doc
   const [documents, setDocuments] = useState<DocumentDto[]>([]);
   const [extractedFacts, setExtractedFacts] = useState<ExtractedFactDto[]>([]);
   const [selectedOwnerFilter, setSelectedOwnerFilter] = useState<string>('ALL');
+  const [visibilityFilter, setVisibilityFilter] = useState<string>('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
   const [uploadOwnerId, setUploadOwnerId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [bulkConfirming, setBulkConfirming] = useState(false);
   const [reextractingId, setReextractingId] = useState<string | null>(null);
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [pendingDeleteDoc, setPendingDeleteDoc] = useState<DocumentDto | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [feedback, setFeedback] = useState<ToastMessage | null>(null);
 
   const showFeedback = (type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
-    setTimeout(() => setFeedback(null), 4000);
+    setTimeout(() => setFeedback((curr) => (curr?.message === message ? null : curr)), 4500);
   };
 
   // Documents are always uploaded as private drafts. The state the user asked
@@ -76,10 +100,7 @@ export function DocumentsView({ workspaceId, members = [], onFactsChanged }: Doc
     refresh();
   }, [workspaceId]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processSelectedFile = (file: File) => {
     setUploading(true);
     const reader = new FileReader();
     reader.onload = async () => {
@@ -120,6 +141,21 @@ export function DocumentsView({ workspaceId, members = [], onFactsChanged }: Doc
     };
 
     reader.readAsDataURL(file);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    processSelectedFile(file);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (uploading) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file) processSelectedFile(file);
   };
 
   const handleUploadSampleSalarySlip = async () => {
@@ -186,14 +222,18 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
     if (res.error) {
       showFeedback('error', res.error);
     } else {
-      showFeedback('success', `Document visibility changed to ${nextVis}`);
+      showFeedback('success', `Document visibility changed to ${nextVis.replace(/_/g, ' ')}`);
       await refresh();
     }
   };
 
-  const handleDelete = async (docId: string) => {
-    if (!confirm('Are you sure you want to delete this document? Extracted figures will be unlinked.')) return;
-    const res = await apiClient.deleteDocument(workspaceId, docId);
+  const handleConfirmDelete = async () => {
+    if (!pendingDeleteDoc) return;
+    setDeleting(true);
+    const res = await apiClient.deleteDocument(workspaceId, pendingDeleteDoc.id);
+    setDeleting(false);
+    setPendingDeleteDoc(null);
+
     if (res.error) {
       showFeedback('error', res.error);
     } else {
@@ -242,7 +282,6 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
       category = FactCategory.OTHER_DEDUCTION;
     }
 
-
     const res = await apiClient.confirmFact(workspaceId, {
       extractedFactId: fact.id,
       category,
@@ -263,9 +302,9 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
     // Never report that as included.
     const inclusionWarning = factInclusionWarning(true, res.data?.isIncludedInReturn);
     if (inclusionWarning) {
-      showFeedback('error', `Confirmed €${fact.fieldValue} (${fact.fieldName}). ${inclusionWarning}`);
+      showFeedback('error', `Confirmed ${formatEuro(fact.fieldValue)} (${fact.fieldName}). ${inclusionWarning}`);
     } else {
-      showFeedback('success', `Confirmed €${fact.fieldValue} (${fact.fieldName}) into return facts!`);
+      showFeedback('success', `Confirmed ${formatEuro(fact.fieldValue)} (${fact.fieldName}) into return facts!`);
     }
 
     await refresh();
@@ -340,47 +379,61 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
     .filter((f) => !f.isConfirmed)
     .sort((a, b) => b.confidence - a.confidence);
 
+  const filteredDocuments = useMemo(() => {
+    return documents.filter((d) => {
+      if (selectedOwnerFilter !== 'ALL' && d.ownerId !== selectedOwnerFilter) return false;
+      if (visibilityFilter !== 'ALL' && d.visibility !== visibilityFilter) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesName = d.originalName.toLowerCase().includes(q);
+        const matchesType = d.documentType.toLowerCase().includes(q);
+        const matchesOwner = (d.ownerEmail || '').toLowerCase().includes(q);
+        if (!matchesName && !matchesType && !matchesOwner) return false;
+      }
+      return true;
+    });
+  }, [documents, selectedOwnerFilter, visibilityFilter, searchQuery]);
+
   return (
     <div className="space-y-6">
-      {/* Toast Feedback */}
-      {feedback && (
-        <div
-          className={`p-4 rounded-xl text-sm font-semibold flex items-center justify-between border ${
-            feedback.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border-rose-200'
-          }`}
-        >
-          <span>{feedback.message}</span>
-          <button
-            onClick={() => setFeedback(null)}
-            aria-label="Dismiss notification"
-            className="text-xs opacity-60 hover:opacity-100"
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      <ToastBanner feedback={feedback} onDismiss={() => setFeedback(null)} />
 
-      {/* Upload Box */}
-      <div className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-6 text-center hover:border-sky-500 transition-colors">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-sky-50 text-sky-600 mb-3">
-          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-          </svg>
+      {/* Upload Dropzone */}
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (!uploading) setIsDragging(true);
+        }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={handleDrop}
+        className={`rounded-2xl border-2 border-dashed p-7 text-center transition-colors ${
+          isDragging
+            ? 'border-sky-500 bg-sky-50/70'
+            : 'border-slate-300 bg-white hover:border-sky-400'
+        }`}
+      >
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-sky-700 ring-1 ring-sky-200/70">
+          {uploading ? (
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+          ) : (
+            <UploadCloud className="h-5 w-5" aria-hidden="true" />
+          )}
         </div>
-        <h3 className="text-sm font-semibold text-slate-900">Upload or Scan Tax Evidence</h3>
-        <p className="text-xs text-slate-500 mt-1 mb-4">
-          Scan receipts (crèche, domestic help, donations) or upload official certificates (PDF, JPG, PNG).
+        <h3 className="text-sm font-bold text-slate-900">Upload or Scan Tax Evidence</h3>
+        <p className="mx-auto mt-1 mb-4 max-w-lg text-xs text-slate-500 text-pretty">
+          Drag and drop a file here, scan receipts (crèche, domestic help, donations), or upload official certificates (PDF, JPG, PNG, TXT).
         </p>
 
         {members.length > 0 && (
-          <div className="mb-4 inline-flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
-            <span className="font-semibold text-slate-600">Attribute to Spouse:</span>
+          <div className="mb-4 inline-flex items-center gap-2 rounded-xl border border-zinc-200/80 bg-zinc-50/80 px-3 py-1.5 text-xs">
+            <label htmlFor="doc-upload-owner" className="font-semibold text-zinc-600">
+              Attribute to Spouse:
+            </label>
             <select
+              id="doc-upload-owner"
               value={uploadOwnerId}
               onChange={(e) => setUploadOwnerId(e.target.value)}
-              className="bg-white border border-slate-300 rounded px-2 py-0.5 font-medium text-slate-800"
+              className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-950 focus:border-zinc-950 focus:outline-none"
             >
               <option value="">Household / Primary</option>
               {members.map((m) => (
@@ -392,18 +445,19 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
           </div>
         )}
 
-        <div className="flex flex-wrap items-center justify-center gap-3">
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
           <button
             type="button"
             onClick={() => setIsCameraModalOpen(true)}
             disabled={uploading}
-            className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-500 transition space-x-1.5"
+            className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-zinc-200/90 bg-white px-4 py-2.5 text-xs font-semibold text-zinc-800 shadow-2xs transition hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.98] disabled:opacity-50"
           >
-            <span>📷</span>
+            <Camera className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
             <span>Scan with Camera</span>
           </button>
 
-          <label className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-sky-500 transition">
+          <label className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98]">
+            <UploadCloud className="h-3.5 w-3.5" aria-hidden="true" />
             <span>{uploading ? 'Processing & Extracting...' : 'Select Local File'}</span>
             <input
               type="file"
@@ -418,67 +472,74 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
             type="button"
             onClick={handleUploadSampleSalarySlip}
             disabled={uploading}
-            className="rounded-lg border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-bold text-sky-700 hover:bg-sky-100 transition disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200/90 bg-white px-4 py-2.5 text-xs font-semibold text-zinc-800 shadow-2xs transition hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.98] disabled:opacity-50"
           >
-            ⚡ Upload Sample 2025 Salary Slip
+            <Sparkles className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+            <span>Upload Sample 2025 Salary Slip</span>
           </button>
         </div>
       </div>
 
-
       {/* Extracted Facts Awaiting Confirmation */}
       {unconfirmedFacts.length > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-5">
-          <div className="flex items-center justify-between mb-3">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5 shadow-2xs">
+          <div className="mb-3.5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h4 className="text-sm font-bold text-amber-900">
-                Extracted Figures Awaiting Your Confirmation
-                    {" "}<HelpTip id="factConfidence" /> ({unconfirmedFacts.length})
+              <h4 className="flex items-center gap-1.5 text-sm font-bold text-amber-950">
+                <span>Extracted Figures Awaiting Your Confirmation</span>
+                <HelpTip id="factConfidence" />
+                <span className="tabular-nums rounded-full bg-amber-200/70 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+                  {unconfirmedFacts.length}
+                </span>
               </h4>
-              <p className="text-xs text-amber-700 mt-0.5">
-                These numbers were read from your documents. Confirm them to include them in your 2025 calculation.
+              <p className="mt-0.5 text-xs text-amber-800">
+                These numbers were read from your documents. Confirm them to include them in your tax calculation.
               </p>
             </div>
             <button
+              type="button"
               onClick={handleConfirmAll}
               disabled={bulkConfirming}
-              className="rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-500 transition disabled:opacity-50 shrink-0"
+              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50"
             >
-              {bulkConfirming ? 'Confirming…' : `Confirm all ${unconfirmedFacts.length}`}
+              <CheckCheck className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+              <span>{bulkConfirming ? 'Confirming…' : `Confirm all ${unconfirmedFacts.length}`}</span>
             </button>
           </div>
 
-          <div className="divide-y divide-amber-200/60 rounded-lg border border-amber-200 bg-white">
+          <div className="divide-y divide-amber-200/70 overflow-hidden rounded-xl border border-amber-200 bg-white">
             {unconfirmedFacts.map((fact) => (
               <div
                 key={fact.id}
-                className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3"
+                className="flex flex-col justify-between gap-3 p-4 sm:flex-row sm:items-center"
               >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-md bg-zinc-100 px-2 py-0.5 font-mono text-xs font-bold text-zinc-950">
                       {fact.fieldName}
                     </span>
-                    <span className="text-sm font-black text-slate-900">
-                      €{parseFloat(fact.fieldValue).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    <span className="tabular-nums text-sm font-extrabold text-zinc-950">
+                      {formatEuro(fact.fieldValue)}
                     </span>
-                    <span className="rounded bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
-                      Confidence: {(fact.confidence * 100).toFixed(0)}%
-                    </span>
+                    <StatusBadge tone="info">
+                      <span className="tabular-nums">Confidence: {(fact.confidence * 100).toFixed(0)}%</span>
+                    </StatusBadge>
                   </div>
                   {fact.sourceSnippet && (
-                    <span className="text-[11px] text-slate-400 mt-1 block font-mono">
+                    <span className="mt-1.5 block truncate font-mono text-[11px] text-zinc-500">
                       Source: &quot;{fact.sourceSnippet}&quot;
                     </span>
                   )}
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => handleConfirmExtractedFact(fact)}
                   disabled={confirmingId === fact.id}
-                  className="rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-500 transition disabled:opacity-50"
+                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50"
                 >
-                  {confirmingId === fact.id ? 'Confirming...' : '✓ Confirm Figure into Return'}
+                  <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+                  <span>{confirmingId === fact.id ? 'Confirming...' : 'Confirm Figure into Return'}</span>
                 </button>
               </div>
             ))}
@@ -487,18 +548,55 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
       )}
 
       {/* Uploaded Documents Table */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h3 className="text-sm font-bold text-slate-900">
-            Document Vault
-                    {" "}<HelpTip id="documentVault" /> ({documents.length})
-          </h3>
-          <div className="flex items-center gap-3">
+      <div className="overflow-hidden rounded-2xl border border-zinc-200/85 bg-white shadow-[0_1px_2px_rgba(9,9,11,0.03)]">
+        <div className="flex flex-col justify-between gap-4 border-b border-zinc-200 px-6 py-4 lg:flex-row lg:items-center">
+          <div>
+            <h3 className="flex items-center gap-1.5 text-sm font-bold text-zinc-950">
+              <span>Document Vault</span>
+              <HelpTip id="documentVault" />
+              <span className="tabular-nums rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-semibold text-zinc-700">
+                {documents.length}
+              </span>
+            </h3>
+            <p className="mt-0.5 text-xs text-zinc-500">
+              Click a visibility badge to cycle between Private Draft, Shared for Discussion, and Included in Return.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400"
+                aria-hidden="true"
+              />
+              <input
+                type="text"
+                aria-label="Search documents"
+                placeholder="Search files..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-44 rounded-xl border border-zinc-200 bg-white py-1.5 pr-3 pl-8 text-xs text-zinc-950 placeholder:text-zinc-400 focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
+              />
+            </div>
+
+            <select
+              aria-label="Filter by visibility"
+              value={visibilityFilter}
+              onChange={(e) => setVisibilityFilter(e.target.value)}
+              className="rounded-xl border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-800 focus:border-zinc-950 focus:outline-none"
+            >
+              <option value="ALL">All Visibilities</option>
+              <option value={DocumentVisibility.INCLUDED_IN_RETURN}>Included in Return</option>
+              <option value={DocumentVisibility.SHARED_FOR_DISCUSSION}>Shared for Discussion</option>
+              <option value={DocumentVisibility.PRIVATE_DRAFT}>Private Draft</option>
+            </select>
+
             {members.length > 1 && (
               <select
+                aria-label="Filter by spouse"
                 value={selectedOwnerFilter}
                 onChange={(e) => setSelectedOwnerFilter(e.target.value)}
-                className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-slate-700 font-medium"
+                className="rounded-xl border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-800 focus:border-zinc-950 focus:outline-none"
               >
                 <option value="ALL">All Spouses</option>
                 {members.map((m) => (
@@ -508,98 +606,222 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                 ))}
               </select>
             )}
-            <button onClick={refresh} className="text-xs text-sky-600 hover:text-sky-700 font-semibold">
-              Refresh
+
+            <button
+              type="button"
+              onClick={refresh}
+              aria-label="Refresh documents"
+              className="inline-flex items-center gap-1 rounded-xl border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950"
+            >
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Refresh</span>
             </button>
           </div>
         </div>
 
         {loading ? (
-          <div className="p-8 text-center text-sm text-slate-500">Loading documents...</div>
+          <TableSkeleton rows={4} />
         ) : documents.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            No documents uploaded yet. Upload a tax certificate above or click Upload Sample.
-          </div>
+          <EmptyState
+            icon={<FileText className="h-5 w-5" aria-hidden="true" />}
+            title="Your document vault is empty"
+            description="Upload salary certificates, mortgage interest statements, or receipts above, or try the sample 2025 salary certificate."
+            actions={
+              <button
+                type="button"
+                onClick={handleUploadSampleSalarySlip}
+                disabled={uploading}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-sky-400" aria-hidden="true" />
+                <span>Upload Sample 2025 Salary Slip</span>
+              </button>
+            }
+          />
+        ) : filteredDocuments.length === 0 ? (
+          <EmptyState
+            icon={<Search className="h-5 w-5" aria-hidden="true" />}
+            title="No documents match your filters"
+            description="Adjust your search query or clear the visibility/spouse filter to see all uploaded files."
+            actions={
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setVisibilityFilter('ALL');
+                  setSelectedOwnerFilter('ALL');
+                }}
+                className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Clear filters
+              </button>
+            }
+          />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 border-b border-slate-200">
-                <tr>
-                  <th className="px-6 py-3">File Name</th>
-                  <th className="px-6 py-3">Spouse</th>
-                  <th className="px-6 py-3">Document Type</th>
-                  <th className="px-6 py-3">Visibility{" "}<HelpTip id="documentVisibility" /></th>
-                  <th className="px-6 py-3">Uploaded</th>
-                  <th className="px-6 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {documents
-                  .filter((d) => selectedOwnerFilter === 'ALL' || d.ownerId === selectedOwnerFilter)
-                  .map((doc) => {
+          <>
+            {/* Mobile Card List (< 768px) */}
+            <div className="divide-y divide-zinc-100 md:hidden">
+              {filteredDocuments.map((doc) => {
+                const owner = members.find((m) => m.userId === doc.ownerId);
+                return (
+                  <div key={doc.id} className="space-y-3 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-2.5">
+                        <FileText className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-zinc-950">
+                            {doc.originalName}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-zinc-500">
+                            {doc.ownerEmail || owner?.user?.email || 'Household'} ·{' '}
+                            <span className="tabular-nums">
+                              {new Date(doc.createdAt).toLocaleDateString()}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+                      <span className="shrink-0 rounded-md bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-700">
+                        {doc.documentType.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleVisibility(doc)}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition active:scale-[0.98] ${
+                          doc.visibility === DocumentVisibility.INCLUDED_IN_RETURN
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                            : doc.visibility === DocumentVisibility.SHARED_FOR_DISCUSSION
+                            ? 'border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100'
+                            : 'border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                        }`}
+                      >
+                        <span>{doc.visibility.replace(/_/g, ' ')}</span>
+                        <RotateCw className="h-3 w-3 opacity-70" aria-hidden="true" />
+                      </button>
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleReextract(doc.id)}
+                          disabled={reextractingId === doc.id}
+                          className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
+                        >
+                          <RefreshCw
+                            className={`h-3 w-3 ${reextractingId === doc.id ? 'animate-spin' : ''}`}
+                            aria-hidden="true"
+                          />
+                          <span>{reextractingId === doc.id ? 'Reading…' : 'Re-scan'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPendingDeleteDoc(doc)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                        >
+                          <Trash2 className="h-3 w-3" aria-hidden="true" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop / Tablet Table (>= 768px) */}
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-zinc-200 bg-zinc-50/90 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                  <tr>
+                    <th className="px-6 py-3">File Name</th>
+                    <th className="px-6 py-3">Spouse</th>
+                    <th className="px-6 py-3">Document Type</th>
+                    <th className="px-6 py-3">
+                      Visibility <HelpTip id="documentVisibility" />
+                    </th>
+                    <th className="px-6 py-3">Uploaded</th>
+                    <th className="px-6 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {filteredDocuments.map((doc) => {
                     const owner = members.find((m) => m.userId === doc.ownerId);
                     return (
-                      <tr key={doc.id} className="hover:bg-slate-50/50">
-                        <td className="px-6 py-4 font-medium text-slate-900">
-                          {doc.originalName}
+                      <tr key={doc.id} className="transition-colors hover:bg-zinc-50/70">
+                        <td className="px-6 py-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <FileText className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
+                            <span className="font-semibold text-zinc-950">{doc.originalName}</span>
+                          </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700 font-medium">
+                        <td className="px-6 py-3.5">
+                          <StatusBadge tone="neutral">
                             {doc.ownerEmail || (owner?.user?.email || 'Household')}
-                          </span>
+                          </StatusBadge>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                        <td className="px-6 py-3.5">
+                          <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-700">
                             {doc.documentType.replace(/_/g, ' ')}
                           </span>
                           {doc.ocrRequired && (
                             <span className="ml-2 inline-flex items-center gap-1 align-middle">
-                              <span className="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
-                                Needs OCR
-                              </span>
+                              <StatusBadge tone="warning">Needs OCR</StatusBadge>
                               <HelpTip id="needsOcr" />
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-3.5">
                           <button
+                            type="button"
                             onClick={() => handleToggleVisibility(doc)}
-                            className={`rounded px-2 py-0.5 text-xs font-semibold transition ${
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition active:scale-[0.98] ${
                               doc.visibility === DocumentVisibility.INCLUDED_IN_RETURN
-                                ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
                                 : doc.visibility === DocumentVisibility.SHARED_FOR_DISCUSSION
-                                ? 'bg-purple-50 text-purple-700 hover:bg-purple-100'
-                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                ? 'border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100'
+                                : 'border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
                             }`}
-                            title="Click to toggle visibility"
+                            title="Click to cycle visibility"
                           >
-                            {doc.visibility.replace(/_/g, ' ')} ↻
+                            <span>{doc.visibility.replace(/_/g, ' ')}</span>
+                            <RotateCw className="h-3 w-3 opacity-70" aria-hidden="true" />
                           </button>
                         </td>
-                        <td className="px-6 py-4 text-xs text-slate-500">
+                        <td className="tabular-nums px-6 py-3.5 text-xs text-zinc-500">
                           {new Date(doc.createdAt).toLocaleDateString()}
                         </td>
-                        <td className="px-6 py-4 text-right space-x-3 whitespace-nowrap">
-                          <button
-                            onClick={() => handleReextract(doc.id)}
-                            disabled={reextractingId === doc.id}
-                            className="text-xs text-sky-600 hover:text-sky-700 font-semibold disabled:opacity-50"
-                          >
-                            {reextractingId === doc.id ? 'Reading…' : 'Re-scan'}
-                          </button>
-                          <button
-                            onClick={() => handleDelete(doc.id)}
-                            className="text-xs text-rose-600 hover:text-rose-700 font-semibold"
-                          >
-                            Delete
-                          </button>
+                        <td className="whitespace-nowrap px-6 py-3.5 text-right">
+                          <div className="inline-flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => handleReextract(doc.id)}
+                              disabled={reextractingId === doc.id}
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 transition hover:text-sky-800 disabled:opacity-50"
+                            >
+                              <RefreshCw
+                                className={`h-3 w-3 ${reextractingId === doc.id ? 'animate-spin' : ''}`}
+                                aria-hidden="true"
+                              />
+                              <span>{reextractingId === doc.id ? 'Reading…' : 'Re-scan'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPendingDeleteDoc(doc)}
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 transition hover:text-rose-700"
+                            >
+                              <Trash2 className="h-3 w-3" aria-hidden="true" />
+                              <span>Delete</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
                   })}
-              </tbody>
-            </table>
-          </div>
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
@@ -615,7 +837,21 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
         }}
         onError={(err) => showFeedback('error', err)}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={pendingDeleteDoc !== null}
+        title="Delete document from vault?"
+        description={
+          pendingDeleteDoc
+            ? `Are you sure you want to delete "${pendingDeleteDoc.originalName}"? Extracted figures from this document will be unlinked.`
+            : ''
+        }
+        confirmLabel="Delete Document"
+        busy={deleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setPendingDeleteDoc(null)}
+      />
     </div>
   );
 }
-

@@ -1,6 +1,22 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import {
+  Activity,
+  BarChart3,
+  Check,
+  Cpu,
+  ExternalLink,
+  Loader2,
+  Pencil,
+  Plus,
+  RefreshCw,
+  ScrollText,
+  ShieldAlert,
+  ShieldCheck,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { HelpTip } from './HelpTip';
 import { apiClient } from '../lib/api';
 import {
@@ -12,10 +28,13 @@ import {
   EvaluationRunDto,
   AuditEventDto,
   TaxDeadlineDto,
-  CreateModelDto,
-  UpdateModelRouteDto,
 } from '@luxtax/contracts';
 import { LUXEMBOURG_TAX_TERMS } from '@luxtax/design-tokens';
+import { ToastBanner, type ToastMessage } from './ui/ToastBanner';
+import { Modal } from './ui/Modal';
+import { ConfirmDialog } from './ui/ConfirmDialog';
+import { CardGridSkeleton, Skeleton } from './ui/Skeleton';
+import { StatusBadge } from './ui/StatusBadge';
 
 interface ModelPreset {
   readonly name: string;
@@ -109,14 +128,11 @@ export function AdminConsoleView() {
   const [auditEvents, setAuditEvents] = useState<readonly AuditEventDto[]>([]);
   const [activeSubTab, setActiveSubTab] = useState<'rules' | 'models' | 'evals' | 'audit'>('rules');
   const [loading, setLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Notifications & State
-  const [notification, setNotification] = useState<{
-    type: 'success' | 'error' | 'info';
-    message: string;
-  } | null>(null);
+  const [notification, setNotification] = useState<ToastMessage | null>(null);
 
-  // Register Model Modal
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [registerForm, setRegisterForm] = useState<{
     displayName: string;
@@ -147,7 +163,6 @@ export function AdminConsoleView() {
   const [isModalTesting, setIsModalTesting] = useState(false);
   const [isSubmittingModel, setIsSubmittingModel] = useState(false);
 
-  // Model Testing State
   const [testingModelId, setTestingModelId] = useState<string | null>(null);
   const [probeResults, setProbeResults] = useState<
     Record<
@@ -162,7 +177,9 @@ export function AdminConsoleView() {
     >
   >({});
 
-  // Route Editing Modal
+  const [pendingDeleteModel, setPendingDeleteModel] = useState<ModelDefinitionDto | null>(null);
+  const [deletingModel, setDeletingModel] = useState(false);
+
   const [editingRoute, setEditingRoute] = useState<ModelRouteDto | null>(null);
   const [routeForm, setRouteForm] = useState<{
     primaryModelId: string;
@@ -188,6 +205,8 @@ export function AdminConsoleView() {
 
   const loadAdminData = async () => {
     setLoading(true);
+    setAccessDenied(false);
+    setLoadError(null);
     try {
       const [ovRes, rulesRes, deadlinesRes, formsRes, modelsRes, routesRes, evalsRes, auditRes] =
         await Promise.all([
@@ -201,6 +220,17 @@ export function AdminConsoleView() {
           apiClient.getAdminAudit({ limit: 15 }),
         ]);
 
+      if (ovRes.status === 403 || rulesRes.status === 403) {
+        setAccessDenied(true);
+        setOverview(null);
+        setLoading(false);
+        return;
+      }
+
+      if (ovRes.error && !ovRes.data) {
+        setLoadError(ovRes.error);
+      }
+
       if (ovRes.data) setOverview(ovRes.data);
       if (rulesRes.data) setTaxRules(rulesRes.data);
       if (deadlinesRes.data) setDeadlines(deadlinesRes.data);
@@ -210,6 +240,7 @@ export function AdminConsoleView() {
       if (evalsRes.data) setEvaluations(evalsRes.data);
       if (auditRes.data) setAuditEvents(auditRes.data);
     } catch (err: any) {
+      setLoadError(err?.message || 'Failed to load admin console');
       showToast('error', `Failed to load admin data: ${err.message}`);
     } finally {
       setLoading(false);
@@ -332,9 +363,9 @@ export function AdminConsoleView() {
           [model.id]: res.data!,
         }));
         if (res.data.success) {
-          showToast('success', `⚡ ${model.displayName} responded in ${res.data.latencyMs}ms (HTTP ${res.data.statusCode})`);
+          showToast('success', `${model.displayName} responded in ${res.data.latencyMs}ms (HTTP ${res.data.statusCode})`);
         } else {
-          showToast('error', `⚡ ${model.displayName} probe returned HTTP ${res.data.statusCode}: ${res.data.message}`);
+          showToast('error', `${model.displayName} probe returned HTTP ${res.data.statusCode}: ${res.data.message}`);
         }
         await loadAdminData();
       } else {
@@ -364,20 +395,22 @@ export function AdminConsoleView() {
     }
   };
 
-  const handleDeleteModel = async (model: ModelDefinitionDto) => {
-    if (!confirm(`Are you sure you want to delete model "${model.displayName}" (${model.modelIdentifier})? This action is permanent.`)) {
-      return;
-    }
+  const handleConfirmDeleteModel = async () => {
+    if (!pendingDeleteModel) return;
+    setDeletingModel(true);
     try {
-      const res = await apiClient.deleteAdminModel(model.id);
+      const res = await apiClient.deleteAdminModel(pendingDeleteModel.id);
       if (res.error) {
         showToast('error', `Cannot delete model: ${res.error}`);
       } else {
-        showToast('success', `Model "${model.displayName}" removed from catalog.`);
+        showToast('success', `Model "${pendingDeleteModel.displayName}" removed from catalog.`);
         await loadAdminData();
       }
     } catch (err: any) {
       showToast('error', err.message);
+    } finally {
+      setDeletingModel(false);
+      setPendingDeleteModel(null);
     }
   };
 
@@ -421,205 +454,236 @@ export function AdminConsoleView() {
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-slate-500">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-sky-600 border-t-transparent mx-auto mb-2" />
-        <p className="text-sm">Loading admin governance console...</p>
+      <div className="space-y-6">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-3">
+          <Skeleton className="h-5 w-64" />
+          <Skeleton className="h-3.5 w-96 max-w-full" />
+        </div>
+        <CardGridSkeleton count={3} />
+      </div>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-8 shadow-xs">
+        <div className="mx-auto max-w-md text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 text-amber-700">
+            <ShieldAlert className="h-6 w-6" aria-hidden="true" />
+          </div>
+          <h2 className="text-base font-bold text-slate-900">Administrator Access Required</h2>
+          <p className="mt-1.5 text-xs leading-relaxed text-slate-600 text-pretty">
+            The platform governance console is restricted to accounts listed in{' '}
+            <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-800">
+              ADMIN_EMAILS
+            </code>{' '}
+            with a verified email address. Regular household filers do not need this section to file a return.
+          </p>
+          <button
+            type="button"
+            onClick={loadAdminData}
+            className="mt-5 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>Check Again</span>
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Toast Notification */}
-      {notification && (
+      <ToastBanner feedback={notification} onDismiss={() => setNotification(null)} />
+
+      {loadError && (
         <div
-          className={`flex items-center justify-between rounded-lg p-3 text-xs font-semibold shadow-sm transition-all ${
-            notification.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-              : notification.type === 'error'
-              ? 'bg-rose-50 text-rose-800 border border-rose-200'
-              : 'bg-sky-50 text-sky-800 border border-sky-200'
-          }`}
+          role="alert"
+          className="flex items-center justify-between gap-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800"
         >
-          <span>{notification.message}</span>
+          <span>{loadError}</span>
           <button
-            onClick={() => setNotification(null)}
-            className="text-slate-400 hover:text-slate-600 ml-4 font-bold text-sm"
+            type="button"
+            onClick={loadAdminData}
+            className="rounded-lg border border-rose-300 bg-white px-3 py-1 text-xs font-bold text-rose-800 hover:bg-rose-100"
           >
-            &times;
+            Retry
           </button>
         </div>
       )}
 
       {/* Top Banner */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-slate-900">Admin Governance & AI Model Console</h2>
-              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200">
-                ● {overview?.serviceHealth || 'HEALTHY'}
-              </span>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="text-lg font-bold text-slate-900">
+                Admin Governance &amp; AI Model Console
+              </h2>
+              {overview && (
+                <StatusBadge tone="success">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                  <span>{overview.serviceHealth}</span>
+                </StatusBadge>
+              )}
             </div>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="mt-1 text-xs text-slate-500">
               Versioned tax rule packages, Form 100 mappings, custom public model routing, and quality benchmarks
             </p>
           </div>
           <button
+            type="button"
             onClick={loadAdminData}
-            className="self-start rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition"
+            className="inline-flex items-center gap-1.5 self-start rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
           >
-            ↻ Refresh Metrics
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>Refresh Metrics</span>
           </button>
         </div>
 
         {/* Aggregate KPI Grid */}
         <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div className="rounded-lg bg-slate-50 p-4 border border-slate-100">
+          <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4">
             <p className="text-xs font-medium text-slate-500">Active Tax Years</p>
-            <p className="mt-1 text-2xl font-bold text-slate-900">
-              {overview?.activeTaxYears?.join(', ') || '2025'}
+            <p className="tabular-nums mt-1 text-2xl font-bold text-slate-900">
+              {overview?.activeTaxYears?.join(', ') || '—'}
             </p>
           </div>
-          <div className="rounded-lg bg-slate-50 p-4 border border-slate-100">
+          <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4">
             <p className="text-xs font-medium text-slate-500">Registered Models</p>
-            <p className="mt-1 text-2xl font-bold text-sky-600">
+            <p className="tabular-nums mt-1 text-2xl font-bold text-sky-700">
               {overview?.registeredModelsCount ?? models.length}
             </p>
           </div>
-          <div className="rounded-lg bg-slate-50 p-4 border border-slate-100">
+          <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4">
             <p className="text-xs font-medium text-slate-500">AI Task Routes</p>
-            <p className="mt-1 text-2xl font-bold text-indigo-600">
+            <p className="tabular-nums mt-1 text-2xl font-bold text-indigo-700">
               {overview?.activeRoutesCount ?? routes.length}
             </p>
           </div>
-          <div className="rounded-lg bg-slate-50 p-4 border border-slate-100">
+          <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4">
             <p className="text-xs font-medium text-slate-500">Audit Trail Events</p>
-            <p className="mt-1 text-2xl font-bold text-slate-900">
-              {overview?.totalAuditEvents || 0}
+            <p className="tabular-nums mt-1 text-2xl font-bold text-slate-900">
+              {overview?.totalAuditEvents ?? 0}
             </p>
           </div>
         </div>
       </div>
 
       {/* Subtabs */}
-      <div className="flex border-b border-slate-200 bg-white px-4 rounded-t-xl overflow-x-auto">
-        <button
-          onClick={() => setActiveSubTab('rules')}
-          className={`py-3 px-4 text-xs font-bold border-b-2 whitespace-nowrap transition ${
-            activeSubTab === 'rules'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          📜 Tax Rule Packages & Forms
-        </button>
-        <button
-          onClick={() => setActiveSubTab('models')}
-          className={`py-3 px-4 text-xs font-bold border-b-2 whitespace-nowrap transition ${
-            activeSubTab === 'models'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          🤖 Model Registry & Dynamic Routing
-        </button>
-        <button
-          onClick={() => setActiveSubTab('evals')}
-          className={`py-3 px-4 text-xs font-bold border-b-2 whitespace-nowrap transition ${
-            activeSubTab === 'evals'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          📊 Golden Benchmarks & Evals
-        </button>
-        <button
-          onClick={() => setActiveSubTab('audit')}
-          className={`py-3 px-4 text-xs font-bold border-b-2 whitespace-nowrap transition ${
-            activeSubTab === 'audit'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          🛡️ Global Audit Trail
-        </button>
+      <div className="flex gap-1 overflow-x-auto rounded-2xl border border-zinc-200/85 bg-white p-1.5 shadow-[0_1px_2px_rgba(9,9,11,0.03)]">
+        {[
+          { key: 'rules', label: 'Tax Rule Packages & Forms', icon: ScrollText },
+          { key: 'models', label: 'Model Registry & Dynamic Routing', icon: Cpu },
+          { key: 'evals', label: 'Golden Benchmarks & Evals', icon: BarChart3 },
+          { key: 'audit', label: 'Global Audit Trail', icon: ShieldCheck },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const active = activeSubTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveSubTab(tab.key as any)}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl px-4 py-2 text-xs font-bold transition ${
+                active
+                  ? 'bg-zinc-950 text-white shadow-xs'
+                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950'
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Subtab 1: Tax Rules & Forms */}
       {activeSubTab === 'rules' && (
         <div className="space-y-6">
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="text-sm font-bold text-slate-900 mb-4">
+          <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
+            <h3 className="mb-4 text-sm font-bold text-slate-900">
               Immutable Tax-Year Rule Packages
             </h3>
-            {taxRules.map((rule) => (
-              <div key={rule.id} className="rounded-lg border border-slate-200 p-4 bg-slate-50">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
-                  <div>
-                    <span className="text-sm font-bold text-slate-900">
-                      Tax Year {rule.taxYear} (Package {rule.version})
-                    </span>
-                    <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-                      {rule.status}
+            <div className="space-y-4">
+              {taxRules.map((rule) => (
+                <div key={rule.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-slate-900">
+                        Tax Year {rule.taxYear} (Package {rule.version})
+                      </span>
+                      <StatusBadge tone="success">{rule.status}</StatusBadge>
+                    </div>
+                    <span className="tabular-nums font-mono text-[11px] text-slate-500">
+                      Effective: {rule.effectiveDate}
                     </span>
                   </div>
-                  <span className="font-mono text-[10px] text-slate-500">
-                    Effective: {rule.effectiveDate}
-                  </span>
-                </div>
 
-                <div className="mt-3 grid grid-cols-2 gap-4 text-xs sm:grid-cols-4">
-                  <div>
-                    <span className="text-slate-500">Progressive Brackets:</span>
-                    <p className="font-semibold text-slate-800">{rule.progressiveScaleBrackets} Brackets (0% - 42%)</p>
+                  <div className="mt-3 grid grid-cols-2 gap-4 text-xs sm:grid-cols-4">
+                    <div>
+                      <span className="text-slate-500">Progressive Brackets</span>
+                      <p className="tabular-nums font-semibold text-slate-800">
+                        {rule.progressiveScaleBrackets} Brackets (0% - 42%)
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Splitting Method</span>
+                      <p className="font-semibold text-slate-800">
+                        {rule.splittingMethodEnabled ? 'Class 2 Splitting Active' : 'Disabled'}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Frais d&apos;obtention</span>
+                      <p className="tabular-nums font-semibold text-slate-800">
+                        €{rule.standardDeductionFrais} min/employee
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Primary Mortgage Cap</span>
+                      <p className="tabular-nums font-semibold text-slate-800">
+                        €{rule.primaryResidenceMortgageCap}/member
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-slate-500">Splitting Method:</span>
-                    <p className="font-semibold text-slate-800">
-                      {rule.splittingMethodEnabled ? 'Class 2 Splitting Active' : 'Disabled'}
+
+                  <div className="mt-4 border-t border-slate-200 pt-3">
+                    <span className="text-[11px] font-semibold text-slate-600">
+                      Package SHA-256 Integrity Checksum:
+                    </span>
+                    <p className="break-all font-mono text-[10px] text-slate-500">
+                      {rule.packageChecksum}
                     </p>
                   </div>
-                  <div>
-                    <span className="text-slate-500">Frais d&apos;obtention:</span>
-                    <p className="font-semibold text-slate-800">€{rule.standardDeductionFrais} min/employee</p>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">Primary Mortgage Cap:</span>
-                    <p className="font-semibold text-slate-800">€{rule.primaryResidenceMortgageCap}/member</p>
-                  </div>
                 </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-200">
-                  <span className="text-[11px] font-semibold text-slate-600">Package SHA-256 Integrity Checksum:</span>
-                  <p className="font-mono text-[10px] text-slate-500 break-all">{rule.packageChecksum}</p>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="text-sm font-bold text-slate-900 mb-4">Official Form 100 Box Mappings</h3>
+          <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
+            <h3 className="mb-4 text-sm font-bold text-slate-900">Official Form 100 Box Mappings</h3>
             {forms.map((form) => (
-              <div key={form.id}>
-                <p className="text-xs font-semibold text-slate-700 mb-2">
+              <div key={form.id} className="mb-4 last:mb-0">
+                <p className="mb-2 text-xs font-semibold text-slate-700">
                   Form: {form.formCode} ({form.version} — Tax Year {form.taxYear})
                 </p>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
                   <table className="w-full text-left text-xs text-slate-600">
                     <thead className="border-b border-slate-200 bg-slate-50 font-semibold text-slate-700">
                       <tr>
-                        <th className="py-2 px-3">Form 100 Box</th>
-                        <th className="py-2 px-3">Internal Domain Field</th>
-                        <th className="py-2 px-3">Description</th>
+                        <th className="px-3 py-2.5">Form 100 Box</th>
+                        <th className="px-3 py-2.5">Internal Domain Field</th>
+                        <th className="px-3 py-2.5">Description</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {form.boxMappings.map((box) => (
                         <tr key={box.boxNumber}>
-                          <td className="py-2 px-3 font-mono font-bold text-sky-700">Box {box.boxNumber}</td>
-                          <td className="py-2 px-3 font-mono text-slate-800">{box.fieldName}</td>
-                          <td className="py-2 px-3 text-slate-600">{box.description}</td>
+                          <td className="px-3 py-2 font-mono font-bold text-sky-700">
+                            Box {box.boxNumber}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-slate-800">{box.fieldName}</td>
+                          <td className="px-3 py-2 text-slate-600">{box.description}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -630,28 +694,29 @@ export function AdminConsoleView() {
           </div>
 
           {/* Statutory Filing Deadlines */}
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="text-sm font-bold text-slate-900 mb-2">Statutory Filing Deadlines & Schedules (§ 19)</h3>
-            <p className="text-xs text-slate-500 mb-4">
+          <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
+            <h3 className="mb-1 text-sm font-bold text-slate-900">
+              Statutory Filing Deadlines &amp; Schedules (§ 19)
+            </h3>
+            <p className="mb-4 text-xs text-slate-500">
               All official filing windows and legal deadlines are versioned per tax year from official ACD sources.
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               {deadlines.map((dl) => (
-                <div key={dl.id} className="rounded-lg border border-slate-200 p-4 bg-slate-50">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs text-slate-900">{dl.name}</span>
-                    <span className="rounded bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-800">
-                      {dl.deadlineDate}
-                    </span>
+                <div key={dl.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-900">{dl.name}</span>
+                    <StatusBadge tone="info">{dl.deadlineDate}</StatusBadge>
                   </div>
-                  <p className="text-xs text-slate-600 mt-2">{dl.description}</p>
+                  <p className="mt-2 text-xs text-slate-600">{dl.description}</p>
                   <a
                     href={dl.officialSourceUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-block mt-3 text-[11px] font-semibold text-sky-600 hover:underline"
+                    className="mt-3 inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 hover:underline"
                   >
-                    Official ACD Source &rarr;
+                    <span>Official ACD Source</span>
+                    <ExternalLink className="h-3 w-3" aria-hidden="true" />
                   </a>
                 </div>
               ))}
@@ -659,28 +724,32 @@ export function AdminConsoleView() {
           </div>
 
           {/* Multilingual Luxembourg Tax Terminology Reference */}
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h3 className="text-sm font-bold text-slate-900 mb-2">Multilingual Tax Dictionary (§ 18)</h3>
-            <p className="text-xs text-slate-500 mb-4">
+          <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
+            <h3 className="mb-1 text-sm font-bold text-slate-900">
+              Multilingual Tax Dictionary (§ 18)
+            </h3>
+            <p className="mb-4 text-xs text-slate-500">
               Curated official tax terminology across English, French, and German with legal statutory references.
             </p>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-left text-xs text-slate-600">
                 <thead className="border-b border-slate-200 bg-slate-50 font-semibold text-slate-700">
                   <tr>
-                    <th className="py-2 px-3">English (EN)</th>
-                    <th className="py-2 px-3">Français (FR)</th>
-                    <th className="py-2 px-3">Deutsch (DE)</th>
-                    <th className="py-2 px-3">Statutory Basis</th>
+                    <th className="px-3 py-2.5">English (EN)</th>
+                    <th className="px-3 py-2.5">Français (FR)</th>
+                    <th className="px-3 py-2.5">Deutsch (DE)</th>
+                    <th className="px-3 py-2.5">Statutory Basis</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {LUXEMBOURG_TAX_TERMS.map((term) => (
                     <tr key={term.key}>
-                      <td className="py-2 px-3 font-medium text-slate-900">{term.en}</td>
-                      <td className="py-2 px-3 text-slate-700">{term.fr}</td>
-                      <td className="py-2 px-3 text-slate-700">{term.de}</td>
-                      <td className="py-2 px-3 font-mono text-[11px] text-sky-700">{term.legalReference || '—'}</td>
+                      <td className="px-3 py-2 font-medium text-slate-900">{term.en}</td>
+                      <td className="px-3 py-2 text-slate-700">{term.fr}</td>
+                      <td className="px-3 py-2 text-slate-700">{term.de}</td>
+                      <td className="px-3 py-2 font-mono text-[11px] text-sky-700">
+                        {term.legalReference || '—'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -693,27 +762,27 @@ export function AdminConsoleView() {
       {/* Subtab 2: Models & Routes */}
       {activeSubTab === 'models' && (
         <div className="space-y-6">
-          {/* Header + Register Button */}
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+          <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
+            <div className="mb-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Provider-Neutral Model Registry</h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="mt-0.5 text-xs text-slate-500">
                   Integrate public AI models (OpenAI, Anthropic, Mistral, Groq) or private local inferences with live health probes and data protection fences.
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => {
                   setShowRegisterModal(true);
                   setModalTestResult(null);
                 }}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-sky-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-sky-700 transition"
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800"
               >
-                <span>➕</span> Integrate AI Model
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Integrate AI Model</span>
               </button>
             </div>
 
-            {/* Models Cards Grid */}
             <div className="grid gap-4 sm:grid-cols-2">
               {models.map((m) => {
                 const probe = probeResults[m.id];
@@ -722,129 +791,140 @@ export function AdminConsoleView() {
                 return (
                   <div
                     key={m.id}
-                    className={`rounded-lg border p-4 transition ${
-                      m.isCustom ? 'border-sky-200 bg-sky-50/20' : 'border-slate-200 bg-slate-50'
+                    className={`rounded-xl border p-4 transition ${
+                      m.isCustom
+                        ? 'border-sky-200 bg-sky-50/20'
+                        : 'border-slate-200 bg-slate-50/60'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-2">
                           <h4 className="text-xs font-bold text-slate-900">{m.displayName}</h4>
-                          {m.isCustom && (
-                            <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-800 border border-sky-200">
-                              CUSTOM
-                            </span>
-                          )}
+                          {m.isCustom && <StatusBadge tone="info">CUSTOM</StatusBadge>}
                         </div>
-                        <p className="font-mono text-[11px] text-slate-600 mt-0.5">{m.modelIdentifier}</p>
+                        <p className="mt-0.5 font-mono text-[11px] text-slate-600">
+                          {m.modelIdentifier}
+                        </p>
                       </div>
 
                       <div className="flex flex-col items-end gap-1">
-                        <span
-                          className={`rounded px-2 py-0.5 text-[10px] font-bold ${
-                            m.providerType === 'CUSTOM_PUBLIC'
-                              ? 'bg-purple-100 text-purple-800'
-                              : m.providerType === 'LOCAL'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-indigo-100 text-indigo-800'
-                          }`}
+                        <StatusBadge
+                          tone={
+                            m.providerType === 'LOCAL'
+                              ? 'success'
+                              : m.providerType === 'CUSTOM_PUBLIC'
+                              ? 'indigo'
+                              : 'info'
+                          }
                         >
                           {m.providerType}
-                        </span>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${
+                        </StatusBadge>
+                        <StatusBadge
+                          tone={
                             m.status === 'ACTIVE'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              ? 'success'
                               : m.status === 'CANARY'
-                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                              : 'bg-slate-200 text-slate-600'
-                          }`}
+                              ? 'warning'
+                              : 'neutral'
+                          }
                         >
                           {m.status}
-                        </span>
+                        </StatusBadge>
                       </div>
                     </div>
 
-                    {/* Endpoint & Key Info */}
                     {m.endpointUrl && (
-                      <div className="mt-2 text-[10px] font-mono text-slate-500 break-all bg-white/70 p-1.5 rounded border border-slate-200">
+                      <div className="mt-2.5 break-all rounded-lg border border-slate-200 bg-white/80 p-2 font-mono text-[10px] text-slate-500">
                         <span className="font-semibold text-slate-600">Endpoint: </span>
                         {m.endpointUrl}
                         {m.apiKeyMasked && (
-                          <span className="ml-2 text-indigo-600 font-bold">
+                          <span className="ml-2 font-bold text-indigo-700">
                             [Key: {m.apiKeyMasked}]
                           </span>
                         )}
                       </div>
                     )}
 
-                    {/* Capabilities & Tags */}
-                    <div className="mt-3 flex flex-wrap gap-1">
+                    <div className="mt-3 flex flex-wrap gap-1.5">
                       {m.capabilities.map((c) => (
-                        <span key={c} className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800">
+                        <span
+                          key={c}
+                          className="rounded-md bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-800"
+                        >
                           {c}
                         </span>
                       ))}
-                      <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
+                      <span className="rounded-md bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
                         Region: {m.hostingRegion}
                       </span>
-                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                      <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
                         {m.permittedDataClass}
                       </span>
                     </div>
 
-                    {/* Probe Result Box if triggered */}
                     {probe && (
                       <div
-                        className={`mt-3 p-2 rounded text-[11px] border ${
+                        className={`mt-3 rounded-xl border p-2.5 text-[11px] ${
                           probe.success
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                            : 'bg-rose-50 text-rose-800 border-rose-200'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            : 'border-rose-200 bg-rose-50 text-rose-800'
                         }`}
                       >
                         <div className="flex items-center justify-between font-bold">
-                          <span>{probe.success ? '✓ Probe Reached Endpoint' : '✗ Probe Failed'}</span>
-                          <span>{probe.latencyMs}ms</span>
+                          <span className="inline-flex items-center gap-1">
+                            {probe.success ? (
+                              <Check className="h-3 w-3" aria-hidden="true" />
+                            ) : (
+                              <X className="h-3 w-3" aria-hidden="true" />
+                            )}
+                            <span>{probe.success ? 'Probe Reached Endpoint' : 'Probe Failed'}</span>
+                          </span>
+                          <span className="tabular-nums">{probe.latencyMs}ms</span>
                         </div>
                         <p className="mt-0.5 text-[10px] opacity-90">{probe.message}</p>
                       </div>
                     )}
 
-                    {/* Action Bar */}
-                    <div className="mt-4 pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
+                    <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-200 pt-3">
                       <div className="flex items-center gap-1.5">
                         <span
                           className={`h-2 w-2 rounded-full ${
                             m.healthy ? 'bg-emerald-500' : 'bg-rose-500'
                           }`}
                         />
-                        <span className="text-[10px] font-semibold text-slate-600">
+                        <span className="tabular-nums text-[11px] font-semibold text-slate-600">
                           {m.healthy ? (m.latencyMs ? `Healthy (${m.latencyMs}ms)` : 'Healthy') : 'Degraded'}
                         </span>
                       </div>
 
                       <div className="flex items-center gap-1.5">
                         <button
+                          type="button"
                           onClick={() => handlePingModel(m)}
                           disabled={isTesting}
-                          className="rounded bg-white border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 transition shadow-xs disabled:opacity-50"
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 disabled:opacity-50"
                         >
-                          {isTesting ? '⚡ Probing...' : '⚡ Ping Test'}
+                          <Activity className="h-3 w-3" aria-hidden="true" />
+                          <span>{isTesting ? 'Probing...' : 'Ping Test'}</span>
                         </button>
 
                         <button
+                          type="button"
                           onClick={() => handleToggleModelStatus(m)}
-                          className="rounded bg-white border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 transition shadow-xs"
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50"
                         >
                           {m.status === 'ACTIVE' ? 'Disable' : 'Activate'}
                         </button>
 
                         {m.isCustom && (
                           <button
-                            onClick={() => handleDeleteModel(m)}
-                            className="rounded bg-rose-50 border border-rose-200 px-2 py-1 text-[10px] font-semibold text-rose-700 hover:bg-rose-100 transition shadow-xs"
+                            type="button"
+                            onClick={() => setPendingDeleteModel(m)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 shadow-2xs transition hover:bg-rose-100"
                           >
-                            🗑️ Delete
+                            <Trash2 className="h-3 w-3" aria-hidden="true" />
+                            <span>Delete</span>
                           </button>
                         )}
                       </div>
@@ -856,15 +936,15 @@ export function AdminConsoleView() {
           </div>
 
           {/* Task-Based Routing Section */}
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Task-Based Model Routing Policies
-                    {" "}<HelpTip id="modelRouting" /></h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Route Luxembourg tax processing tasks to specific primary and fallback models with traffic rollouts.
-                </p>
-              </div>
+          <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
+            <div className="mb-4">
+              <h3 className="flex items-center gap-1.5 text-sm font-bold text-slate-900">
+                <span>Task-Based Model Routing Policies</span>
+                <HelpTip id="modelRouting" />
+              </h3>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Route Luxembourg tax processing tasks to specific primary and fallback models with traffic rollouts.
+              </p>
             </div>
 
             <div className="space-y-3">
@@ -874,14 +954,12 @@ export function AdminConsoleView() {
                 return (
                   <div
                     key={r.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-slate-200 p-4 bg-slate-50 text-xs hover:border-slate-300 transition"
+                    className="flex flex-col justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-xs transition hover:border-slate-300 sm:flex-row sm:items-center"
                   >
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-indigo-700">{r.taskName}</span>
-                        <span className="rounded bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">
-                          {r.maxDataClass}
-                        </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono font-bold text-indigo-800">{r.taskName}</span>
+                        <StatusBadge tone="info">{r.maxDataClass}</StatusBadge>
                       </div>
 
                       <div className="text-[11px] text-slate-600">
@@ -889,21 +967,25 @@ export function AdminConsoleView() {
                         <strong className="text-slate-900">
                           {primaryModel ? primaryModel.displayName : r.primaryModelId}
                         </strong>{' '}
-                        <span className="font-mono text-[10px] text-slate-500">({r.primaryModelId})</span> • 
-                        Fallbacks: {r.fallbackModelIds.length ? r.fallbackModelIds.join(', ') : 'None'} • 
-                        Timeout: {r.timeoutMs}ms
+                        <span className="font-mono text-[10px] text-slate-500">
+                          ({r.primaryModelId})
+                        </span>{' '}
+                        • Fallbacks: {r.fallbackModelIds.length ? r.fallbackModelIds.join(', ') : 'None'} •
+                        Timeout: <span className="tabular-nums">{r.timeoutMs}ms</span>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3 self-end sm:self-center">
-                      <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
-                        {r.activeRolloutPercentage}% Rollout
-                      </span>
+                      <StatusBadge tone="neutral">
+                        <span className="tabular-nums">{r.activeRolloutPercentage}% Rollout</span>
+                      </StatusBadge>
                       <button
+                        type="button"
                         onClick={() => handleOpenEditRoute(r)}
-                        className="rounded-lg bg-white border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition shadow-xs"
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-100"
                       >
-                        ✏️ Edit Route Policy
+                        <Pencil className="h-3 w-3" aria-hidden="true" />
+                        <span>Edit Route Policy</span>
                       </button>
                     </div>
                   </div>
@@ -916,36 +998,47 @@ export function AdminConsoleView() {
 
       {/* Subtab 3: Golden Evaluations */}
       {activeSubTab === 'evals' && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-sm font-bold text-slate-900 mb-2">Luxembourg Golden Benchmark Evaluations</h3>
-          <p className="text-xs text-slate-500 mb-4">
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
+          <h3 className="mb-1 text-sm font-bold text-slate-900">
+            Luxembourg Golden Benchmark Evaluations
+          </h3>
+          <p className="mb-4 text-xs text-slate-500">
             No model route activates without exceeding the 90% exact-match and 0% hallucination thresholds on anonymised golden sets.
           </p>
           <div className="space-y-4">
             {evaluations.map((ev) => (
-              <div key={ev.id} className="rounded-lg border border-slate-200 p-4 bg-slate-50">
+              <div key={ev.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-slate-800">{ev.datasetName}</h4>
-                  <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800">
-                    ✓ Threshold Passed
-                  </span>
+                  <h4 className="text-xs font-bold text-slate-900">{ev.datasetName}</h4>
+                  <StatusBadge tone="success">
+                    <Check className="h-3 w-3" aria-hidden="true" />
+                    <span>Threshold Passed</span>
+                  </StatusBadge>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
                   <div>
-                    <span className="text-slate-500">Exact Match Rate:</span>
-                    <p className="text-sm font-bold text-emerald-600">{(ev.exactMatchRate * 100).toFixed(1)}%</p>
+                    <span className="text-slate-500">Exact Match Rate</span>
+                    <p className="tabular-nums text-sm font-bold text-emerald-700">
+                      {(ev.exactMatchRate * 100).toFixed(1)}%
+                    </p>
                   </div>
                   <div>
-                    <span className="text-slate-500">Schema Valid:</span>
-                    <p className="text-sm font-bold text-slate-800">{(ev.schemaValidRate * 100).toFixed(1)}%</p>
+                    <span className="text-slate-500">Schema Valid</span>
+                    <p className="tabular-nums text-sm font-bold text-slate-900">
+                      {(ev.schemaValidRate * 100).toFixed(1)}%
+                    </p>
                   </div>
                   <div>
-                    <span className="text-slate-500">Hallucination Rate:</span>
-                    <p className="text-sm font-bold text-emerald-600">{(ev.hallucinationRate * 100).toFixed(1)}%</p>
+                    <span className="text-slate-500">Hallucination Rate</span>
+                    <p className="tabular-nums text-sm font-bold text-emerald-700">
+                      {(ev.hallucinationRate * 100).toFixed(1)}%
+                    </p>
                   </div>
                   <div>
-                    <span className="text-slate-500">Avg Latency:</span>
-                    <p className="text-sm font-bold text-slate-800">{ev.avgLatencyMs} ms</p>
+                    <span className="text-slate-500">Avg Latency</span>
+                    <p className="tabular-nums text-sm font-bold text-slate-900">
+                      {ev.avgLatencyMs} ms
+                    </p>
                   </div>
                 </div>
               </div>
@@ -956,21 +1049,21 @@ export function AdminConsoleView() {
 
       {/* Subtab 4: Audit Trail */}
       {activeSubTab === 'audit' && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-sm font-bold text-slate-900 mb-2">Platform Immutable Audit Trail</h3>
-          <p className="text-xs text-slate-500 mb-4">
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
+          <h3 className="mb-1 text-sm font-bold text-slate-900">Platform Immutable Audit Trail</h3>
+          <p className="mb-4 text-xs text-slate-500">
             Append-only record of all administrative, authentication, and filing operations
           </p>
           <div className="divide-y divide-slate-100">
             {auditEvents.map((evt) => (
               <div key={evt.id} className="py-3 text-xs">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <span className="font-semibold text-slate-800">{evt.description}</span>
-                  <span className="font-mono text-[10px] text-slate-400">
+                  <span className="tabular-nums shrink-0 font-mono text-[10px] text-slate-400">
                     {new Date(evt.createdAt).toLocaleString()}
                   </span>
                 </div>
-                <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                   <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-700">
                     {evt.eventType}
                   </span>
@@ -982,415 +1075,428 @@ export function AdminConsoleView() {
         </div>
       )}
 
-      {/* ========================================================= */}
-      {/* MODAL 1: REGISTER CUSTOM AI MODEL                         */}
-      {/* ========================================================= */}
-      {showRegisterModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">Integrate AI Model (Public / Custom)</h3>
-                <p className="text-xs text-slate-500">
-                  Configure an OpenAI, Mistral, Anthropic, Groq, or custom public inference endpoint
-                </p>
-              </div>
-              <button
-                onClick={() => setShowRegisterModal(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-xl"
-              >
-                &times;
-              </button>
+      {/* MODAL 1: REGISTER CUSTOM AI MODEL */}
+      <Modal
+        isOpen={showRegisterModal}
+        onClose={() => setShowRegisterModal(false)}
+        titleId="register-model-modal-title"
+        title="Integrate AI Model (Public / Custom)"
+        subtitle="Configure an OpenAI, Mistral, Anthropic, Groq, or custom public inference endpoint"
+        icon={<Cpu className="h-4.5 w-4.5" aria-hidden="true" />}
+        maxWidthClass="max-w-2xl"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+              Quick Integration Presets
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {MODEL_PRESETS.map((p) => (
+                <button
+                  key={p.name}
+                  type="button"
+                  onClick={() => handleApplyPreset(p)}
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700 transition hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
+                >
+                  {p.name}
+                </button>
+              ))}
             </div>
+          </div>
 
-            {/* Quick Presets */}
-            <div className="mt-4">
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Quick Integration Presets
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {MODEL_PRESETS.map((p) => (
-                  <button
-                    key={p.name}
-                    type="button"
-                    onClick={() => handleApplyPreset(p)}
-                    className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700 hover:bg-sky-50 hover:border-sky-300 hover:text-sky-700 transition"
-                  >
-                    {p.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <form onSubmit={handleRegisterModelSubmit} className="mt-4 space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Display Name <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={registerForm.displayName}
-                    onChange={(e) =>
-                      setRegisterForm((prev) => ({ ...prev, displayName: e.target.value }))
-                    }
-                    placeholder="e.g. Mistral Large 2 (EU Public)"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-sky-500 focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Provider Type <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={registerForm.providerType}
-                    onChange={(e) =>
-                      setRegisterForm((prev) => ({
-                        ...prev,
-                        providerType: e.target.value as any,
-                      }))
-                    }
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-sky-500 focus:outline-hidden bg-white"
-                  >
-                    <option value="CUSTOM_PUBLIC">CUSTOM_PUBLIC (Public API Endpoint)</option>
-                    <option value="HOSTED">HOSTED (Managed Cloud Inference)</option>
-                    <option value="PRIVATE_CLOUD">PRIVATE_CLOUD (Dedicated VPC)</option>
-                    <option value="LOCAL">LOCAL (On-Premise / Edge Instance)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Model Identifier <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={registerForm.modelIdentifier}
-                    onChange={(e) =>
-                      setRegisterForm((prev) => ({ ...prev, modelIdentifier: e.target.value }))
-                    }
-                    placeholder="e.g. mistral-large-latest or gpt-4o"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs focus:border-sky-500 focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Hosting Region <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={registerForm.hostingRegion}
-                    onChange={(e) =>
-                      setRegisterForm((prev) => ({ ...prev, hostingRegion: e.target.value }))
-                    }
-                    placeholder="e.g. EU_WEST_1, GLOBAL_PUBLIC, EU_LOCAL"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-sky-500 focus:outline-hidden"
-                  />
-                </div>
-              </div>
-
+          <form onSubmit={handleRegisterModelSubmit} className="space-y-4 text-xs">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Endpoint URL (Base or Full Probe URL)
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={registerForm.endpointUrl}
-                    onChange={(e) =>
-                      setRegisterForm((prev) => ({ ...prev, endpointUrl: e.target.value }))
-                    }
-                    placeholder="https://api.mistral.ai/v1 or https://api.openai.com/v1"
-                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs focus:border-sky-500 focus:outline-hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleTestModalConnection}
-                    disabled={isModalTesting || !registerForm.endpointUrl}
-                    className="rounded-lg bg-slate-100 border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition disabled:opacity-50 whitespace-nowrap"
-                  >
-                    {isModalTesting ? '⚡ Probing...' : '⚡ Test Probe'}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  API Key / Secret Token (Protected Server-Side)
+                <label htmlFor="model-display-name" className="mb-1 block font-semibold text-slate-700">
+                  Display Name <span className="text-rose-500">*</span>
                 </label>
                 <input
-                  type="password"
-                  value={registerForm.apiKey}
+                  id="model-display-name"
+                  type="text"
+                  required
+                  value={registerForm.displayName}
                   onChange={(e) =>
-                    setRegisterForm((prev) => ({ ...prev, apiKey: e.target.value }))
+                    setRegisterForm((prev) => ({ ...prev, displayName: e.target.value }))
                   }
-                  placeholder="sk-..."
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs focus:border-sky-500 focus:outline-hidden"
+                  placeholder="e.g. Mistral Large 2 (EU Public)"
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-950 focus:border-zinc-950 focus:outline-none"
                 />
-                <p className="text-[10px] text-slate-500 mt-1">
-                  Keys are stored encrypted/protected on the server and never exposed to the frontend browser client.
-                </p>
-              </div>
-
-              {/* Probe Result Box in Modal */}
-              {modalTestResult && (
-                <div
-                  className={`p-3 rounded-lg border text-xs ${
-                    modalTestResult.success
-                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                      : 'bg-amber-50 text-amber-800 border-amber-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-bold">
-                    <span>{modalTestResult.success ? '✓ Probe Succeeded' : '⚠ Probe Result'}</span>
-                    <span>{modalTestResult.latencyMs}ms</span>
-                  </div>
-                  <p className="mt-1 text-[11px]">{modalTestResult.message}</p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Permitted Data Classification
-                    {" "}<HelpTip id="dataClass" />
-                  </label>
-                  <select
-                    value={registerForm.permittedDataClass}
-                    onChange={(e) =>
-                      setRegisterForm((prev) => ({
-                        ...prev,
-                        permittedDataClass: e.target.value as any,
-                      }))
-                    }
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-sky-500 focus:outline-hidden bg-white"
-                  >
-                    <option value="CUSTOMER_DOCUMENT">CUSTOMER_DOCUMENT (Strict Personal Data)</option>
-                    <option value="REDACTED_CUSTOMER">REDACTED_CUSTOMER (Anonymised / Masked)</option>
-                    <option value="SYNTHETIC">SYNTHETIC (Test Sets Only)</option>
-                    <option value="PUBLIC">PUBLIC (Non-PII Public Queries)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Initial Status</label>
-                  <select
-                    value={registerForm.status}
-                    onChange={(e) =>
-                      setRegisterForm((prev) => ({
-                        ...prev,
-                        status: e.target.value as any,
-                      }))
-                    }
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-sky-500 focus:outline-hidden bg-white"
-                  >
-                    <option value="ACTIVE">ACTIVE (Ready for Routing)</option>
-                    <option value="CANARY">CANARY (Shadow Testing Only)</option>
-                    <option value="DISABLED">DISABLED (Temporarily Offline)</option>
-                  </select>
-                </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Capabilities{" "}<HelpTip id="modelCapabilities" /></label>
-                <div className="flex flex-wrap gap-4 pt-1">
-                  {(['TEXT', 'VISION', 'EMBEDDING', 'RERANKING'] as const).map((cap) => {
-                    const isChecked = registerForm.capabilities.includes(cap);
+                <label htmlFor="model-provider-type" className="mb-1 block font-semibold text-zinc-700">
+                  Provider Type <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  id="model-provider-type"
+                  value={registerForm.providerType}
+                  onChange={(e) =>
+                    setRegisterForm((prev) => ({
+                      ...prev,
+                      providerType: e.target.value as any,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-950 focus:border-zinc-950 focus:outline-none"
+                >
+                  <option value="CUSTOM_PUBLIC">CUSTOM_PUBLIC (Public API Endpoint)</option>
+                  <option value="HOSTED">HOSTED (Managed Cloud Inference)</option>
+                  <option value="PRIVATE_CLOUD">PRIVATE_CLOUD (Dedicated VPC)</option>
+                  <option value="LOCAL">LOCAL (On-Premise / Edge Instance)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="model-identifier" className="mb-1 block font-semibold text-zinc-700">
+                  Model Identifier <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  id="model-identifier"
+                  type="text"
+                  required
+                  value={registerForm.modelIdentifier}
+                  onChange={(e) =>
+                    setRegisterForm((prev) => ({ ...prev, modelIdentifier: e.target.value }))
+                  }
+                  placeholder="e.g. mistral-large-latest or gpt-4o"
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 font-mono text-xs text-zinc-950 focus:border-zinc-950 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="model-region" className="mb-1 block font-semibold text-zinc-700">
+                  Hosting Region <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  id="model-region"
+                  type="text"
+                  required
+                  value={registerForm.hostingRegion}
+                  onChange={(e) =>
+                    setRegisterForm((prev) => ({ ...prev, hostingRegion: e.target.value }))
+                  }
+                  placeholder="e.g. EU_WEST_1, GLOBAL_PUBLIC, EU_LOCAL"
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-950 focus:border-zinc-950 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="model-endpoint-url" className="mb-1 block font-semibold text-zinc-700">
+                Endpoint URL (Base or Full Probe URL)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="model-endpoint-url"
+                  type="url"
+                  value={registerForm.endpointUrl}
+                  onChange={(e) =>
+                    setRegisterForm((prev) => ({ ...prev, endpointUrl: e.target.value }))
+                  }
+                  placeholder="https://api.mistral.ai/v1 or https://api.openai.com/v1"
+                  className="flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 font-mono text-xs text-zinc-950 focus:border-zinc-950 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleTestModalConnection}
+                  disabled={isModalTesting || !registerForm.endpointUrl}
+                  className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-800 shadow-2xs transition hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  <Activity className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{isModalTesting ? 'Probing...' : 'Test Probe'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="model-api-key" className="mb-1 block font-semibold text-zinc-700">
+                API Key / Secret Token (Protected Server-Side)
+              </label>
+              <input
+                id="model-api-key"
+                type="password"
+                value={registerForm.apiKey}
+                onChange={(e) =>
+                  setRegisterForm((prev) => ({ ...prev, apiKey: e.target.value }))
+                }
+                placeholder="sk-..."
+                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 font-mono text-xs text-zinc-950 focus:border-zinc-950 focus:outline-none"
+              />
+              <p className="mt-1 text-[10px] text-zinc-500">
+                Keys are stored encrypted/protected on the server and never exposed to the frontend browser client.
+              </p>
+            </div>
+
+            {modalTestResult && (
+              <div
+                className={`rounded-xl border p-3 text-xs ${
+                  modalTestResult.success
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                    : 'border-amber-200 bg-amber-50 text-amber-800'
+                }`}
+              >
+                <div className="flex items-center justify-between font-bold">
+                  <span>{modalTestResult.success ? 'Probe Succeeded' : 'Probe Result'}</span>
+                  <span className="tabular-nums">{modalTestResult.latencyMs}ms</span>
+                </div>
+                <p className="mt-1 text-[11px]">{modalTestResult.message}</p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="model-data-class" className="mb-1 block font-semibold text-zinc-700">
+                  Permitted Data Classification <HelpTip id="dataClass" />
+                </label>
+                <select
+                  id="model-data-class"
+                  value={registerForm.permittedDataClass}
+                  onChange={(e) =>
+                    setRegisterForm((prev) => ({
+                      ...prev,
+                      permittedDataClass: e.target.value as any,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-950 focus:border-zinc-950 focus:outline-none"
+                >
+                  <option value="CUSTOMER_DOCUMENT">CUSTOMER_DOCUMENT (Strict Personal Data)</option>
+                  <option value="REDACTED_CUSTOMER">REDACTED_CUSTOMER (Anonymised / Masked)</option>
+                  <option value="SYNTHETIC">SYNTHETIC (Test Sets Only)</option>
+                  <option value="PUBLIC">PUBLIC (Non-PII Public Queries)</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="model-status" className="mb-1 block font-semibold text-zinc-700">
+                  Initial Status
+                </label>
+                <select
+                  id="model-status"
+                  value={registerForm.status}
+                  onChange={(e) =>
+                    setRegisterForm((prev) => ({
+                      ...prev,
+                      status: e.target.value as any,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-950 focus:border-zinc-950 focus:outline-none"
+                >
+                  <option value="ACTIVE">ACTIVE (Ready for Routing)</option>
+                  <option value="CANARY">CANARY (Shadow Testing Only)</option>
+                  <option value="DISABLED">DISABLED (Temporarily Offline)</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <span className="mb-1 block font-semibold text-zinc-700">
+                Capabilities <HelpTip id="modelCapabilities" />
+              </span>
+              <div className="flex flex-wrap gap-4 pt-1">
+                {(['TEXT', 'VISION', 'EMBEDDING', 'RERANKING'] as const).map((cap) => {
+                  const isChecked = registerForm.capabilities.includes(cap);
+                  return (
+                    <label key={cap} className="flex cursor-pointer items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setRegisterForm((prev) => ({
+                              ...prev,
+                              capabilities: [...prev.capabilities, cap],
+                            }));
+                          } else {
+                            setRegisterForm((prev) => ({
+                              ...prev,
+                              capabilities: prev.capabilities.filter((c) => c !== cap),
+                            }));
+                          }
+                        }}
+                        className="rounded border-zinc-300 text-zinc-950 focus:ring-zinc-950"
+                      />
+                      <span className="font-medium text-zinc-700">{cap}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-zinc-200 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowRegisterModal(false)}
+                className="rounded-xl border border-zinc-200 bg-white px-4 py-2 font-semibold text-zinc-700 transition hover:bg-zinc-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmittingModel}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2 font-semibold text-white shadow-xs transition hover:bg-zinc-800 disabled:opacity-50"
+              >
+                {isSubmittingModel && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                <span>{isSubmittingModel ? 'Registering Model...' : 'Register & Save Model'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </Modal>
+
+      {/* MODAL 2: EDIT MODEL ROUTE POLICY */}
+      <Modal
+        isOpen={editingRoute !== null}
+        onClose={() => setEditingRoute(null)}
+        titleId="edit-route-modal-title"
+        title="Edit Task Routing Policy"
+        subtitle={editingRoute?.taskName}
+        icon={<Pencil className="h-4.5 w-4.5" aria-hidden="true" />}
+      >
+        {editingRoute && (
+          <form onSubmit={handleSaveRouteSubmit} className="space-y-4 text-xs">
+            <div>
+              <label htmlFor="route-primary-model" className="mb-1 block font-semibold text-zinc-700">
+                Primary Model <span className="text-rose-500">*</span>
+              </label>
+              <select
+                id="route-primary-model"
+                required
+                value={routeForm.primaryModelId}
+                onChange={(e) =>
+                  setRouteForm((prev) => ({
+                    ...prev,
+                    primaryModelId: e.target.value,
+                    fallbackModelIds: prev.fallbackModelIds.filter((id) => id !== e.target.value),
+                  }))
+                }
+                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-950 focus:border-zinc-950 focus:outline-none"
+              >
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.displayName} ({m.modelIdentifier}) [{m.providerType}]
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[10px] text-zinc-500">
+                Incoming requests for this task are directed to this primary model first.
+              </p>
+            </div>
+
+            <div>
+              <span className="mb-1 block font-semibold text-zinc-700">Fallback Models</span>
+              <div className="max-h-36 space-y-1.5 overflow-y-auto rounded-xl border border-zinc-200 bg-zinc-50 p-2.5">
+                {models
+                  .filter((m) => m.id !== routeForm.primaryModelId)
+                  .map((m) => {
+                    const isChecked = routeForm.fallbackModelIds.includes(m.id);
                     return (
-                      <label key={cap} className="flex items-center gap-1.5 cursor-pointer">
+                      <label key={m.id} className="flex cursor-pointer items-center gap-2">
                         <input
                           type="checkbox"
                           checked={isChecked}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              setRegisterForm((prev) => ({
+                              setRouteForm((prev) => ({
                                 ...prev,
-                                capabilities: [...prev.capabilities, cap],
+                                fallbackModelIds: [...prev.fallbackModelIds, m.id],
                               }));
                             } else {
-                              setRegisterForm((prev) => ({
+                              setRouteForm((prev) => ({
                                 ...prev,
-                                capabilities: prev.capabilities.filter((c) => c !== cap),
+                                fallbackModelIds: prev.fallbackModelIds.filter((id) => id !== m.id),
                               }));
                             }
                           }}
-                          className="rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                          className="rounded border-zinc-300 text-zinc-950 focus:ring-zinc-950"
                         />
-                        <span className="font-medium text-slate-700">{cap}</span>
+                        <span className="text-zinc-800">
+                          {m.displayName}{' '}
+                          <span className="font-mono text-[10px] text-zinc-500">
+                            ({m.modelIdentifier})
+                          </span>
+                        </span>
                       </label>
                     );
                   })}
-                </div>
               </div>
-
-              <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowRegisterModal(false)}
-                  className="rounded-lg bg-slate-100 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-200 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingModel}
-                  className="rounded-lg bg-sky-600 px-4 py-2 font-semibold text-white hover:bg-sky-700 transition disabled:opacity-50"
-                >
-                  {isSubmittingModel ? 'Registering Model...' : 'Register & Save Model'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================= */}
-      {/* MODAL 2: EDIT MODEL ROUTE POLICY                          */}
-      {/* ========================================================= */}
-      {editingRoute && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">Edit Task Routing Policy</h3>
-                <p className="text-xs font-mono text-indigo-700">{editingRoute.taskName}</p>
-              </div>
-              <button
-                onClick={() => setEditingRoute(null)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-xl"
-              >
-                &times;
-              </button>
             </div>
 
-            <form onSubmit={handleSaveRouteSubmit} className="mt-4 space-y-4 text-xs">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Primary Model <span className="text-rose-500">*</span>
+                <label htmlFor="route-timeout" className="mb-1 block font-semibold text-zinc-700">
+                  Timeout (ms)
                 </label>
-                <select
-                  required
-                  value={routeForm.primaryModelId}
+                <input
+                  id="route-timeout"
+                  type="number"
+                  min={500}
+                  max={60000}
+                  step={500}
+                  value={routeForm.timeoutMs}
+                  onChange={(e) =>
+                    setRouteForm((prev) => ({ ...prev, timeoutMs: Number(e.target.value) }))
+                  }
+                  className="tabular-nums w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-950 focus:border-zinc-950 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="route-rollout" className="mb-1 block font-semibold text-zinc-700">
+                  Rollout Percentage <HelpTip id="rolloutPercentage" /> (
+                  <span className="tabular-nums">{routeForm.activeRolloutPercentage}%</span>)
+                </label>
+                <input
+                  id="route-rollout"
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={routeForm.activeRolloutPercentage}
                   onChange={(e) =>
                     setRouteForm((prev) => ({
                       ...prev,
-                      primaryModelId: e.target.value,
-                      fallbackModelIds: prev.fallbackModelIds.filter((id) => id !== e.target.value),
+                      activeRolloutPercentage: Number(e.target.value),
                     }))
                   }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-sky-500 focus:outline-hidden bg-white font-medium"
-                >
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.displayName} ({m.modelIdentifier}) [{m.providerType}]
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  Incoming requests for this task are directed to this primary model first.
-                </p>
+                  className="mt-2 w-full accent-zinc-950"
+                />
               </div>
+            </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Fallback Models</label>
-                <div className="space-y-1.5 max-h-36 overflow-y-auto border border-slate-200 rounded-lg p-2.5 bg-slate-50">
-                  {models
-                    .filter((m) => m.id !== routeForm.primaryModelId)
-                    .map((m) => {
-                      const isChecked = routeForm.fallbackModelIds.includes(m.id);
-                      return (
-                        <label key={m.id} className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setRouteForm((prev) => ({
-                                  ...prev,
-                                  fallbackModelIds: [...prev.fallbackModelIds, m.id],
-                                }));
-                              } else {
-                                setRouteForm((prev) => ({
-                                  ...prev,
-                                  fallbackModelIds: prev.fallbackModelIds.filter((id) => id !== m.id),
-                                }));
-                              }
-                            }}
-                            className="rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-                          />
-                          <span className="text-slate-800">
-                            {m.displayName} <span className="text-slate-500 font-mono text-[10px]">({m.modelIdentifier})</span>
-                          </span>
-                        </label>
-                      );
-                    })}
-                </div>
-              </div>
+            <div className="flex items-center justify-end gap-2 border-t border-zinc-200 pt-4">
+              <button
+                type="button"
+                onClick={() => setEditingRoute(null)}
+                className="rounded-xl border border-zinc-200 bg-white px-4 py-2 font-semibold text-zinc-700 transition hover:bg-zinc-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmittingRoute}
+                className="rounded-xl bg-zinc-950 px-4 py-2 font-semibold text-white shadow-xs transition hover:bg-zinc-800 disabled:opacity-50"
+              >
+                {isSubmittingRoute ? 'Saving Route...' : 'Save Route Policy'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Timeout (ms)</label>
-                  <input
-                    type="number"
-                    min={500}
-                    max={60000}
-                    step={500}
-                    value={routeForm.timeoutMs}
-                    onChange={(e) =>
-                      setRouteForm((prev) => ({ ...prev, timeoutMs: Number(e.target.value) }))
-                    }
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-sky-500 focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Rollout Percentage
-                    {" "}<HelpTip id="rolloutPercentage" /> ({routeForm.activeRolloutPercentage}%)
-                  </label>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={routeForm.activeRolloutPercentage}
-                    onChange={(e) =>
-                      setRouteForm((prev) => ({
-                        ...prev,
-                        activeRolloutPercentage: Number(e.target.value),
-                      }))
-                    }
-                    className="w-full accent-sky-600 mt-2"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setEditingRoute(null)}
-                  className="rounded-lg bg-slate-100 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-200 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingRoute}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-700 transition disabled:opacity-50"
-                >
-                  {isSubmittingRoute ? 'Saving Route...' : 'Save Route Policy'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Delete Model Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={pendingDeleteModel !== null}
+        title="Delete custom model?"
+        description={
+          pendingDeleteModel
+            ? `Are you sure you want to delete model "${pendingDeleteModel.displayName}" (${pendingDeleteModel.modelIdentifier})? This action is permanent.`
+            : ''
+        }
+        confirmLabel="Delete Model"
+        busy={deletingModel}
+        onConfirm={handleConfirmDeleteModel}
+        onCancel={() => setPendingDeleteModel(null)}
+      />
     </div>
   );
 }

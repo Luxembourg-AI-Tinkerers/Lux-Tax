@@ -3,6 +3,7 @@
 import type { ReactElement } from 'react';
 import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { HelpCircle } from 'lucide-react';
 import { HELP_TEXTS, type HelpId } from '../lib/help-texts';
 import { TOOLTIP_WIDTH, VIEWPORT_MARGIN, placeTooltip, type TooltipPlacement } from '../lib/tooltip-position';
 
@@ -15,7 +16,6 @@ import { TOOLTIP_WIDTH, VIEWPORT_MARGIN, placeTooltip, type TooltipPlacement } f
  * portal rather than inside the label, because half the options that need it sit
  * in scrollable tables and would otherwise be clipped.
  */
-
 
 export interface HelpTipProps {
   id: HelpId;
@@ -100,10 +100,12 @@ export function HelpTip({ id, align = 'auto', className = '' }: HelpTipProps) {
               width: TOOLTIP_WIDTH,
               transform: placement.above ? 'translateY(-100%)' : undefined,
             }}
-            className="z-[70] block rounded-lg bg-slate-900 px-3 py-2 text-left text-[11px] leading-relaxed text-slate-100 shadow-xl ring-1 ring-black/10"
+            className="animate-ui-in z-[70] block rounded-xl border border-zinc-800 bg-zinc-950/95 px-3.5 py-2.5 text-left text-xs leading-relaxed text-zinc-100 shadow-xl backdrop-blur-xs"
           >
-            <span className="block text-[11px] font-bold text-white">{entry.title}</span>
-            <span className="mt-0.5 block font-normal text-slate-300">{entry.body}</span>
+            <span className="block text-xs font-semibold text-white">{entry.title}</span>
+            <span className="mt-1 block text-[11px] font-normal leading-relaxed text-zinc-300 text-pretty">
+              {entry.body}
+            </span>
           </span>,
           document.body,
         )
@@ -126,9 +128,13 @@ export function HelpTip({ id, align = 'auto', className = '' }: HelpTipProps) {
         onMouseLeave={() => setHovered(false)}
         onFocus={() => setHovered(true)}
         onBlur={() => setHovered(false)}
-        className="inline-flex h-4 w-4 shrink-0 cursor-help items-center justify-center rounded-full border border-slate-300 bg-white text-[10px] font-bold leading-none text-slate-500 transition hover:border-sky-400 hover:text-sky-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-1"
+        className={`inline-flex h-4 w-4 shrink-0 cursor-help items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-1 ${
+          pinned
+            ? 'bg-zinc-950 text-white'
+            : 'text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900'
+        }`}
       >
-        ?
+        <HelpCircle className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
       </button>
       {/* The repo resolves two copies of the React types (19 in apps/web, 18 in
           .tools), so a portal's type is not the one this JSX expects. It is a

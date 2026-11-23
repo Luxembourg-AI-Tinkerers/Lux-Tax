@@ -3,20 +3,27 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { AlertCircle, ArrowRight, Check, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuth } from '../../../lib/auth-context';
 import { apiClient } from '../../../lib/api';
 import { resolvePostAuthPath } from '../../../lib/auth-redirect';
+import { AuthShell, BrandLogo } from '../../../components/ui/AuthShell';
 
 export default function RegisterPage() {
   const router = useRouter();
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [householdName, setHouseholdName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const hasMinLen = password.length >= 8;
+  const hasLetter = /[A-Za-z]/.test(password);
+  const hasNumber = /\d/.test(password);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,57 +73,64 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 border border-slate-100">
-        <div className="text-center mb-8">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-sky-50 text-sky-600 font-bold text-xl mb-3">
-            LT
+    <AuthShell>
+      <div className="rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_3px_rgba(9,9,11,0.05)] sm:p-8">
+        <div className="mb-6">
+          <div className="mb-5 lg:hidden">
+            <BrandLogo />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Create Tax Account</h1>
-          <p className="text-sm text-slate-500 mt-1">Set up your Luxembourg personal or joint workspace</p>
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-950 text-balance">
+            Create Tax Account
+          </h1>
+          <p className="mt-1.5 text-sm text-zinc-500 text-pretty">
+            Set up your Luxembourg personal or joint workspace.
+          </p>
         </div>
 
         {error && (
           <div
             role="alert"
-            className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-sm"
+            className="mb-5 flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800"
           >
-            {error}
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
+            <span>{error}</span>
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label
                 htmlFor="register-first-name"
-                className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+                className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
               >
                 First Name
               </label>
               <input
                 id="register-first-name"
                 type="text"
+                autoComplete="given-name"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
                 placeholder="Jean"
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm"
+                className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
               />
             </div>
             <div>
               <label
                 htmlFor="register-last-name"
-                className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+                className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
               >
                 Last Name
               </label>
               <input
                 id="register-last-name"
                 type="text"
+                autoComplete="family-name"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
                 placeholder="Dupont"
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm"
+                className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
               />
             </div>
           </div>
@@ -124,9 +138,9 @@ export default function RegisterPage() {
           <div>
             <label
               htmlFor="register-household-name"
-              className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
             >
-              Household Name
+              Household Name <span className="font-normal normal-case text-zinc-400">(optional)</span>
             </label>
             <input
               id="register-household-name"
@@ -134,14 +148,14 @@ export default function RegisterPage() {
               value={householdName}
               onChange={(e) => setHouseholdName(e.target.value)}
               placeholder="e.g. Dupont-Muller Household"
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm"
+              className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
             />
           </div>
 
           <div>
             <label
               htmlFor="register-email"
-              className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
             >
               Email Address
             </label>
@@ -149,47 +163,93 @@ export default function RegisterPage() {
               id="register-email"
               type="email"
               required
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="jean.dupont@example.lu"
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm"
+              className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
             />
           </div>
 
           <div>
             <label
               htmlFor="register-password"
-              className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5"
+              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
             >
-              Password (min 8 chars, 1 letter &amp; 1 number)
+              Password
             </label>
-            <input
-              id="register-password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Create a strong password"
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm"
-            />
+            <div className="relative">
+              <input
+                id="register-password"
+                type={showPassword ? 'text' : 'password'}
+                required
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Create a strong password"
+                className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 pl-3.5 pr-11 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="absolute inset-y-0 right-1.5 my-auto flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <Eye className="h-4 w-4" aria-hidden="true" />
+                )}
+              </button>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+              {[
+                { ok: hasMinLen, label: '8+ characters' },
+                { ok: hasLetter, label: '1 letter' },
+                { ok: hasNumber, label: '1 number' },
+              ].map((rule) => (
+                <span
+                  key={rule.label}
+                  className={`inline-flex items-center gap-1 transition-colors ${
+                    rule.ok ? 'font-semibold text-emerald-700' : 'text-zinc-400'
+                  }`}
+                >
+                  <Check className="h-3 w-3" aria-hidden="true" />
+                  <span>{rule.label}</span>
+                </span>
+              ))}
+            </div>
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-medium text-sm transition shadow-sm disabled:opacity-50"
+            className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 focus-visible:ring-offset-2 disabled:opacity-60"
           >
-            {loading ? 'Creating account...' : 'Create Account & Workspace'}
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                <span>Creating account...</span>
+              </>
+            ) : (
+              <>
+                <span>Create Account &amp; Workspace</span>
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </>
+            )}
           </button>
         </form>
 
-        <div className="mt-8 text-center text-sm text-slate-500">
+        <div className="mt-7 border-t border-zinc-100 pt-5 text-center text-sm text-zinc-500">
           Already have an account?{' '}
-          <Link href="/login" className="text-sky-600 hover:text-sky-700 font-semibold">
+          <Link
+            href="/login"
+            className="font-semibold text-zinc-950 transition hover:text-sky-700 hover:underline"
+          >
             Sign in
           </Link>
         </div>
       </div>
-    </div>
+    </AuthShell>
   );
 }

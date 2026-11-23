@@ -3,9 +3,20 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import {
+  AlertCircle,
+  CalendarClock,
+  CheckCircle2,
+  Loader2,
+  Mail,
+  Shield,
+  UserPlus,
+} from 'lucide-react';
 import { apiClient } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth-context';
 import { InvitationDetailsDto } from '@luxtax/contracts';
+import { AuthShell, BrandLogo } from '../../../components/ui/AuthShell';
+import { Skeleton } from '../../../components/ui/Skeleton';
 
 export default function InviteAcceptancePage() {
   const params = useParams();
@@ -48,95 +59,126 @@ export default function InviteAcceptancePage() {
 
   if (loading || isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center p-4">
-        <div className="text-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-sky-600 border-t-transparent mx-auto mb-2" />
-          <p className="text-slate-500 text-sm">Verifying invitation...</p>
+      <AuthShell>
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-8 shadow-xs space-y-4">
+          <Skeleton className="h-10 w-10 rounded-xl" />
+          <Skeleton className="h-6 w-56" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-10 w-full rounded-xl" />
         </div>
-      </div>
+      </AuthShell>
     );
   }
 
   if (error || !details?.isValid) {
     return (
-      <div className="flex min-h-screen items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-100 text-center">
-          <div className="h-12 w-12 rounded-xl bg-rose-50 text-rose-600 font-bold text-xl inline-flex items-center justify-center mb-4">
-            !
+      <AuthShell>
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-8 text-center shadow-xs">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-200">
+            <AlertCircle className="h-6 w-6" aria-hidden="true" />
           </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Invitation Invalid or Expired</h2>
-          <p className="text-sm text-slate-500 mb-6">
+          <h1 className="text-xl font-bold text-slate-900">Invitation Invalid or Expired</h1>
+          <p className="mt-2 text-sm text-slate-500 text-pretty">
             {error || 'This household invitation link is either expired, already accepted, or revoked.'}
           </p>
           <Link
             href="/login"
-            className="inline-block py-2.5 px-5 rounded-xl bg-sky-600 text-white font-medium text-sm hover:bg-sky-700 transition"
+            className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white shadow-xs transition hover:bg-zinc-800"
           >
-            Go to Login
+            Go to Sign In
           </Link>
         </div>
-      </div>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-100">
-        <div className="text-center mb-6">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-sky-50 text-sky-600 font-bold text-xl mb-3">
-            LT
+    <AuthShell>
+      <div className="rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_3px_rgba(9,9,11,0.05)] sm:p-8">
+        <div className="mb-6">
+          <div className="mb-5 lg:hidden">
+            <BrandLogo />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Joint Household Invitation</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            <strong>{details.inviterName}</strong> has invited you to collaborate as a{' '}
-            <span className="font-semibold text-sky-600">{details.invitedRole}</span> on the{' '}
-            <strong>{details.householdName}</strong> tax workspace.
+          <div className="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-100 text-zinc-900 ring-1 ring-zinc-200/70">
+            <UserPlus className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-950">
+            Joint Household Invitation
+          </h1>
+          <p className="mt-1.5 text-sm text-zinc-600 leading-relaxed text-pretty">
+            <strong className="font-semibold text-zinc-950">{details.inviterName}</strong> invited you to collaborate as{' '}
+            <span className="font-semibold text-sky-700">{details.invitedRole.replace(/_/g, ' ')}</span> on the{' '}
+            <strong className="font-semibold text-zinc-950">{details.householdName}</strong> workspace.
           </p>
         </div>
 
-        <div className="p-4 bg-slate-50 rounded-xl mb-6 text-xs text-slate-600 space-y-1.5 border border-slate-100">
-          <p>
-            <span className="font-medium text-slate-800">Target Email:</span> {details.invitedEmail}
-          </p>
-          <p>
-            <span className="font-medium text-slate-800">Role:</span> {details.invitedRole}
-          </p>
-          <p>
-            <span className="font-medium text-slate-800">Expires:</span>{' '}
-            {new Date(details.expiresAt).toLocaleDateString()}
-          </p>
-        </div>
+        <dl className="mb-6 space-y-2.5 rounded-xl border border-zinc-200/80 bg-zinc-50 p-4 text-xs">
+          <div className="flex items-center justify-between gap-3">
+            <dt className="inline-flex items-center gap-1.5 font-medium text-zinc-500">
+              <Mail className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Target Email</span>
+            </dt>
+            <dd className="font-semibold text-zinc-950 truncate">{details.invitedEmail}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="inline-flex items-center gap-1.5 font-medium text-zinc-500">
+              <Shield className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Role</span>
+            </dt>
+            <dd className="font-semibold text-zinc-950">{details.invitedRole}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="inline-flex items-center gap-1.5 font-medium text-zinc-500">
+              <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Expires</span>
+            </dt>
+            <dd className="font-semibold text-zinc-950 tabular-nums">
+              {new Date(details.expiresAt).toLocaleDateString()}
+            </dd>
+          </div>
+        </dl>
 
         {user ? (
           <div>
-            <p className="text-sm text-slate-600 mb-4 text-center">
-              Signed in as <strong className="text-slate-900">{user.email}</strong>.
+            <p className="mb-4 text-center text-xs text-zinc-600">
+              Signed in as <strong className="font-semibold text-zinc-950">{user.email}</strong>
             </p>
             <button
               onClick={handleAccept}
               disabled={accepting}
-              className="w-full py-3 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-medium text-sm transition shadow-sm disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.99] disabled:opacity-60"
             >
-              {accepting ? 'Joining Household...' : 'Accept Invitation & Join Household'}
+              {accepting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  <span>Joining Household...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                  <span>Accept Invitation &amp; Join Household</span>
+                </>
+              )}
             </button>
           </div>
         ) : (
           <div className="space-y-3">
             <Link
               href={`/login?redirect=/invite/${token}`}
-              className="block text-center w-full py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-medium text-sm transition shadow-sm"
+              className="block w-full rounded-xl bg-zinc-950 px-4 py-2.5 text-center text-sm font-semibold text-white shadow-xs transition hover:bg-zinc-800"
             >
               Sign In to Accept
             </Link>
             <Link
               href={`/register?redirect=/invite/${token}`}
-              className="block text-center w-full py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-sm transition"
+              className="block w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-center text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
             >
               Create New Account
             </Link>
           </div>
         )}
       </div>
-    </div>
+    </AuthShell>
   );
 }

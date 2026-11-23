@@ -1,6 +1,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import {
+  Check,
+  CheckCircle2,
+  Copy,
+  Download,
+  FileCheck2,
+  Loader2,
+  Lock,
+  Package,
+  Printer,
+  ShieldCheck,
+} from 'lucide-react';
 import { HelpTip } from './HelpTip';
 import { apiClient, downloadAnnexPdf } from '../lib/api';
 import { formatEuro } from '../lib/money';
@@ -13,14 +25,16 @@ import {
   HouseholdDto,
   WorkspaceStatus,
 } from '@luxtax/contracts';
+import { ToastBanner, type ToastMessage } from './ui/ToastBanner';
+import { StatusBadge, type BadgeTone } from './ui/StatusBadge';
 
 const VERSION_STATUS_STYLES: Record<
   ReturnVersionHistoryItemDto['status'],
-  { label: string; badge: string }
+  { label: string; tone: BadgeTone }
 > = {
-  DRAFT: { label: 'Current draft', badge: 'bg-amber-100 text-amber-800' },
-  APPROVED: { label: 'Approved', badge: 'bg-emerald-100 text-emerald-800' },
-  SUPERSEDED: { label: 'Superseded', badge: 'bg-slate-100 text-slate-600' },
+  DRAFT: { label: 'Current draft', tone: 'warning' },
+  APPROVED: { label: 'Approved', tone: 'success' },
+  SUPERSEDED: { label: 'Superseded', tone: 'neutral' },
 };
 
 interface FilingPackageViewProps {
@@ -42,13 +56,16 @@ export function FilingPackageView({
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [approving, setApproving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [copiedBox, setCopiedBox] = useState<string | null>(null);
   const [completedSteps, setCompletedSteps] = useState<Record<number, boolean>>({});
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [feedback, setFeedback] = useState<ToastMessage | null>(null);
+
+  const stepsStorageKey = `luxtax_myguichet_steps_${workspace.id}`;
 
   const showFeedback = (type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
-    setTimeout(() => setFeedback(null), 5000);
+    setTimeout(() => setFeedback((curr) => (curr?.message === message ? null : curr)), 5000);
   };
 
   const loadFilingData = async () => {
@@ -57,10 +74,6 @@ export function FilingPackageView({
       apiClient.getFilingPackage(workspace.id),
       apiClient.getReturnVersionHistory(workspace.id),
     ]);
-    // A successful `null` is authoritative: after an invalidation the workspace
-    // legitimately has no current version row and no package, so the previous
-    // tax year's rows must not stand in for them. Only a failed request keeps
-    // the previous state (the history card shows its unavailable copy).
     if (!verRes.error) setReturnVersion(verRes.data ?? null);
     if (!pkgRes.error) setFilingPackage(pkgRes.data ?? null);
     if (!historyRes.error) setHistory(historyRes.data ?? null);
@@ -68,14 +81,22 @@ export function FilingPackageView({
   };
 
   useEffect(() => {
-    // Reset first: another workspace/tax year must never render the previous
-    // year's version, package or history while the new requests are in flight.
     setReturnVersion(null);
     setFilingPackage(null);
     setHistory(null);
     setHistoryLoaded(false);
+
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = window.localStorage.getItem(stepsStorageKey);
+        setCompletedSteps(stored ? (JSON.parse(stored) as Record<number, boolean>) : {});
+      } catch {
+        setCompletedSteps({});
+      }
+    }
+
     void loadFilingData();
-  }, [workspace.id]);
+  }, [workspace.id, stepsStorageKey]);
 
   const handleApprove = async () => {
     setApproving(true);
@@ -86,7 +107,6 @@ export function FilingPackageView({
       showFeedback('error', res.error);
     } else if (res.data) {
       setReturnVersion(res.data);
-      // A single filer has no spouse to notify; the copy said otherwise.
       const activeMembers = household?.members?.filter((m) => m.status === 'ACTIVE').length ?? 1;
       showFeedback(
         'success',
@@ -114,78 +134,163 @@ export function FilingPackageView({
     }
   };
 
+  const handleDownloadAnnex = async () => {
+    setDownloadingPdf(true);
+    try {
+      await downloadAnnexPdf(workspace.id);
+    } catch (err: any) {
+      showFeedback('error', err?.message || 'Annex PDF could not be generated.');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   const handleCopy = (box: string, val: string | number) => {
-    navigator.clipboard.writeText(String(val));
+    navigator.clipboard?.writeText(String(val));
     setCopiedBox(box);
-    setTimeout(() => setCopiedBox(null), 2000);
+    setTimeout(() => setCopiedBox((curr) => (curr === box ? null : curr)), 2000);
   };
 
   const toggleStep = (index: number) => {
-    setCompletedSteps((prev) => ({ ...prev, [index]: !prev[index] }));
+    setCompletedSteps((prev) => {
+      const next = { ...prev, [index]: !prev[index] };
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem(stepsStorageKey, JSON.stringify(next));
+        } catch {
+          // Ignore storage quota errors
+        }
+      }
+      return next;
+    });
   };
 
   const members = household.members || [];
   const approvals = returnVersion?.approvals || [];
 
+  const totalGuideSteps = filingPackage?.myGuichetGuide.length ?? 0;
+  const doneGuideSteps = filingPackage
+    ? filingPackage.myGuichetGuide.filter((s) => completedSteps[s.sectionIndex]).length
+    : 0;
+
   return (
     <div className="space-y-6">
-      {/* Toast Feedback */}
-      {feedback && (
-        <div
-          className={`p-4 rounded-xl text-sm font-semibold flex items-center justify-between border ${
-            feedback.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border-rose-200'
-          }`}
-        >
-          <div>
-            <span>{feedback.message}</span>
-            {feedback.message.includes('calculated before approving') && onNavigateToCalculator && (
-              <button
-                onClick={onNavigateToCalculator}
-                className="ml-3 text-xs underline font-bold hover:text-rose-950"
-              >
-                Go to Tax Calculator now &rarr;
-              </button>
-            )}
+      <ToastBanner
+        feedback={feedback}
+        onDismiss={() => setFeedback(null)}
+        action={
+          feedback?.message.includes('calculated before approving') && onNavigateToCalculator ? (
+            <button
+              type="button"
+              onClick={onNavigateToCalculator}
+              className="text-xs font-bold underline hover:text-rose-950"
+            >
+              Go to Tax Calculator now &rarr;
+            </button>
+          ) : undefined
+        }
+      />
+
+      {/* Step Progress Summary */}
+      <div className="no-print grid gap-3 sm:grid-cols-3">
+        {[
+          {
+            step: '1',
+            title: 'Spousal Approvals',
+            done: Boolean(returnVersion?.bothSpousesApproved),
+            subtitle: returnVersion?.bothSpousesApproved
+              ? 'All required filers approved'
+              : 'Review calculation & approve version',
+          },
+          {
+            step: '2',
+            title: 'Form 100 Package',
+            done: Boolean(filingPackage),
+            subtitle: filingPackage
+              ? `${filingPackage.form100Boxes.length} boxes mapped`
+              : 'Generate official box mappings',
+          },
+          {
+            step: '3',
+            title: 'MyGuichet Transfer',
+            done: totalGuideSteps > 0 && doneGuideSteps === totalGuideSteps,
+            subtitle:
+              totalGuideSteps > 0
+                ? `${doneGuideSteps} of ${totalGuideSteps} sections completed`
+                : 'Available after package generation',
+          },
+        ].map((item) => (
+          <div
+            key={item.step}
+            className={`flex items-center gap-3 rounded-2xl border p-4 shadow-xs ${
+              item.done
+                ? 'border-emerald-200 bg-emerald-50/40'
+                : 'border-slate-200/90 bg-white'
+            }`}
+          >
+            <div
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                item.done ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700'
+              }`}
+            >
+              {item.done ? <Check className="h-4 w-4" aria-hidden="true" /> : item.step}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-slate-900">{item.title}</p>
+              <p className="truncate text-[11px] text-slate-500">{item.subtitle}</p>
+            </div>
           </div>
-          <button onClick={() => setFeedback(null)} className="text-xs opacity-60 hover:opacity-100 ml-4">
-            ✕
-          </button>
-        </div>
-      )}
+        ))}
+      </div>
 
       {/* Dual Spouse Approval Section */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
+        <div className="flex flex-col justify-between gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-center">
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-slate-900">
-                Joint Household Return Approval
-                    {" "}<HelpTip id="approval" />
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="flex items-center gap-1.5 text-base font-bold text-slate-900">
+                <span>Joint Household Return Approval</span>
+                <HelpTip id="approval" />
               </h3>
               {returnVersion?.bothSpousesApproved && (
-                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
-                  ✓ Ready to File
-                </span>
+                <StatusBadge tone="success">
+                  <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                  <span>Ready to File</span>
+                </StatusBadge>
               )}
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="mt-1 text-xs text-slate-500">
               In accordance with Luxembourg tax law, filers must review and approve the exact return version before filing to ACD.
             </p>
           </div>
 
           <button
+            type="button"
             onClick={handleApprove}
-            disabled={approving}
-            className="rounded-lg bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-50 transition-colors"
+            disabled={approving || Boolean(returnVersion?.bothSpousesApproved)}
+            className={`no-print inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl px-5 py-2.5 text-xs font-bold transition ${
+              returnVersion?.bothSpousesApproved
+                ? 'cursor-default border border-emerald-200 bg-emerald-50 text-emerald-800'
+                : 'bg-zinc-950 text-white shadow-xs hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50'
+            }`}
           >
-            {approving ? 'Registering Approval...' : '✓ Approve Return Version'}
+            {approving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            ) : (
+              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+            )}
+            <span>
+              {approving
+                ? 'Registering Approval...'
+                : returnVersion?.bothSpousesApproved
+                  ? 'All Approvals Recorded'
+                  : 'Approve Return Version'}
+            </span>
           </button>
         </div>
 
         {/* Member Approval Status Cards */}
-        <div className="grid gap-4 sm:grid-cols-2 mt-5">
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
           {members.map((member) => {
             const hasApproved = approvals.some((a) => a.userId === member.userId && !a.isSuperseded);
             const approvalRecord = approvals.find(
@@ -195,42 +300,40 @@ export function FilingPackageView({
             return (
               <div
                 key={member.id}
-                className={`rounded-xl border p-4 transition-all ${
+                className={`rounded-xl border p-4 transition-colors ${
                   hasApproved
                     ? 'border-emerald-200 bg-emerald-50/50'
-                    : 'border-slate-200 bg-slate-50/50'
+                    : 'border-slate-200 bg-slate-50/60'
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
                     <div
-                      className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                         hasApproved
                           ? 'bg-emerald-600 text-white'
                           : 'bg-slate-200 text-slate-600'
                       }`}
                     >
-                      {hasApproved ? '✓' : '•'}
+                      {hasApproved ? <Check className="h-4 w-4" aria-hidden="true" /> : '•'}
                     </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-900">{member.user?.email || member.userId.substring(0, 8)}</h4>
-                      <span className="text-[10px] text-slate-500">{member.role}</span>
+                    <div className="min-w-0">
+                      <h4 className="truncate text-xs font-bold text-slate-900">
+                        {member.user?.email || member.userId.substring(0, 8)}
+                      </h4>
+                      <span className="text-[11px] text-slate-500">
+                        {member.role.replace(/_/g, ' ')}
+                      </span>
                     </div>
                   </div>
 
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                      hasApproved
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-slate-200 text-slate-700'
-                    }`}
-                  >
+                  <StatusBadge tone={hasApproved ? 'success' : 'neutral'}>
                     {hasApproved ? 'Approved' : 'Pending Approval'}
-                  </span>
+                  </StatusBadge>
                 </div>
 
                 {hasApproved && approvalRecord && (
-                  <p className="mt-2 text-[10px] text-emerald-700">
+                  <p className="tabular-nums mt-2.5 text-[11px] text-emerald-800">
                     Approved on: {new Date(approvalRecord.approvedAt).toLocaleString()}
                   </p>
                 )}
@@ -241,22 +344,23 @@ export function FilingPackageView({
       </div>
 
       {/* Version History Section */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
         <div className="border-b border-slate-100 pb-4">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-bold text-slate-900">Version history</h3>
             {workspace.status === WorkspaceStatus.FILED && (
-              <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-bold text-indigo-800">
-                🔒 Filed &amp; frozen
-              </span>
+              <StatusBadge tone="indigo">
+                <Lock className="h-3 w-3" aria-hidden="true" />
+                <span>Filed &amp; frozen</span>
+              </StatusBadge>
             )}
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="mt-1 text-xs text-slate-500">
             A change to a material fact, questionnaire answer, document or calculation supersedes existing
             approvals and opens a new draft version.
           </p>
           {workspace.status === WorkspaceStatus.FILED && (
-            <p className="mt-2 rounded-lg border border-indigo-200 bg-indigo-50/60 px-3 py-1.5 text-[11px] font-medium text-indigo-900">
+            <p className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2 text-xs font-medium text-zinc-700">
               The filed version snapshot is immutable. Material changes after filing require an
               amendment rather than an edit of the filed version.
             </p>
@@ -264,13 +368,13 @@ export function FilingPackageView({
         </div>
 
         {history === null ? (
-          <div className="mt-4 p-8 text-center text-slate-500 rounded-lg border border-dashed border-slate-200">
+          <div className="mt-4 rounded-xl border border-dashed border-slate-200 p-8 text-center text-slate-500">
             <p className="text-xs">
               {historyLoaded ? 'Version history is not available right now.' : 'Loading version history…'}
             </p>
           </div>
         ) : history.versions.length === 0 ? (
-          <div className="mt-4 p-8 text-center text-slate-500 rounded-lg border border-dashed border-slate-200">
+          <div className="mt-4 rounded-xl border border-dashed border-slate-200 p-8 text-center text-slate-500">
             <p className="text-xs">No return versions recorded for this workspace yet.</p>
           </div>
         ) : (
@@ -290,27 +394,25 @@ export function FilingPackageView({
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="text-sm font-bold text-slate-900">Version {item.versionNumber}</h4>
-                        <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${status.badge}`}>
-                          {status.label}
-                        </span>
+                        <h4 className="text-sm font-bold text-slate-900">
+                          Version {item.versionNumber}
+                        </h4>
+                        <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
                         {item.isCurrent && (
-                          <span className="rounded-full bg-sky-600 px-2.5 py-0.5 text-[10px] font-bold text-white">
-                            Current version
-                          </span>
+                          <StatusBadge tone="info">Current version</StatusBadge>
                         )}
                       </div>
-                      <p className="mt-1 text-[11px] text-slate-500">
+                      <p className="tabular-nums mt-1 text-[11px] text-slate-500">
                         {item.createdAt
                           ? `Created ${new Date(item.createdAt).toLocaleDateString()}`
                           : 'Draft not yet approved — no version snapshot exists.'}
                       </p>
                     </div>
 
-                    <div className="text-[11px] text-slate-600 sm:text-right">
+                    <div className="text-xs text-slate-600 sm:text-right">
                       <p>
                         Final tax liability:{' '}
-                        <span className="font-bold text-slate-900">
+                        <span className="tabular-nums font-bold text-slate-900">
                           {typeof item.finalTaxLiability === 'number'
                             ? formatEuro(item.finalTaxLiability)
                             : 'Not available until approved'}
@@ -331,7 +433,7 @@ export function FilingPackageView({
 
                   <div className="mt-3 space-y-1.5">
                     {item.approvals.length === 0 ? (
-                      <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 p-2.5 text-[11px] text-slate-500">
+                      <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-2.5 text-[11px] text-slate-500">
                         {item.status === 'DRAFT'
                           ? 'No approvals yet — this draft still needs approval from all required approvers.'
                           : 'No approvals were recorded for this version.'}
@@ -340,17 +442,17 @@ export function FilingPackageView({
                       item.approvals.map((approval) => (
                         <div
                           key={approval.id}
-                          className={`rounded-lg border p-2.5 text-[11px] ${
+                          className={`rounded-xl border p-2.5 text-[11px] ${
                             approval.isSuperseded
-                              ? 'border-amber-200 bg-amber-50/60'
-                              : 'border-emerald-200 bg-emerald-50/40'
+                              ? 'border-amber-200 bg-amber-50/70'
+                              : 'border-emerald-200 bg-emerald-50/50'
                           }`}
                         >
                           <div className="flex flex-wrap items-center justify-between gap-1">
                             <span className="font-semibold text-slate-800">
                               {approval.userEmail || approval.userId.substring(0, 8)}
                             </span>
-                            <span className="text-slate-500">
+                            <span className="tabular-nums text-slate-500">
                               Approved {new Date(approval.approvedAt).toLocaleString()}
                             </span>
                           </div>
@@ -376,46 +478,79 @@ export function FilingPackageView({
       </div>
 
       {/* Package Generation Section */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="rounded-2xl border border-zinc-200/85 bg-white p-5 shadow-[0_1px_2px_rgba(9,9,11,0.03)] sm:p-6">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
-            <h3 className="text-base font-bold text-slate-900">
-              Form 100 Box Mappings & MyGuichet Transfer Guide
-                    {" "}<HelpTip id="filingRoute" />
+            <h3 className="flex items-center gap-1.5 text-base font-bold text-zinc-950">
+              <span>Form 100 Box Mappings &amp; MyGuichet Transfer Guide</span>
+              <HelpTip id="filingRoute" />
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="mt-1 text-xs text-zinc-500">
               Generates the official Luxembourg Form 100 boxes and step-by-step transfer guide for filing online.
             </p>
           </div>
 
           <button
+            type="button"
             onClick={handleGeneratePackage}
             disabled={generating}
-            className="rounded-lg bg-sky-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-sky-500 disabled:opacity-50 transition-colors"
+            className="no-print inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-5 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50"
           >
-            {generating ? 'Generating Package...' : '📦 Generate Filing Package'}
+            {generating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            ) : (
+              <Package className="h-3.5 w-3.5" aria-hidden="true" />
+            )}
+            <span>{generating ? 'Generating Package...' : 'Generate Filing Package'}</span>
           </button>
         </div>
 
         {filingPackage ? (
           <div className="mt-6 space-y-6">
-            {/* Hash & Verification Banner */}
-            <div className="flex items-center justify-between rounded-lg bg-slate-900 text-white p-4 text-xs font-mono">
-              <span className="text-slate-400">Package SHA-256 Checksum:
-                    {" "}<HelpTip id="packageChecksum" /></span>
-              <span className="text-emerald-400 font-bold truncate max-w-xs sm:max-w-md">
-                {filingPackage.packageSha256}
-              </span>
+            {/* Hash & Verification Banner (Unified Light Security Strip) */}
+            <div className="flex flex-col justify-between gap-3 rounded-xl border border-zinc-200/90 bg-zinc-50 p-4 font-mono text-xs text-zinc-900 sm:flex-row sm:items-center">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" aria-hidden="true" />
+                <span className="font-sans font-semibold text-zinc-700">
+                  Package SHA-256 Checksum <HelpTip id="packageChecksum" />
+                </span>
+              </div>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="max-w-xs truncate font-bold text-zinc-950 sm:max-w-md">
+                  {filingPackage.packageSha256}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopy('sha256', filingPackage.packageSha256)}
+                  aria-label="Copy package checksum"
+                  className="no-print inline-flex shrink-0 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 font-sans text-[11px] font-semibold text-zinc-800 transition hover:bg-zinc-100"
+                >
+                  {copiedBox === 'sha256' ? (
+                    <>
+                      <Check className="h-3 w-3 text-emerald-600" aria-hidden="true" />
+                      <span>Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3 w-3" aria-hidden="true" />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
-            {/* Form 100 Boxes Table */}
+            {/* Form 100 Boxes Table + Mobile Cards */}
             <div>
-              <h4 className="text-sm font-bold text-slate-900 mb-3">
-                Official Form 100 Box Values
-                    {" "}<HelpTip id="formBox" /> ({filingPackage.form100Boxes.length} fields mapped)
+              <h4 className="mb-3 flex items-center gap-1.5 text-sm font-bold text-zinc-950">
+                <span>Official Form 100 Box Values</span>
+                <HelpTip id="formBox" />
+                <span className="tabular-nums text-xs font-semibold text-zinc-500">
+                  ({filingPackage.form100Boxes.length} fields mapped)
+                </span>
               </h4>
               {(filingPackage.unsupportedCertificateCodes ?? []).length > 0 && (
-                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-900">
                   <div className="font-bold">
                     {(filingPackage.unsupportedCertificateCodes ?? []).length} certificate 160 code(s) could not be mapped
                   </div>
@@ -428,27 +563,84 @@ export function FilingPackageView({
                   </ul>
                 </div>
               )}
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
+
+              {/* Mobile Form 100 Box Cards */}
+              <div className="divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200 md:hidden">
+                {filingPackage.form100Boxes.map((box, i) => (
+                  <div key={i} className="space-y-2 p-3.5 text-xs">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="font-mono font-bold text-sky-800">
+                          {box.sheet ?? (box as any).boxNumber ?? ''} · case {box.caseNumber ?? 'n/a'}
+                        </span>
+                        <span className="ml-2 text-[11px] text-zinc-400">Page {box.pageNumber}</span>
+                        {box.personName && (
+                          <p className="text-[11px] text-zinc-500">{box.personName}</p>
+                        )}
+                      </div>
+                      <span className="tabular-nums font-extrabold text-zinc-950">
+                        {formatEuro(box.amount)}
+                      </span>
+                    </div>
+                    <p className="font-medium text-zinc-800">{box.labelFr}</p>
+                    <p className="text-[11px] text-zinc-500">{box.labelDe}</p>
+                    <div className="no-print flex items-center justify-between pt-1">
+                      {box.kind && box.kind !== 'FORM_100' ? (
+                        <StatusBadge tone="warning">{box.kind}</StatusBadge>
+                      ) : (
+                        <span />
+                      )}
+                      {box.kind === 'FORM_100' || !box.kind ? (
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(String(i), box.amount)}
+                          className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+                            copiedBox === String(i)
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                          }`}
+                        >
+                          {copiedBox === String(i) ? (
+                            <>
+                              <Check className="h-3 w-3" aria-hidden="true" />
+                              <span>Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3 w-3" aria-hidden="true" />
+                              <span>Copy value</span>
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <StatusBadge tone="neutral">Auto</StatusBadge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden overflow-x-auto rounded-xl border border-zinc-200 md:block">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 uppercase text-slate-500 border-b border-slate-200">
+                  <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase text-slate-500">
                     <tr>
                       <th className="px-4 py-2.5">Sheet / Case</th>
                       <th className="px-4 py-2.5">Page</th>
                       <th className="px-4 py-2.5">French Description</th>
                       <th className="px-4 py-2.5">German Description</th>
                       <th className="px-4 py-2.5 text-right">Value (EUR)</th>
-                      <th className="px-4 py-2.5 text-center">Copy</th>
+                      <th className="no-print px-4 py-2.5 text-center">Copy</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filingPackage.form100Boxes.map((box, i) => (
-                      <tr key={i} className="hover:bg-slate-50/50">
-                        <td className="px-4 py-2 font-mono font-bold text-sky-700">
+                      <tr key={i} className="hover:bg-slate-50/70">
+                        <td className="px-4 py-2.5 font-mono font-bold text-sky-800">
                           {box.sheet ?? (box as any).boxNumber ?? ''} · case {box.caseNumber ?? 'n/a'}
                           {box.kind && box.kind !== 'FORM_100' && (
-                            <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 font-sans text-[10px] font-bold text-amber-700">
+                            <StatusBadge tone="warning" className="ml-2 font-sans">
                               {box.kind}
-                            </span>
+                            </StatusBadge>
                           )}
                           {box.personName && (
                             <span className="mt-0.5 block font-sans text-[10px] font-normal text-slate-400">
@@ -456,19 +648,36 @@ export function FilingPackageView({
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-2 text-slate-500">Page {box.pageNumber}</td>
-                        <td className="px-4 py-2 font-medium text-slate-800">{box.labelFr}</td>
-                        <td className="px-4 py-2 text-slate-500">{box.labelDe}</td>
-                        <td className="px-4 py-2 text-right font-bold text-slate-900">
+                        <td className="tabular-nums px-4 py-2.5 text-slate-500">
+                          Page {box.pageNumber}
+                        </td>
+                        <td className="px-4 py-2.5 font-medium text-slate-800">{box.labelFr}</td>
+                        <td className="px-4 py-2.5 text-slate-500">{box.labelDe}</td>
+                        <td className="tabular-nums px-4 py-2.5 text-right font-bold text-slate-900">
                           {formatEuro(box.amount)}
                         </td>
-                        <td className="px-4 py-2 text-center">
+                        <td className="no-print px-4 py-2.5 text-center">
                           {box.kind === 'FORM_100' || !box.kind ? (
                             <button
+                              type="button"
                               onClick={() => handleCopy(String(i), box.amount)}
-                              className="rounded bg-slate-100 hover:bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700"
+                              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+                                copiedBox === String(i)
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                              }`}
                             >
-                              {copiedBox === String(i) ? 'Copied!' : 'Copy'}
+                              {copiedBox === String(i) ? (
+                                <>
+                                  <Check className="h-3 w-3" aria-hidden="true" />
+                                  <span>Copied!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="h-3 w-3" aria-hidden="true" />
+                                  <span>Copy</span>
+                                </>
+                              )}
                             </button>
                           ) : (
                             <span className="text-[10px] font-semibold uppercase text-slate-400">
@@ -485,60 +694,69 @@ export function FilingPackageView({
 
             {/* MyGuichet Guide */}
             <div>
-              <h4 className="text-sm font-bold text-slate-900 mb-3">
-                MyGuichet.lu Step-by-Step Filing Walkthrough
-              </h4>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h4 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                  <FileCheck2 className="h-4 w-4 text-sky-700" aria-hidden="true" />
+                  <span>MyGuichet.lu Step-by-Step Filing Walkthrough</span>
+                </h4>
+                {totalGuideSteps > 0 && (
+                  <span className="tabular-nums text-xs font-semibold text-slate-500">
+                    {doneGuideSteps} / {totalGuideSteps} steps completed
+                  </span>
+                )}
+              </div>
+
               <div className="space-y-3">
                 {filingPackage.annexes.length > 0 && (
-                  <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <h3 className="text-sm font-bold text-indigo-950 mb-1">
-                        Required ACD annexes ({filingPackage.annexes.length})
-                      </h3>
-                      <div className="flex shrink-0 gap-2">
+                  <div className="rounded-2xl border border-zinc-200/90 bg-zinc-50/80 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-bold text-zinc-950">
+                          Required ACD annexes ({filingPackage.annexes.length})
+                        </h3>
+                        <p className="mt-1 text-xs text-zinc-600">
+                          The app supplies the values; the official annex PDF is not generated. Carry them into the corresponding ACD annex.
+                        </p>
+                      </div>
+                      <div className="no-print flex shrink-0 gap-2">
                         <button
                           type="button"
-                          onClick={async () => {
-                            try {
-                              await downloadAnnexPdf(workspace.id);
-                            } catch (error) {
-                              console.error(error);
-                            }
-                          }}
-                          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-500"
+                          onClick={handleDownloadAnnex}
+                          disabled={downloadingPdf}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 disabled:opacity-50"
                         >
-                          Download annex PDF
+                          {downloadingPdf ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                          ) : (
+                            <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                          )}
+                          <span>Download annex PDF</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => window.print()}
-                          className="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-[11px] font-bold text-indigo-800 hover:bg-indigo-50"
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-800 shadow-2xs transition hover:bg-zinc-50"
                         >
-                          Print
+                          <Printer className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>Print</span>
                         </button>
                       </div>
                     </div>
-                    <p className="text-[11px] text-indigo-800 mb-3">
-                      The app supplies the values; the official annex PDF is not generated. Carry them into the
-                      corresponding ACD annex.
-                    </p>
-                    <div className="space-y-3">
+                    <div className="mt-4 space-y-3">
                       {filingPackage.annexes.map((annex) => (
-                        <div key={annex.code} className="rounded-lg bg-white border border-indigo-100 p-3">
-                          <div className="flex items-center justify-between">
+                        <div key={annex.code} className="rounded-xl border border-zinc-200/80 bg-white p-4">
+                          <div className="flex items-center justify-between gap-2">
                             <span className="text-xs font-bold text-slate-900">
                               {annex.code} — {annex.title}
                             </span>
-                            <span className="text-[10px] font-bold uppercase text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
-                              preparation sheet
-                            </span>
+                            <StatusBadge tone="warning">preparation sheet</StatusBadge>
                           </div>
-                          <p className="text-[11px] text-slate-600 mt-1">{annex.reason}</p>
-                          <div className="mt-2 grid gap-1 text-[11px] sm:grid-cols-2">
+                          <p className="mt-1 text-[11px] text-slate-600">{annex.reason}</p>
+                          <div className="mt-2.5 grid gap-1.5 text-[11px] sm:grid-cols-2">
                             {annex.fields.map((f) => (
-                              <div key={f.label} className="flex justify-between border-b border-slate-100 py-0.5">
+                              <div key={f.label} className="flex justify-between border-b border-slate-100 py-1">
                                 <span className="text-slate-500">{f.label}</span>
-                                <span className="font-semibold">{f.value}</span>
+                                <span className="tabular-nums font-semibold text-slate-900">{f.value}</span>
                               </div>
                             ))}
                           </div>
@@ -548,55 +766,75 @@ export function FilingPackageView({
                   </div>
                 )}
 
-                {filingPackage.myGuichetGuide.map((step) => (
-                  <div key={step.sectionIndex} className="rounded-lg border border-slate-200 bg-white p-4 text-xs">
-                    <div className="flex items-center justify-between mb-2">
-                      <h5 className="font-bold text-slate-900 text-sm">{step.sectionTitle}</h5>
-                      <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!completedSteps[step.sectionIndex]}
-                          onChange={() => toggleStep(step.sectionIndex)}
-                          className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-                        />
-                        <span>Completed on MyGuichet</span>
-                      </label>
-                    </div>
-
-                    <ul className="list-disc list-inside space-y-1 text-slate-600 mb-3">
-                      {step.instructions.map((inst, idx) => (
-                        <li key={idx}>{inst}</li>
-                      ))}
-                    </ul>
-
-                    {step.fieldsToEnter.length > 0 && (
-                      <div className="grid gap-2 sm:grid-cols-2 mt-2 bg-slate-50 p-3 rounded-lg">
-                        {step.fieldsToEnter.map((f, idx) => (
-                          <div key={idx} className="flex justify-between items-center p-2 rounded bg-white border border-slate-200">
-                            <div>
-                              <span className="font-mono text-sky-700 font-bold">{f.form100Box}</span>
-                              <p className="text-[11px] text-slate-600">{f.fieldLabel}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-900">{formatEuro(f.value)}</span>
-                              <button
-                                onClick={() => handleCopy(f.form100Box, f.value)}
-                                className="rounded bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600"
-                              >
-                                {copiedBox === f.form100Box ? '✓' : 'Copy'}
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                {filingPackage.myGuichetGuide.map((step) => {
+                  const isDone = !!completedSteps[step.sectionIndex];
+                  return (
+                    <div
+                      key={step.sectionIndex}
+                      className={`rounded-xl border p-4 text-xs transition-colors ${
+                        isDone
+                          ? 'border-emerald-200 bg-emerald-50/30'
+                          : 'border-slate-200 bg-white'
+                      }`}
+                    >
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <h5 className="text-sm font-bold text-slate-900">{step.sectionTitle}</h5>
+                        <label className="no-print flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={isDone}
+                            onChange={() => toggleStep(step.sectionIndex)}
+                            className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span>Completed on MyGuichet</span>
+                        </label>
                       </div>
-                    )}
-                  </div>
-                ))}
+
+                      <ul className="mb-3 list-inside list-disc space-y-1 text-slate-600">
+                        {step.instructions.map((inst, idx) => (
+                          <li key={idx}>{inst}</li>
+                        ))}
+                      </ul>
+
+                      {step.fieldsToEnter.length > 0 && (
+                        <div className="mt-2 grid gap-2 rounded-xl bg-slate-50 p-3 sm:grid-cols-2">
+                          {step.fieldsToEnter.map((f, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-2.5"
+                            >
+                              <div className="min-w-0 pr-2">
+                                <span className="font-mono font-bold text-sky-800">{f.form100Box}</span>
+                                <p className="truncate text-[11px] text-slate-600">{f.fieldLabel}</p>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-2">
+                                <span className="tabular-nums font-bold text-slate-900">
+                                  {formatEuro(f.value)}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopy(f.form100Box, f.value)}
+                                  className="no-print inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-200"
+                                >
+                                  {copiedBox === f.form100Box ? (
+                                    <Check className="h-3 w-3 text-emerald-700" aria-hidden="true" />
+                                  ) : (
+                                    'Copy'
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
         ) : (
-          <div className="mt-4 p-8 text-center text-slate-500 rounded-lg border border-dashed border-slate-200">
+          <div className="mt-4 rounded-xl border border-dashed border-slate-200 p-8 text-center text-slate-500">
             <p className="text-xs">
               Once you approve the return version above, click &quot;Generate Filing Package&quot; to inspect your Form 100 boxes.
             </p>
