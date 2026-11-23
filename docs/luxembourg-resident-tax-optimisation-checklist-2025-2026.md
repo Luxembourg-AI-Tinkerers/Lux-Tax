@@ -11,10 +11,10 @@
 
 | Label | Meaning |
 |---|---|
-| **确定** | Primary law (LIR coordonné) or ACD A–Z / guichet page actually read. |
-| **高置信** | Official political/finance-ministry document read against law, or ACD page read through a newsletter. |
-| **中置信** | Secondary source (taxx, PwC, financialservices.lu) used only as a cross-check or because the primary was cookie-walled. |
-| **待证** | Lead only. Do not implement. |
+| **Certain** | Primary law (LIR coordonné) or ACD A–Z / guichet page actually read. |
+| **High confidence** | Official political/finance-ministry document read against law, or ACD page read through a newsletter. |
+| **Medium confidence** | Secondary source (taxx, PwC, financialservices.lu) used only as a cross-check or because the primary was cookie-walled. |
+| **Unverified** | Lead only. Do not implement. |
 
 **App flags**
 
@@ -32,7 +32,7 @@
 
 A resident employee or class-2 couple can legally reduce 2025/2026 tax through **forfaits and frais réels** (Art. 105/105bis/107), **dépenses spéciales** (Art. 109–113, including 111bis 3 200 € / 4 500 €, épargne-logement 1 344/672 €, LRCP 1 200 €, ASRD prime unique), **dons Art. 112 (additive to the 480 € forfait)**, **charges extraordinaires garde 5 400 €**, **AEP Art. 110bis 4 500 €**, **AMVP Art. 129g 9 000 € (2026 only)**, **timing of December payments**, **loss reports Art. 114 (17 years)**, **plus-values holding periods** and **résidence principale Art. 102bis**. Bëllegen Akt (40 000 €/person) and prime jeune salarié (Art. 115 n° 13d) are **not** IR deductions; they sit in registration duties / salary exemption.
 
-**The app cannot compute the large majority of this checklist.** It implements a simplified 2025-only model: FFO 540 €, FDS 480/960 €, a wrong Art. 102 mortgage schedule, a 672 € insurance cap that swallows 111bis, CIS/CIM on obsolete formulas, and a silent drop of pensions, childcare, capital, rental and plus-values. Donations are taken via `max(fds, insurance + dons)`, which **cancels small dons instead of adding them**. Art. 111bis, déplacement 99 €, invalidity forfaits, garde 5 400 €, AEP 4 500 €, AMVP, CIC, start-up credit, LRCP, ASRD, épargne-logement, prime jeune salarié, Bëllegen Akt, Art. 114 and plus-values have **no engine path**. Overall engine verdict: **not a filing-grade calculator for 2025 or 2026**. Confidence in that verdict: **确定** (primary code vs primary statute).
+**The app cannot compute the large majority of this checklist.** It implements a simplified 2025-only model: FFO 540 €, FDS 480/960 €, a wrong Art. 102 mortgage schedule, a 672 € insurance cap that swallows 111bis, CIS/CIM on obsolete formulas, and a silent drop of pensions, childcare, capital, rental and plus-values. Donations are taken via `max(fds, insurance + dons)`, which **cancels small dons instead of adding them**. Art. 111bis, déplacement 99 €, invalidity forfaits, garde 5 400 €, AEP 4 500 €, AMVP, CIC, start-up credit, LRCP, ASRD, épargne-logement, prime jeune salarié, Bëllegen Akt, Art. 114 and plus-values have **no engine path**. Overall engine verdict: **not a filing-grade calculator for 2025 or 2026**. Confidence in that verdict: **Certain** (primary code vs primary statute).
 
 ---
 
@@ -53,7 +53,7 @@ Work top to bottom. For each item:
 ### 3.1 FFO salarié 540 € / pensionné 300 € / capitaux 25 €
 
 - **Rule.** Art. 107 al. 1 LIR. Minimum forfaitaire, not a ceiling. Actual frais (cotisations syndicales, vêtements typiquement professionnels, littérature professionnelle) replace the forfait if higher. Partial year: monthly 45 / 25 / 2 € × full months. Couple Art. 3: doubled **if each spouse has that income type**; they may mix forfait of one with actual frais of the other (al. 4). Salarié forfait cannot exceed recettes after frais de déplacement (al. 5). Independents get **no** 540 € forfait.  
-- **2025 / 2026:** unchanged. **确定**  
+- **2025 / 2026:** unchanged. **Certain**  
 - **Optimisation.** Keep receipts. Claim frais réels only when they exceed 540 € (or 300 € pension). Do not invent profession-specific forfaits — no current ACD special forfait for journalists/VRP exists.  
 - **Sources.** LIR 2026 Art. 107 p. 156; [ACD frais_salar](https://impotsdirects.public.lu/fr/az/f/frais_salar.html); [ACD FFO/FDS](https://impotsdirects.public.lu/fr/az/f/ffo-fds.html).  
 - **App.** 🟡 `deductions.ts` uses `max(employedSpousesCount * 540, actualEmploymentExpenses)`. No 300 € pension, no 25 € capitaux, no Art. 3 doubling test beyond a crude `employedSpousesCount`, no al. 5 cap after déplacement. Pension `FactCategory` exists and is **dropped** by the engine `switch`.
@@ -61,7 +61,7 @@ Work top to bottom. For each item:
 ### 3.2 Frais de déplacement 99 € / unité — first 4 ignored, cap 2 574 €
 
 - **Rule.** Art. 105bis LIR. 99 € per unité d’éloignement. First **4 units not taken into account**. Maximum **26 units = 2 574 €** per year. Independent of means of transport. Granted to **each** salarié spouse (al. 4). Cannot exceed recettes (al. 5). Partial year: 1/12 per full month.  
-- **2025 / 2026:** unchanged. **确定**  
+- **2025 / 2026:** unchanged. **Certain**  
 - **Optimisation.** This is **in addition to** the 540 € FFO. A one-unit commuter already deducts 99 € on top of 540 €. A 30-unit commuter is capped at 2 574 €. Do not claim actual petrol/ticket on top of the forfait — the forfait covers all domicile–work commuting.  
 - **Sources.** LIR 2026 Art. 105bis p. 153–154; [ACD frais-depl](https://impotsdirects.public.lu/fr/az/f/frais-deplacement-forfaitaires/frais-depl.html); Form 100 sheet S.  
 - **App.** ❌ **cannot compute.** No `fieldKey`, no Art. 105bis code path. `MORTGAGE_DEDUCTION` / `OTHER_DEDUCTION` are not wired to FO.
@@ -69,7 +69,7 @@ Work top to bottom. For each item:
 ### 3.3 Forfaits majorés invalides / handicapés
 
 - **Rule.** Replace (not add to) the 540 € FFO. Degrees a)–d) reduced working capacity; e) vision ≤ 1/20 or impotence 1 515 €.  
-- **2025 / 2026:** unchanged. **确定**
+- **2025 / 2026:** unchanged. **Certain**
 
 | Taux de réduction de la capacité de travail | Forfait annuel majoré | vs 540 € |
 |---|---|---|
@@ -91,7 +91,7 @@ Work top to bottom. For each item:
 - **Rule.** There is **no legal PIT forfait “télétravail”** for the employee’s own return. Art. 95 al. 2: salaries include all indemnities other than **non-forfaitaire** reimbursements of costs incurred exclusively in the employer’s interest. ACD confirms that forfaitaire télétravail indemnities (including the 3 €/month CCT banques, n.i. 100) are **imposables** and do not fall under Art. 115 n° 2–3.  
 - **Home office as frais d’obtention** is possible only as **frais réels** under circulaire L.I.R. 105/2 (4 June 2021): a **pièce à part**, exclusive or quasi-exclusive professional use (≥ 90 %), not a passage room, not disproportionate. Deductible: proportional rent/interest/charging/heating/electricity (surface of the cabinet / surface habitable), plus 100 % of costs limited to the room. Employer attestation of “no desk at the workplace” may be demanded. People who have a desk at the employer’s cannot deduct a second home office.  
 - **Formation / computer:** a PC is an instrument de travail only if ≥ 90 % professional; otherwise non-ventilable.  
-- **2025 / 2026:** unchanged doctrine. **确定** on the taxable-forfait rule and on 105/2 home-office conditions.  
+- **2025 / 2026:** unchanged doctrine. **Certain** on the taxable-forfait rule and on 105/2 home-office conditions.  
 - **Optimisation.** Prefer **non-forfaitaire** reimbursement by the employer (exempt). If you claim a home office, document exclusive use and keep the 90 % test. Do not deduct a “télétravail forfait” — it does not exist.  
 - **Sources.** [ACD forfaits-salariés](https://impotsdirects.public.lu/fr/az/f/forfaits-salaries.html) (last update 14/10/2021; still the A–Z page); circulaire [L.I.R. 105/2 du 4 juin 2021](https://impotsdirects.public.lu/dam-assets/fr/legislation/legi21/2021-06-04-LIR-105-2-du-462021.pdf), §§ 2–3.  
 - **App.** ❌ **cannot compute.** No home-office, no télétravail, no instrument-de-travail module. `BUSINESS_EXPENSE` is freelance-only.
@@ -100,7 +100,7 @@ Work top to bottom. For each item:
 
 - **Rule.** Circulaire 105/2 § 3: **perfectionnement** of the current profession = frais d’obtention Art. 105. **Formation initiale / retraining into a new profession** = dépenses de train de vie Art. 12 n° 1, **not deductible**. Cours de maîtrise for a practising artisan are typically Fortbildung.  
 - **INFPC aide directe** (enterprises): 20 % of the qualifying training investment (Code du travail L. 542-13), taxable. The old 14 % bonification d’impôt is **abrogated from AY 2018**.  
-- **2025 / 2026:** unchanged. **确定**  
+- **2025 / 2026:** unchanged. **Certain**  
 - **Optimisation.** Keep attestations that the course maintains/improves the **existing** profession. Do not claim a first-degree or career-change curriculum as FO. An independent’s training cost is a frais d’exploitation on the same Fortbildung/Ausbildung split.  
 - **Sources.** Circulaire 105/2 § 3; [ACD bonif_format](https://impotsdirects.public.lu/fr/az/b/bonif_format.html).  
 - **App.** ❌ **cannot compute.** No training fact type. Employee training cannot even be parked in `OTHER_DEDUCTION` and reach the FO block.
@@ -123,14 +123,14 @@ Cotisations syndicales et professionnelles; vêtements typiquement professionnel
   4. reports de pertes Art. 114.  
 - **Art. 113** minimum forfaitaire **480 €** per taxpayer (960 € two-earner class 2, with the al. 2 reduction). Covers **only** Art. 109 n° 1 and 1a, Art. 110 n° 4, Art. 111, 111bis, 111ter.  
 - **Does **not** cover:** Art. 110 n° 1–3a (obligatory SS, LRCP) or Art. 112 dons. Those are **additive**.  
-- **2025 / 2026:** 480/960 unchanged. No indexation. **确定**  
+- **2025 / 2026:** 480/960 unchanged. No indexation. **Certain**  
 - **Sources.** LIR 2026 Art. 109/113 p. 159–170 (local `lir_arts.txt` p. 159–160 confirms n° 3 dons and n° 4 Art. 114 are outside the 672 € envelope); [ACD depens_spe](https://impotsdirects.public.lu/fr/az/d/depens_spe.html); [ACD FFO/FDS](https://impotsdirects.public.lu/fr/az/f/ffo-fds.html).  
 - **App.** 🟡 amounts 480/960 exist. `specialExpensesDeduction = max(480|960, insurance + dons)`. That **(a)** swallows dons below the forfait, **(b)** treats obligatory SS as if it were inside 480 €, **(c)** never adds dons on top, **(d)** has no 111bis of its own. This is the single most misleading DS line in the engine.
 
 ### 4.1 Art. 111 — 672 € envelope (private insurance + consumer interest), **not** 672 € × household members
 
 - **Rule.** One envelope of **672 €** for (i) personal/consumer interest Art. 109 n° 1a and (ii) primes Art. 111 al. 1 a)–b) (vie, décès, accidents, invalidité, maladie, RC; secours mutuels). Majoration **+672 €** for the spouse **if Art. 3 collectif**, **+672 € per enfant with modération Art. 122**. Prorata if partial year. Excluded risks: vol, incendie, bris de glace, casco. Assureur agréé LU or UE with siège in UE.  
-- **2025 / 2026:** 672 € unchanged. **确定**  
+- **2025 / 2026:** 672 € unchanged. **Certain**  
 - **Optimisation.** Fill the 672 € with whichever of interest or insurance is real. Do not put 111bis, épargne-logement or LRCP in this box. Do not multiply 672 € by “householdMembersCount” (the app’s bug: a couple + 2 children would get 2 688 € instead of 672 × 2 + 672 × enfants modérés — the legal multiplier is 1 + conjoint collectif + enfants modérés, which for a couple + 2 modérés is 4 × 672 = 2 688 € **only if** both the conjoint majoration and two enfant majorations apply; a single person with no child is 672 €, not 672 € × “members”).  
 - **Sources.** LIR 2026 Art. 111 p. 162–164 (local extract: “Ce plafond est majoré de son propre montant pour le conjoint et pour chaque enfant”); [ACD cotis_prim](https://impotsdirects.public.lu/fr/az/c/cotis_prim.html).  
 - **App.** 🟡 `insuranceCap = 672 * householdMembersCount`. Uses the wrong legal trigger (all members vs conjoint collectif + enfants modérés). Collapses 111bis into this cap (see 4.3). No consumer-interest input.
@@ -139,7 +139,7 @@ Cotisations syndicales et professionnelles; vêtements typiquement professionnel
 
 - **Rule.** Cotisations personnelles du salarié to the employer’s plan (LRCP): **1 200 € / year**. Not inside the 480 € forfait. Employer contributions are Art. 95(3) salary, 20 % WHT Art. 142. Payout: Art. 115 n° 17a exempt if the regime is LRCP and (internal regimes) endowments were taxed as salary.  
 - **Art. 110 n° 3a** (independent LRCP / retraite): 20 % of the sum of net revenus Art. 10 n° 1–3 (+ salaire Art. 95 n° 6 under conditions).  
-- **2025 / 2026:** 1 200 € unchanged. **确定** (LIR + taxx cross-check; ACD cotis_prim lists 1.200 €).  
+- **2025 / 2026:** 1 200 € unchanged. **Certain** (LIR + taxx cross-check; ACD cotis_prim lists 1.200 €).  
 - **Optimisation.** Pay the personal LRCP slice before 31 December. Do not also deduct the same euro as Art. 111.  
 - **Sources.** LIR 2026 Art. 110; [ACD cotis_prim](https://impotsdirects.public.lu/fr/az/c/cotis_prim.html).  
 - **App.** ❌ **cannot compute.** `INSURANCE_DEDUCTION` is a single bucket into the 672 € cap.
@@ -155,7 +155,7 @@ Cotisations syndicales et professionnelles; vêtements typiquement professionnel
 | **2026 et suivantes** | **4 500 €** |
 
 - LIR 2026 Art. 111bis al. 7 / 111ter al. 7 already print 4 500 € (L.19.12.25,2). ACD prévoyance-vieillesse (27.01.2026): 4 500 € from AY 2026; 3 200 € for 2017–2025. Guichet page still showing 3 200 € (09.03.2021) is **stale for 2026**. Form 100 2025 still prints 3 200 € — correct for 2025 returns.  
-- **Separate** from the 672 € envelope (“s’appliquent de façon distincte et ne se confondent pas”). **确定**  
+- **Separate** from the 672 € envelope (“s’appliquent de façon distincte et ne se confondent pas”). **Certain**  
 - **Payout (not a deduction, but plan it):** rente viagère → 50 % exempt Art. 115 n° 14a; capital → Art. 99(4) revenus divers, demi-taux on request Art. 132(2) n° 5.  
 - **Optimisation.**  
   - 2025 return (filed 2026): pay up to 3 200 € each.  
@@ -175,8 +175,8 @@ Cotisations syndicales et professionnelles; vêtements typiquement professionnel
 | 18 à 40 ans accomplis | **1 344 €** |
 | Autres cas | **672 €** |
 
-- Couple collectif: plafond majoré of the **younger adult** is the 1 344 € base; + own plafond for conjoint; + plafond for each enfant modéré. **Separate** from the 672 € insurance/interest envelope. **确定**  
-- **2026 watch — loi 8775.** Projet de loi 8775 (first vote 28 October 2026, publication expected November 2026) **suppresses the 40-year age limit** on the majoré 1 344 € plafond. As of 8 November 2026 this is **not yet confirmed published**. Do not grant 1 344 € to a 41+ year old for 2026 until the Mémorial text is pinned. **高置信** on the vote; **待证** on promulgation.  
+- Couple collectif: plafond majoré of the **younger adult** is the 1 344 € base; + own plafond for conjoint; + plafond for each enfant modéré. **Separate** from the 672 € insurance/interest envelope. **Certain**  
+- **2026 watch — loi 8775.** Projet de loi 8775 (first vote 28 October 2026, publication expected November 2026) **suppresses the 40-year age limit** on the majoré 1 344 € plafond. As of 8 November 2026 this is **not yet confirmed published**. Do not grant 1 344 € to a 41+ year old for 2026 until the Mémorial text is pinned. **High confidence** on the vote; **unverified** on promulgation.  
 - **Sources.** LIR 2026 Art. 111 al. 5 (local extract p. 699–701: “de 18 à 40 ans accomplis 1.344 euros”; “fonction de l’âge du souscripteur adulte le plus jeune”); [ACD cotis-epargne-logement](https://impotsdirects.public.lu/fr/az/c/cotis-epargne-logement.html); [ACD newsletter 30.10.2026](https://impotsdirects.public.lu/fr/archive/newsletter/2026/nl301020261.html).  
 - **App.** ❌ **cannot compute.** No épargne-logement fact, no age test, no 1 344/672.
 
@@ -187,7 +187,7 @@ Cotisations syndicales et professionnelles; vêtements typiquement professionnel
   - Surmajoration (maison/appartement d’habitation personnelle, souscripteur > 30 ans): **8 % of the majoration maximale per year of age above 30, max 160 %**.  
   - Table (sans enfant / 1 / 2 / 3 enfants), from 6 000 / 7 200 / 8 400 / 9 600 up to 15 600 / 18 720 / 21 840 / 24 960 (50 ans et plus) + 1 200 € per extra child.  
   - Indemnité journalière (indépendants without legal compensatory indemnity): majoration of the prime portion, max **1 500 €**.  
-- **2025 / 2026:** unchanged circular. **确定** (circular + ACD cotis_prim).  
+- **2025 / 2026:** unchanged circular. **Certain** (circular + ACD cotis_prim).  
 - **Optimisation.** A single premium on the home loan can deduct several thousand euros **beyond** 672 €. Age and children modérés drive the table. Interest that finances the prime unique stays in the 672 € box unless the majoration applies.  
 - **Sources.** [Circulaire L.I.R. 111/1 du 02.11.2017](https://impotsdirects.public.lu/dam-assets/fr/legislation/legi17/lir-111-1-02112017.pdf); [ACD cotis_prim](https://impotsdirects.public.lu/fr/az/c/cotis_prim.html). Form 100 cases 1474–1477.  
 - **App.** ❌ **cannot compute.** No prime unique, no age/children table.
@@ -195,7 +195,7 @@ Cotisations syndicales et professionnelles; vêtements typiquement professionnel
 ### 4.6 Dons Art. 112 — additive to FDS, min 120 €, max 20 % and 1 M€, report 2 years
 
 - **Rule.** Dons **en espèces** to organismes reconnus d’utilité publique, offices sociaux, CHL, ONGD, FNR-listed établissements, Fonds culturel national (aussi en nature), Fonds audiovisuel, Kultur|lx, SIS, dons UE/AELE similaires, dotation initiale de fondation. Minimum **120 €** total annual. Max **20 % du total des revenus nets** **and** **1 000 000 €**. Excess reportable on the **two** following AYs, same limits (Art. 109 n° 3). **Not covered by the 480 € forfait** — additive.  
-- **2025 / 2026:** unchanged. **确定**  
+- **2025 / 2026:** unchanged. **Certain**  
 - **Timing.** The don must be **paid in the tax year**. A December transfer counts for that year; a 2 January transfer counts for the next year. For a December optimisation: pay before 31 December, keep the receipt, confirm the organisme is on the ACD/FNR list.  
 - **Optimisation.**  
   - Always claim dons **on top of** FDS 480/960, never as an alternative.  
@@ -222,7 +222,7 @@ Already in §4.1. Owner-occupier mortgage is **not** here (see §7). Second-home
 
 - **Rule.** Tarif allowance (not DS) of **4 500 €/year** (375 €/month) for jointly taxed spouses/partners who **both** realise professional income (commercial, agricole, libérale **or** salarié net) **and** are each personally affiliated to a social-security regime. Also granted if one is conjoint-aidant; on request if the other has been retired **< 3 years** at the start of the AY.  
 - **Fiche de retenue:** each spouse already receives half (**2 250 €**) as “AC” extra-professionnel. Abattement conjoint « AC » on the 1ère fiche additionnelle = **5 520 €** = 540 + 480 + 4 500.  
-- **2025 / 2026:** 4 500 € unchanged. **确定**  
+- **2025 / 2026:** 4 500 € unchanged. **Certain**  
 - **Optimisation.** A dual-career class-2 household takes 4 500 € off RIA — roughly 1 200–1 600 € of tax at typical marginals. If one spouse has a side-business and the other is salarié, **both** count, provided both are SS-affiliated. If the side-business spouse is not affiliated, no AEP.  
 - **Sources.** [ACD abat_extrapro](https://impotsdirects.public.lu/fr/az/a/abat_extrapro.html) (page read 8 Nov 2026, wording quoted in the findings below); [ACD abat_conjoi](https://impotsdirects.public.lu/fr/az/a/abat_conjoi.html).  
 - **App.** ❌ **cannot compute.** Not in `deductions.ts`, not in the questionnaire, not a fact key.
@@ -239,7 +239,7 @@ Already in §4.1. Owner-occupier mortgage is **not** here (see §7). Second-home
 | 40 001–79 999 € | 600 − (brut − 40 000) × 0.015 |
 | ≥ 80 000 € | 0 |
 
-- Per **person**, once for all salaries. Not combinable with CIP or CII. Advanced via the fiche; excess paid to the employee. CIS and CIP do **not** re-enter the ordinary décompte annuel (except mixed-income regularisation). **确定**  
+- Per **person**, once for all salaries. Not combinable with CIP or CII. Advanced via the fiche; excess paid to the employee. CIS and CIP do **not** re-enter the ordinary décompte annuel (except mixed-income regularisation). **Certain**  
 - **Sources.** Art. 154quater LIR; [ACD CIS 2025](https://impotsdirects.public.lu/fr/az/c/credit-impot-salaries/cis2025.html); [ACD CIS 2026](https://impotsdirects.public.lu/fr/az/c/credit-impot-salaries/cis2026.html).  
 - **App.** ❌ wrong formula. Starts only above 11 265 €, uses `(gross-11265)*0.021+300`, so a 5 000 € or 10 000 € earner gets **0** instead of ~418 / ~563 €. Provenance still cites “LIR-ART-139ter-CIS” (obsolete article).
 
@@ -247,12 +247,12 @@ Already in §4.1. Owner-occupier mortgage is **not** here (see §7). Second-home
 
 - Same salary base and phase-out geometry as CIS.  
 - 2025: 192 € on 936–40 000 €, then 192 − (brut − 40 000) × 0.0048.  
-- 2026: **216 €**, then × **0.0054**. Zero below 936 € or ≥ 80 000 €. **确定** (ACD CIS 2026 page).  
+- 2026: **216 €**, then × **0.0054**. Zero below 936 € or ≥ 80 000 €. **Certain** (ACD CIS 2026 page).  
 - **App.** ❌ **cannot compute.** No CI-CO2 line.
 
 ### 5.4 CIM — 3 504 € / 750 € (from AY 2025)
 
-- Class **1a only**, on request, at least one child with modération. Not if both parents share a home with the child; not if class 2. Restitutable. Reduction by 50 % of child allocations above 2 712 €/year. **确定**  
+- Class **1a only**, on request, at least one child with modération. Not if both parents share a home with the child; not if class 2. Restitutable. Reduction by 50 % of child allocations above 2 712 €/year. **Certain**  
 - **App.** Superseded — see §11 row 17: the CIM is implemented (€3,504 / 0.0612 / €750, split into `cimApplied` / `cimRefund`). Was: 2 505 € / 35 000 € / 0.025, the **2024** numbers.
 
 ### 5.5 CIP + CI-CO2 pensionné; modération 922,50 €; no “CIAC”
@@ -263,7 +263,7 @@ See [research/2025-2026-lu-tax-credits-and-classes.md](../research/2025-2026-lu-
 
 - **Rule.** Nouvel article **129g LIR**, loi du 19 décembre 2025 (Mémorial A 623, doc. parl. 8640). In force **1 January 2026**. Maximum **9 000 €/year** and **750 €/month** reduction of revenu imposable for residents and assimilated non-residents who are **eligible for a personal old-age pension** (vieillesse anticipée) but **continue** a commercial, agricole/forestier, libérale or salariée activity.  
 - **CNAP certificate.** Guichet: request a **one-time** CNAP certificate proving (i) opening conditions of the anticipated old-age pension from age **57 or 60** and (ii) that the person has **not** claimed the pension. Age window **57–65**, affiliated to the régime général, activity in Luxembourg. Certificate valid until pension take-up. MyGuichet.lu. RGD 13 février 2026 (Mémorial A 69–72) adapt RTS, fiche, décompte 163 and DS/CE mechanics.  
-- **2025:** does **not** exist. **2026:** yes. **确定** (newsletter + guichet + mfin).  
+- **2025:** does **not** exist. **2026:** yes. **Certain** (newsletter + guichet + mfin).  
 - **Optimisation.** If a 57–65 year-old employee or side-business holder still works despite early-pension eligibility, AMVP is often the **largest single 2026 abattement** (9 000 €). Get the CNAP certificate **before** year-end; the employer can then take it into account on the fiche, or regularise via modèle 163.  
 - **Sources.** [ACD newsletter 25.02.2026](https://impotsdirects.public.lu/fr/archive/newsletter/2026/nl25022026.html); [guichet certificat CNAP AMVP](https://guichet.public.lu/fr/citoyens/travail/pension/assurance-pension/certificat-cnap-abattement-fiscal.html) (05.01.2026); mfin Nouveautés 2026.  
 - **App.** ❌ **cannot compute.** No age, no pension-eligibility, no 129g. UI locked to 2025.
@@ -272,24 +272,24 @@ See [research/2025-2026-lu-tax-credits-and-classes.md](../research/2025-2026-lu-
 
 - **What is certain.** Projet de loi **8775** (déposé 22 June 2026; **first vote 28 October 2026**; publication expected **November 2026**) reintroduces a temporary CIC for **salariés, pensionnés and indépendants**, plus a CISSM increase (81 → 179 € from **2027**) and suppression of the épargne-logement 40-year age limit. ACD newsletter 30.10.2026: CIC salarié and CIC pensionné for **June–October 2026** will be **bonified in one lump sum by 31 December 2026**. The barème itself is to be indexed on **1 January 2027**.  
 - **What is not certain as of 8 November 2026.** The ACD A–Z page [`credit-impot-conjoncture-salarie.html`](https://impotsdirects.public.lu/fr/az/c/credit-impot-conjoncture/credit-impot-conjoncture-salarie.html) still prints the **2023** monthly table (4 € to 54,25 €) and a January–July 2023 bonification note. That table is **not** a 2026 legal scale. Secondary press/financialservices.lu quote ~4–54,25 €/month for 2026; **do not implement those figures as law** until the 19 December 2025 / 2026 LIR amendment or a new ACD 2026 CIC page is quoted.  
-- **App.** ❌ **cannot compute.** Correctly absent. Keep it absent until the law is published. **中置信** on existence of a 2026 CIC; **待证** on amounts.
+- **App.** ❌ **cannot compute.** Correctly absent. Keep it absent until the law is published. **Medium confidence** on existence of a 2026 CIC; **unverified** on amounts.
 
 ### 5.8 Crédit d’impôt start-up (2026)
 
 - **Rule (mfin Nouveautés 2026 + press).** Resident individual investors: **20 %** of a qualifying direct equity investment in an eligible start-up, **cap 100 000 €/year**. Minimum investment **10 000 €** per start-up per year; **3-year** holding (taxx 04.03.2026; PwC/press Jan 2026).  
-- **Primary LIR article** was not opened in Legilux in this run. **高置信** on 20 % / 100 k€ from mfin; **中置信** on 10 k€ / 3-year holding.  
+- **Primary LIR article** was not opened in Legilux in this run. **High confidence** on 20 % / 100 k€ from mfin; **medium confidence** on 10 k€ / 3-year holding.  
 - **App.** ❌ **cannot compute.** No investment fact. P2.
 
 ### 5.9 Prime jeune salarié — Art. 115 n° 13d (exemption, not a deduction)
 
 - **Rule from 2025.** 75 % of the prime exempt if, at payment: (1) employee **< 30 years** on 1 January; (2) **first CDI** with a LU employer (or foreign with LU établissement stable), contract signed from AY 2025; (3) first prime paid less than **5 years** ago at 1 January. Changing employer loses the exemption.  
-- Annual exemptible maximum (full-time): brut ≤ 50 000 € → **5 000 €**; 50 000–75 000 → **3 750 €**; 75 000–100 000 → **2 500 €**; > 100 000 → 0. RGD 20 décembre 2024 (Mémorial A 592). **确定**  
+- Annual exemptible maximum (full-time): brut ≤ 50 000 € → **5 000 €**; 50 000–75 000 → **3 750 €**; 75 000–100 000 → **2 500 €**; > 100 000 → 0. RGD 20 décembre 2024 (Mémorial A 592). **Certain**  
 - **App.** ❌ **cannot compute.** No age/first-CDI/prime flags. Salary is taxed in full.
 
 ### 5.10 Bëllegen Akt — 40 000 € per person (not IR)
 
 - **Rule.** Credit on droits d’enregistrement et de transcription (normally 7 %) for owner-occupied housing, **40 000 € per person**. Occupation 2 years (4 years for terrain à bâtir / en voie de construction). AED keeps a minimum of 100 €. Raised 30 000 → 40 000 by loi 22 mai 2024 (Mémorial A 219) for actes 1 Jan 2024 – 30 June 2025; **pérennisé** by loi 27 juin 2025 (Mémorial A 271).  
-- **€45 000 claim is unverified** and opposed to the 7 July 2025 guichet page. Do not implement. **确定** on 40 000 €.  
+- **€45 000 claim is unverified** and opposed to the 7 July 2025 guichet page. Do not implement. **Certain** on 40 000 €.  
 - **This is not an IR deduction and not an engine line.** Track it in the housing workflow (AED / notaire), not in RIA.  
 - **Sources.** [Guichet Bëllegen Akt](https://guichet.public.lu/fr/citoyens/aides/logement-construction/aides-indirectes/credit-impot-actes-notaries.html) (07.07.2025); gouvernement.lu 31.01.2024.  
 - **App.** ❌ no housing-duties module (acceptable if the product stays on IR; label it clearly as non-IR).
@@ -301,7 +301,7 @@ See [research/2025-2026-lu-tax-credits-and-classes.md](../research/2025-2026-lu-
 ### 6.1 Garde d’enfants / aides de ménage / soins — forfait 5 400 €
 
 - **Rule.** Charges extraordinaires, abattement **forfaitaire 5 400 €/year** (since AY 2017), cannot exceed real expenses nor **450 €/month**. Children: modération + **moins de 14 ans accomplis au 1er janvier** (no age limit if handicapés). Granted **once** even if several categories cumulated. Alternative: real CE with the % of RIA table (since 2018) depending on classe d’impôt and number of modérations.  
-- **2025 / 2026:** 5 400 € unchanged. **确定**  
+- **2025 / 2026:** 5 400 € unchanged. **Certain**  
 - **Optimisation.** Declare crèche / garderie / aide déclarée SS on sheet **CE**, not DS. If actual costs exceed 5 400 €, model the real-CE table before choosing. Same costs cannot sit in both forfait and real CE.  
 - **Sources.** [ACD abat_forf_dom](https://impotsdirects.public.lu/fr/az/a/abat_forf_dom.html); [ACD charg_extra](https://impotsdirects.public.lu/fr/az/c/charg_extra.html); circulaire L.I.R. 127/1 du 2 avril 2012.  
 - **App.** ❌ **cannot compute.** `CHILDCARE_EXPENSE` exists in `FactCategory` and is **dropped** by the engine `switch`. Extractor can produce the fact; the calculator ignores it.
@@ -335,7 +335,7 @@ Revenue deduction, not a credit. Was 4 422 € in 2023–2024. **App:** ❌.
 - Before libre disposition: intérêts **intégralement** deductible + frais d’ouverture de crédit.  
 - Résidence **secondaire**: intérêts **non** déductibles (VL = 0 € since 2017).  
 - Bien **loué**: intérêts as FO of rental net, no owner-occupier cap.  
-- **Conflict (do not silently reconcile).** ACD (Feb 2025) = 2 years unlimited then 4 000/3 000/2 000 by duration since fixation. Gouvernement note 31.01.2024 = 4 000 for years 1–6 with **no unlimited first two years**. taxx.lu (23.03.2026) presents a date-of-availability table with “always intégral after 2023” — **not** the ACD rule. **Follow ACD habit_pers.** **确定** as ACD doctrine; **高置信** that LIR 2026 body does not restate the 4 000/3 000/2 000 as a standalone article.  
+- **Conflict (do not silently reconcile).** ACD (Feb 2025) = 2 years unlimited then 4 000/3 000/2 000 by duration since fixation. Gouvernement note 31.01.2024 = 4 000 for years 1–6 with **no unlimited first two years**. taxx.lu (23.03.2026) presents a date-of-availability table with “always intégral after 2023” — **not** the ACD rule. **Follow ACD habit_pers.** **Certain** as ACD doctrine; **high confidence** that LIR 2026 body does not restate the 4 000/3 000/2 000 as a standalone article.  
 - **Sources.** [ACD habit_pers](https://impotsdirects.public.lu/fr/az/h/habit_pers.html); [gouvernement logement 31.01.2024](https://gouvernement.lu/dam-assets/documents/actualites/2024/01/31-mesures-logement-fiscalite/mesures-adoptes-logement-et-fiscalit-31012024.pdf).  
 - **App.** 🟡 uses 4 000/3 000/2 000 × `householdMembersCount` (all members, not 1+conjoint collectif+enfants modérés), no “first two years intégral”, no fixation-year input wired from the questionnaire in the engine tests, wrong Art. 102 label.
 
@@ -345,13 +345,13 @@ Revenue deduction, not a credit. Was 4 422 € in 2023–2024. **App:** ❌.
 - **Forfait option:** only if the built property is **entirely private patrimoine** and construction completed **≥ 15 years** on 1 January of the AY. Forfait = **35 % of gross rent, max 2 700 € per year per building**. Does **not** cover (still deductible **in addition**): interest, loan fees, rente, gérance, impôt foncier, redevances, foreign personal taxes. Return to frais réels possible; then wait **15 years** to re-elect. RGD 23.10.1980.  
 - **Amortissement (private patrimoine, ACD table):** 1.5 %/2 % (< 30 years), 2 %/2.5 % (30–60), 3 %/4 % (> 60); 2.5 %/3 % pre-1941 base; **10 %** durable energy renovation of rental housing (< 9 years) with Kinolaw aid (6 % → 10 % from 2026 per mfin); **2 %** rental housing; **4 %** for up to **two** rental buildings completed < 5 years; VEFA 2024–30.6.2025 (and 1.7–30.9.2025 with compromis by 30.6) always 2 %; land 20 % of purchase price if unknown; works ≤ **2 500 € TTC** immediately deductible.  
 - **There is no general 40 % or 50 % exemption for ordinary residential lets.**  
-- **2025 / 2026:** 35 % / 2 700 € unchanged. **确定**  
+- **2025 / 2026:** 35 % / 2 700 € unchanged. **Certain**  
 - **Sources.** [ACD logem_loc](https://impotsdirects.public.lu/fr/az/l/logem_loc.html) (24.02.2026); Art. 98 LIR 2026 p. 134.  
 - **App.** ❌ **cannot compute.** No rental income category. Plan defers it.
 
 ### 7.3 Social rental — Art. 115 n° 22a: 90 % of net exempt (since AY 2024)
 
-- **90 %** of net rental income from **organismes conventionnés** under Art. 49 of the loi du 7 août 2023 (logement abordable), from **AY 2024**. AY 2023: 75 %. AY 2017–2022: 50 %. Circulaire L.I.R. 115/10 du 18.08.2023. Losses on such property stay 100 % deductible. **确定**  
+- **90 %** of net rental income from **organismes conventionnés** under Art. 49 of the loi du 7 août 2023 (logement abordable), from **AY 2024**. AY 2023: 75 %. AY 2017–2022: 50 %. Circulaire L.I.R. 115/10 du 18.08.2023. Losses on such property stay 100 % deductible. **Certain**  
 - **App.** ❌.
 
 ### 7.4 Plus-values — timing (securities 6 months; real estate 5 years; no Art. 99a)
@@ -386,7 +386,7 @@ Revenue deduction, not a credit. Was 4 422 € in 2023–2024. **App:** ❌.
 - **Rule.** Art. 109 al. 1 n° 4: “les pertes antérieures reportées pour autant qu’elles répondent aux conditions fixées à l’article 114.”  
 - Art. 114 (as reformed, 17-year carry-forward from 2017 losses): a loss is deductible only to the extent it could not be compensated earlier; **only the taxpayer who suffered the loss** can deduct it (identity of the taxable person); carry-forward **17 financial years** for losses from 2017 onward (pre-2017 losses remain on the older indefinite rule). Abuse-of-law can refuse use (Cour, 21 May 2024).  
 - Residents: this is the path for **prior-year negative revenus nets** (rental, divers, and — via the net-income mechanics — independent losses that were not already absorbed). It is **not** a new 2025/2026 number; it is a **carry-forward inventory** the app must keep year to year.  
-- **2025 / 2026:** 17-year rule unchanged. **确定** on Art. 109 n° 4 (local LIR extract); **高置信** on 17 years (financialservices.lu 29.09.2026 + chateaux.law + circulaire 114/1 2004 for the “only the sufferer” principle).  
+- **2025 / 2026:** 17-year rule unchanged. **Certain** on Art. 109 n° 4 (local LIR extract); **high confidence** on 17 years (financialservices.lu 29.09.2026 + chateaux.law + circulaire 114/1 2004 for the “only the sufferer” principle).  
 - **Optimisation.** Track the remaining loss stock per year of origin. Use it against a year that has positive RIA (e.g. a large plus-value or a high salary year) rather than letting a 17-year clock run out. Do not “buy” losses from another person.  
 - **Sources.** LIR 2026 Art. 109 n° 4 and Art. 114; [financialservices.lu report pertes](https://www.financialservices.lu/fr/insights/tax-loss-carry-forward-luxembourg) (29.09.2026); circulaire L.I.R. 114/1 (15.09.2004).  
 - **App.** ❌ **cannot compute.** No prior-loss inventory, no Art. 114 code path. `taxYear` is accepted and ignored.
@@ -399,8 +399,8 @@ This is the shared-context case: one spouse salarié, the other (or the same per
 |---|---|---|
 | Profit | Art. 14 (commercial) / Art. 91 (libérale). Art. 94 forfait **abrogated 2017**. No LIR “minimum forfait profit”. | 🟡 `gross − expenses`, floored at 0. No CMS, no amortissement, no CII. |
 | Occasional services | Art. 99(3): **< 500 €/year exempt**, deficit not offsettable. | ❌ |
-| Voluntary / accessory ASBL/ONG/sport | Practice: exempt up to **5 000 €/year**; above that a 5 000 € frais forfait may apply. Jetons de présence: 15 €/séance, max 45 €/month, 540 €/year. **中置信** (taxx/practice; match to form 100). | ❌ |
-| Small libéral expense forfait (taxx table 30/25/20 %, cap 3 400 €) | Declaration forfait, not a minimum taxable profit. **中置信**. | ❌ |
+| Voluntary / accessory ASBL/ONG/sport | Practice: exempt up to **5 000 €/year**; above that a 5 000 € frais forfait may apply. Jetons de présence: 15 €/séance, max 45 €/month, 540 €/year. **Medium confidence** (taxx/practice; match to form 100). | ❌ |
+| Small libéral expense forfait (taxx table 30/25/20 %, cap 3 400 €) | Declaration forfait, not a minimum taxable profit. **Medium confidence**. | ❌ |
 | FFO | Independents: **no 540 €**. | 🟡 engine may count a freelance-only person as 0 salarié (OK) or as 1 if mixed. |
 | CII / CI-CO2 indépendant | Art. 152ter, **not cumulative** with CIS. | ❌ |
 | AEP 4 500 € | Granted if both spouses have professional income **and** both SS-affiliated. Salarié + freelance **qualifies**. | ❌ |
@@ -639,7 +639,7 @@ Ordered by typical euro impact for a salarié + side-business class-2 household.
 
 ---
 
-## 13. 待证项 (do not implement as facts)
+## 13. Unverified items (do not implement as facts)
 
 | Item | Why open | How to close |
 |---|---|---|
