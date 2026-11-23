@@ -249,7 +249,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-3 dark:border-zinc-800 dark:bg-[#161920] dark:shadow-none">
           <Skeleton className="h-4 w-48" />
           <Skeleton className="h-7 w-32" />
           <Skeleton className="h-3 w-full rounded-full" />
@@ -264,18 +264,18 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
   // invented answers and then overwrite the real ones.
   if (!answers) {
     return (
-      <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-6 shadow-xs">
+      <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-6 shadow-xs dark:border-rose-800/70 dark:bg-rose-950/40 dark:shadow-none">
         <div className="flex items-start gap-3">
-          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" aria-hidden="true" />
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" aria-hidden="true" />
           <div>
-            <h3 className="text-sm font-bold text-rose-950">The tax profile could not be loaded</h3>
-            <p className="mt-1 text-xs text-rose-800">
+            <h3 className="text-sm font-bold text-rose-950 dark:text-rose-100">The tax profile could not be loaded</h3>
+            <p className="mt-1 text-xs text-rose-800 dark:text-rose-200">
               {loadError || 'The questionnaire is unavailable, so no answers are shown or saved.'}
             </p>
             <button
               type="button"
               onClick={() => refresh()}
-              className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-zinc-800"
+              className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
             >
               <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
               <span>Retry</span>
@@ -289,7 +289,11 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
   const unresolvedTasks = readiness?.tasks.filter((t) => !t.isResolved) || [];
 
   const inputClass =
-    'w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base font-medium text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:py-2 sm:text-xs';
+    'w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base font-medium text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:py-2 sm:text-xs dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-400 dark:focus:ring-zinc-400/20';
+  const checkboxClass =
+    'h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-sky-400';
+  const fieldLabelClass = 'mb-1 block text-[11px] font-semibold text-slate-600 dark:text-zinc-400';
+  const rowCardClass = 'rounded-xl border border-slate-200/80 p-3.5 dark:border-zinc-800';
 
   return (
     <div className="space-y-6">
@@ -297,13 +301,13 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
 
       {/* Readiness Progress Card */}
       {readiness && (
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs dark:border-zinc-800 dark:bg-[#161920] dark:shadow-none">
           <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
                 Workspace Readiness &amp; Completeness
               </span>
-              <h3 className="tabular-nums mt-0.5 text-2xl font-extrabold text-slate-900">
+              <h3 className="tabular-nums mt-0.5 text-2xl font-extrabold text-slate-900 dark:text-zinc-50">
                 {readiness.completionScore}% Completed
               </h3>
             </div>
@@ -332,7 +336,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               )}
             </div>
           </div>
-          <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-zinc-800">
             <div
               className={`h-full rounded-full transition-all duration-500 ${
                 readiness.completionScore > 80
@@ -349,33 +353,33 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
 
       {/* Missing Information Checklist */}
       {unresolvedTasks.length > 0 && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5 shadow-xs">
-          <h4 className="mb-3 flex items-center gap-2 text-sm font-bold text-amber-950">
-            <AlertTriangle className="h-4 w-4 text-amber-600" aria-hidden="true" />
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5 shadow-xs dark:border-amber-800/70 dark:bg-amber-950/35 dark:shadow-none">
+          <h4 className="mb-3 flex items-center gap-2 text-sm font-bold text-amber-950 dark:text-amber-100">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
             <span>Missing Information Checklist ({unresolvedTasks.length})</span>
           </h4>
           <div className="space-y-2.5">
             {unresolvedTasks.map((task) => (
               <div
                 key={task.id}
-                className="flex flex-col justify-between gap-3 rounded-xl border border-amber-200/80 bg-white p-3.5 shadow-2xs sm:flex-row sm:items-center"
+                className="flex flex-col justify-between gap-3 rounded-xl border border-amber-200/80 bg-white p-3.5 shadow-2xs sm:flex-row sm:items-center dark:border-amber-800/60 dark:bg-[#161920] dark:shadow-none"
               >
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge tone={task.severity === TaskSeverity.BLOCKER ? 'danger' : 'warning'}>
                       {task.severity}
                     </StatusBadge>
-                    <h5 className="text-xs font-bold text-slate-900">{task.title}</h5>
+                    <h5 className="text-xs font-bold text-slate-900 dark:text-zinc-100">{task.title}</h5>
                   </div>
-                  <p className="mt-1 text-xs text-slate-600">{task.description}</p>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-zinc-400">{task.description}</p>
                 </div>
                 <button
                   type="button"
                   disabled={resolvingId === task.id}
                   onClick={() => handleResolveTask(task.id)}
-                  className="inline-flex shrink-0 items-center gap-1.5 self-end rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 sm:self-center"
+                  className="inline-flex shrink-0 items-center gap-1.5 self-end rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 sm:self-center dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
-                  <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+                  <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
                   <span>{resolvingId === task.id ? 'Resolving...' : 'Mark Resolved'}</span>
                 </button>
               </div>
@@ -387,13 +391,13 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
       {/* Guided Questionnaire Form */}
       <form onSubmit={handleSave} className="space-y-6">
         {/* Form Overview + Section Quick-Jump */}
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
-          <div className="flex flex-col justify-between gap-4 border-b border-slate-100 pb-4 sm:flex-row sm:items-center">
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs dark:border-zinc-800 dark:bg-[#161920] dark:shadow-none">
+          <div className="flex flex-col justify-between gap-4 border-b border-slate-100 pb-4 sm:flex-row sm:items-center dark:border-zinc-800">
             <div>
-              <h3 className="text-base font-bold text-slate-900">
+              <h3 className="text-base font-bold text-slate-900 dark:text-zinc-50">
                 Guided household tax questionnaire
               </h3>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
                 Answers configure your Luxembourg tax class, deductions, and required Form 100 annexes.
               </p>
             </div>
@@ -404,7 +408,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
 
           {/* Section 1: Marital / Household Status */}
           <div className="mt-5">
-            <label className="mb-2.5 block text-xs font-bold uppercase tracking-wider text-slate-700">
+            <label className="mb-2.5 block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300">
               1. Marital / Household Status <HelpTip id="householdStatus" />
             </label>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
@@ -417,8 +421,8 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     onClick={() => patchAnswers({ ...answers, maritalStatus: opt.value })}
                     className={`rounded-xl border px-3 py-2.5 text-center text-xs font-bold transition ${
                       active
-                        ? 'border-zinc-950 bg-zinc-950 text-white shadow-xs'
-                        : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 hover:text-zinc-950'
+                        ? 'border-zinc-950 bg-zinc-950 text-white shadow-xs dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950'
+                        : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100'
                     }`}
                   >
                     {opt.label}
@@ -426,16 +430,16 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 );
               })}
             </div>
-            <p className="mt-2 text-[11px] text-slate-500">
+            <p className="mt-2 text-[11px] text-slate-500 dark:text-zinc-400">
               {MARITAL_OPTIONS.find((o) => o.value === answers.maritalStatus)?.taxClassSummary}
             </p>
           </div>
 
           {/* Art. 3 d) — mixed couple */}
           {(answers.maritalStatus === 'MARRIED' || answers.maritalStatus === 'PACS') && (
-            <div className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <div className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-zinc-800 dark:bg-zinc-900/60">
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                <label className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-zinc-300">
                   Where does your spouse live? <HelpTip id="mixedCouple" />
                 </label>
                 <select
@@ -458,7 +462,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               </div>
 
               {answers.spouseResidence && (
-                <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-slate-200/80 bg-white p-3 text-xs text-slate-700">
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-slate-200/80 bg-white p-3 text-xs text-slate-700 dark:border-zinc-800 dark:bg-[#161920] dark:text-zinc-300">
                   <input
                     type="checkbox"
                     checked={answers.mixedCoupleCollectiveRequested ?? false}
@@ -468,7 +472,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                         mixedCoupleCollectiveRequested: e.target.checked,
                       })
                     }
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    className={`mt-0.5 ${checkboxClass}`}
                   />
                   <span className="leading-relaxed">
                     Request collective assessment (Art. 3 d). Granted only when the resident spouse
@@ -482,8 +486,8 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
 
           {/* Art. 119 n° 3 b–c: three-year Class 2 window after death / divorce */}
           {answers.maritalStatus === 'WIDOWED' && (
-            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-zinc-800 dark:bg-zinc-900/60">
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-zinc-300">
                 Year of spouse&apos;s death <HelpTip id="class2Window" />
               </label>
               <input
@@ -500,16 +504,16 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 min={1900}
                 max={2100}
               />
-              <p className="mt-1.5 text-[11px] text-slate-500">
+              <p className="mt-1.5 text-[11px] text-slate-500 dark:text-zinc-400">
                 Class 2 is kept for the year of death and the three following years (Art. 119 n° 3 b).
               </p>
             </div>
           )}
 
           {answers.maritalStatus === 'DIVORCED' && (
-            <div className="mt-4 grid items-start gap-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-2">
+            <div className="mt-4 grid items-start gap-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-2 dark:border-zinc-800 dark:bg-zinc-900/60">
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                <label className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-zinc-300">
                   Year of divorce / separation
                 </label>
                 <input
@@ -535,13 +539,13 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     onChange={(e) =>
                       patchAnswers({ ...answers, class2BeforeEvent: e.target.checked })
                     }
-                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    className={checkboxClass}
                   />
-                  <span className="text-xs font-medium text-slate-800">
+                  <span className="text-xs font-medium text-slate-800 dark:text-zinc-200">
                     Class 2 for five years before the divorce (Art. 119 n° 3 c)
                   </span>
                 </label>
-                <p className="mt-1 ml-6.5 text-[11px] text-slate-500">
+                <p className="mt-1 ml-6.5 text-[11px] text-slate-500 dark:text-zinc-400">
                   If true, Class 2 is kept for the event year and the three following years.
                 </p>
               </div>
@@ -550,15 +554,15 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
         </div>
 
         {/* Section 2: Income Sources */}
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs space-y-4">
-          <div className="border-b border-slate-100 pb-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs space-y-4 dark:border-zinc-800 dark:bg-[#161920] dark:shadow-none">
+          <div className="border-b border-slate-100 pb-3 dark:border-zinc-800">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300">
               2. Income Sources in Luxembourg
             </h4>
           </div>
 
           <div className="space-y-3">
-            <div className="rounded-xl border border-slate-200/80 p-3.5">
+            <div className={rowCardClass}>
               <div className="flex items-center gap-2">
                 <label className="inline-flex w-fit cursor-pointer items-center gap-2.5">
                   <input
@@ -567,9 +571,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     onChange={(e) =>
                       patchAnswers({ ...answers, hasEmploymentIncome: e.target.checked })
                     }
-                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    className={checkboxClass}
                   />
-                  <span className="text-xs font-semibold text-slate-900">
+                  <span className="text-xs font-semibold text-slate-900 dark:text-zinc-100">
                     Employment Income (Salaires / Traitements)
                   </span>
                 </label>
@@ -577,9 +581,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               </div>
 
               {answers.hasEmploymentIncome && (
-                <div className="mt-3 grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5 sm:grid-cols-2">
+                <div className="mt-3 grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5 sm:grid-cols-2 dark:border-zinc-800 dark:bg-zinc-900/60">
                   <div>
-                    <label className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <label className={fieldLabelClass}>
                       Estimated Annual Gross Salary (€)
                     </label>
                     <input
@@ -595,7 +599,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <label className={fieldLabelClass}>
                       Withheld Tax at Source (€)
                     </label>
                     <input
@@ -614,7 +618,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               )}
             </div>
 
-            <div className="rounded-xl border border-slate-200/80 p-3.5">
+            <div className={rowCardClass}>
               <div className="flex items-center gap-2">
                 <label className="inline-flex w-fit cursor-pointer items-center gap-2.5">
                   <input
@@ -623,9 +627,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     onChange={(e) =>
                       patchAnswers({ ...answers, hasFreelanceIncome: e.target.checked })
                     }
-                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    className={checkboxClass}
                   />
-                  <span className="text-xs font-semibold text-slate-900">
+                  <span className="text-xs font-semibold text-slate-900 dark:text-zinc-100">
                     Freelance &amp; Independent Business Income (Art. 14 / Art. 91 LIR)
                   </span>
                 </label>
@@ -633,16 +637,16 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               </div>
 
               {answers.hasFreelanceIncome && (
-                <div className="mt-3 rounded-xl border border-zinc-200/80 bg-zinc-50/80 p-3 text-xs text-zinc-900">
+                <div className="mt-3 rounded-xl border border-zinc-200/80 bg-zinc-50/80 p-3 text-xs text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-100">
                   <p className="font-semibold">Freelance &amp; Business Hub Active</p>
-                  <p className="mt-0.5 text-[11px] text-zinc-600">
+                  <p className="mt-0.5 text-[11px] text-zinc-600 dark:text-zinc-400">
                     Use the dedicated <strong>Freelance &amp; Business</strong> navigation section to track client invoices, deductible operating expenses, and VAT returns for each spouse.
                   </p>
                 </div>
               )}
             </div>
 
-            <div className="rounded-xl border border-slate-200/80 p-3.5">
+            <div className={rowCardClass}>
               <div className="flex items-center gap-2">
                 <label className="inline-flex w-fit cursor-pointer items-center gap-2.5">
                   <input
@@ -651,9 +655,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     onChange={(e) =>
                       patchAnswers({ ...answers, hasPensionIncome: e.target.checked })
                     }
-                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    className={checkboxClass}
                   />
-                  <span className="text-xs font-semibold text-slate-900">
+                  <span className="text-xs font-semibold text-slate-900 dark:text-zinc-100">
                     Pension Income (Pensions ou rentes)
                   </span>
                 </label>
@@ -664,15 +668,15 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
         </div>
 
         {/* Section 3: Deductions & Special Expenses */}
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs space-y-4">
-          <div className="border-b border-slate-100 pb-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs space-y-4 dark:border-zinc-800 dark:bg-[#161920] dark:shadow-none">
+          <div className="border-b border-slate-100 pb-3 dark:border-zinc-800">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300">
               3. Deductions &amp; Special Expenses
             </h4>
           </div>
 
           <div className="space-y-3">
-            <div className="rounded-xl border border-slate-200/80 p-3.5">
+            <div className={rowCardClass}>
               <div className="flex items-center gap-2">
                 <label className="inline-flex w-fit cursor-pointer items-center gap-2.5">
                   <input
@@ -684,9 +688,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                         hasPrimaryResidenceMortgage: e.target.checked,
                       })
                     }
-                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    className={checkboxClass}
                   />
-                  <span className="text-xs font-semibold text-slate-900">
+                  <span className="text-xs font-semibold text-slate-900 dark:text-zinc-100">
                     Mortgage Interest on Primary Residence (Habitation personnelle)
                   </span>
                 </label>
@@ -694,9 +698,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               </div>
 
               {answers.hasPrimaryResidenceMortgage && (
-                <div className="mt-3 grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5 sm:grid-cols-2">
+                <div className="mt-3 grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5 sm:grid-cols-2 dark:border-zinc-800 dark:bg-zinc-900/60">
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Year the valeur locative was fixed (not the occupation year):
                     </span>
                     <input
@@ -714,7 +718,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Estimated Annual Interest Paid (€):
                     </span>
                     <input
@@ -733,7 +737,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               )}
             </div>
 
-            <div className="rounded-xl border border-slate-200/80 p-3.5">
+            <div className={rowCardClass}>
               <div className="flex items-center gap-2">
                 <label className="inline-flex w-fit cursor-pointer items-center gap-2.5">
                   <input
@@ -745,9 +749,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                         hasLifeInsuranceOrPensionPlan: e.target.checked,
                       })
                     }
-                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    className={checkboxClass}
                   />
-                  <span className="text-xs font-semibold text-slate-900">
+                  <span className="text-xs font-semibold text-slate-900 dark:text-zinc-100">
                     Private insurance / consumer-loan interest (Art. 111 — €672 envelope)
                   </span>
                 </label>
@@ -755,7 +759,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200/80 p-3.5">
+            <div className={rowCardClass}>
               <div className="flex items-center gap-2">
                 <label className="inline-flex w-fit cursor-pointer items-center gap-2.5">
                   <input
@@ -767,9 +771,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                         hasPensionSavingsContract: e.target.checked,
                       })
                     }
-                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    className={checkboxClass}
                   />
-                  <span className="text-xs font-semibold text-slate-900">
+                  <span className="text-xs font-semibold text-slate-900 dark:text-zinc-100">
                     I hold a prévoyance-vieillesse contract (Art. 111bis — cap €3,200 for 2025, €4,500 from 2026)
                   </span>
                 </label>
@@ -777,7 +781,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200/80 p-3.5">
+            <div className={rowCardClass}>
               <div className="flex items-center gap-2">
                 <label className="inline-flex w-fit cursor-pointer items-center gap-2.5">
                   <input
@@ -789,9 +793,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                         hasSavingsHousingContract: e.target.checked,
                       })
                     }
-                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    className={checkboxClass}
                   />
-                  <span className="text-xs font-semibold text-slate-900">
+                  <span className="text-xs font-semibold text-slate-900 dark:text-zinc-100">
                     I hold an épargne-logement contract (Art. 111 al. 5 — €1,344 / €672)
                   </span>
                 </label>
@@ -799,16 +803,16 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200/80 p-3.5">
+            <div className={rowCardClass}>
               <div className="flex items-center gap-2">
                 <label className="inline-flex w-fit cursor-pointer items-center gap-2.5">
                   <input
                     type="checkbox"
                     checked={answers.hasDonations}
                     onChange={(e) => patchAnswers({ ...answers, hasDonations: e.target.checked })}
-                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    className={checkboxClass}
                   />
-                  <span className="text-xs font-semibold text-slate-900">
+                  <span className="text-xs font-semibold text-slate-900 dark:text-zinc-100">
                     Charitable Donations to Recognized Foundations (Art 112 LIR)
                   </span>
                 </label>
@@ -819,16 +823,16 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
         </div>
 
         {/* Section 4: Household, Children & Professional Profile */}
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs space-y-5">
-          <div className="border-b border-slate-100 pb-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs space-y-5 dark:border-zinc-800 dark:bg-[#161920] dark:shadow-none">
+          <div className="border-b border-slate-100 pb-3 dark:border-zinc-800">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300">
               4. Household, Children &amp; Professional Profile
             </h4>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div>
-              <label className="mb-1 block text-[11px] font-semibold text-slate-600">
+              <label className={fieldLabelClass}>
                 Number of Dependent Children
               </label>
               <input
@@ -847,7 +851,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
             </div>
 
             <div>
-              <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+              <span className={fieldLabelClass}>
                 Your age on 1 January
               </span>
               <input
@@ -867,7 +871,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
             </div>
 
             <div>
-              <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+              <span className={fieldLabelClass}>
                 Spouse age on 1 January
               </span>
               <input
@@ -887,7 +891,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
             </div>
 
             <div>
-              <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+              <span className={fieldLabelClass}>
                 Unités d&apos;éloignement — you (Art. 105bis) <HelpTip id="travelUnits" />
               </span>
               <input
@@ -907,7 +911,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
             </div>
 
             <div>
-              <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+              <span className={fieldLabelClass}>
                 Unités d&apos;éloignement — spouse
               </span>
               <input
@@ -927,7 +931,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
             </div>
 
             <div>
-              <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+              <span className={fieldLabelClass}>
                 Prior-year losses carried forward (Art. 114, €) <HelpTip id="priorYearLosses" />
               </span>
               <input
@@ -948,9 +952,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
           </div>
 
           {(answers.maritalStatus === 'MARRIED' || answers.maritalStatus === 'PACS') && (
-            <div className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-2">
+            <div className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-2 dark:border-zinc-800 dark:bg-zinc-900/60">
               <div>
-                <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                <span className={fieldLabelClass}>
                   Assessment (Art. 3 / 3bis / 3ter)
                 </span>
                 <select
@@ -970,7 +974,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               </div>
               {answers.assessmentMode === 'INDIVIDUAL_REALLOCATION' && (
                 <div>
-                  <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                  <span className={fieldLabelClass}>
                     Your share of the joint income (%)
                   </span>
                   <input
@@ -991,7 +995,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
             </div>
           )}
 
-          <div className="space-y-2.5 border-t border-slate-100 pt-4">
+          <div className="space-y-2.5 border-t border-slate-100 pt-4 dark:border-zinc-800">
             <div className="flex items-center gap-2">
               <label className="inline-flex w-fit cursor-pointer items-center gap-2.5">
                 <input
@@ -1000,9 +1004,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                   onChange={(e) =>
                     patchAnswers({ ...answers, spouseHasProfessionalIncome: e.target.checked })
                   }
-                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                  className={checkboxClass}
                 />
-                <span className="text-xs font-medium text-slate-800">
+                <span className="text-xs font-medium text-slate-800 dark:text-zinc-200">
                   My spouse also has professional income (salary or side-business) — Art. 129b AEP €4,500
                 </span>
               </label>
@@ -1017,9 +1021,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                   onChange={(e) =>
                     patchAnswers({ ...answers, spouseIsConjointAidant: e.target.checked })
                   }
-                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                  className={checkboxClass}
                 />
-                <span className="text-xs font-medium text-slate-800">
+                <span className="text-xs font-medium text-slate-800 dark:text-zinc-200">
                   My spouse is registered as conjoint-aidant in my business
                 </span>
               </label>
@@ -1033,9 +1037,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 onChange={(e) =>
                   patchAnswers({ ...answers, spouseEmployedByBusiness: e.target.checked })
                 }
-                className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                className={checkboxClass}
               />
-              <span className="text-xs font-medium text-slate-800">
+              <span className="text-xs font-medium text-slate-800 dark:text-zinc-200">
                 My spouse is paid a salary by our business — Art. 48 n° 3 blocks the deduction in Class 2
               </span>
             </label>
@@ -1043,16 +1047,16 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
         </div>
 
         {/* Section 5: Children Relief & Single Parent (CIM / Art. 122 / 123bis) */}
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs space-y-4">
-          <div className="border-b border-slate-100 pb-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs space-y-4 dark:border-zinc-800 dark:bg-[#161920] dark:shadow-none">
+          <div className="border-b border-slate-100 pb-3 dark:border-zinc-800">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300">
               5. Child Relief &amp; Single-Parent Credits
             </h4>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+              <span className={fieldLabelClass}>
                 Children with a modération d&apos;impôt
               </span>
               <input
@@ -1072,7 +1076,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
             </div>
 
             <div>
-              <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+              <span className={fieldLabelClass}>
                 Allocations paid for the child (CIM reduction, €) <HelpTip id="cim" />
               </span>
               <input
@@ -1092,7 +1096,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
             </div>
 
             <div>
-              <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+              <span className={fieldLabelClass}>
                 Moderated children with no family allowance / CEDIES / SNJ (Art. 122 dégrèvement){' '}
                 <HelpTip id="childrenModeration" />
               </span>
@@ -1112,13 +1116,13 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 min={0}
                 max={20}
               />
-              <p className="mt-1 text-[11px] text-slate-500">
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-zinc-400">
                 Each such child gives EUR 922.50, capped at the tax due and never refundable.
               </p>
             </div>
 
             <div>
-              <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+              <span className={fieldLabelClass}>
                 Children with expired moderation (bonification, Art. 123bis){' '}
                 <HelpTip id="childrenBonification" />
               </span>
@@ -1138,7 +1142,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 min={0}
                 max={20}
               />
-              <p className="mt-1 text-[11px] text-slate-500">
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-zinc-400">
                 Child left the household / studies finished; at most two bonifications per child.
               </p>
             </div>
@@ -1157,11 +1161,11 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                       (answers.childrenWithModeration ?? answers.childrenCount ?? 0) > 0)
                   }
                   onChange={(e) => patchAnswers({ ...answers, isSingleParent: e.target.checked })}
-                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                  className={`mt-0.5 ${checkboxClass}`}
                 />
-                <span className="text-xs font-medium text-slate-800">
+                <span className="text-xs font-medium text-slate-800 dark:text-zinc-200">
                   Single parent (CIM, Art. 154ter)
-                  <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
+                  <span className="mt-0.5 block text-[11px] font-normal text-slate-500 dark:text-zinc-400">
                     Automatic for a single, divorced or widowed parent with a moderated child; tick only to force it on or off.
                   </span>
                 </span>
@@ -1177,9 +1181,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                   onChange={(e) =>
                     patchAnswers({ ...answers, bothParentsSameHome: e.target.checked })
                   }
-                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                  className={checkboxClass}
                 />
-                <span className="text-xs font-medium text-slate-800">
+                <span className="text-xs font-medium text-slate-800 dark:text-zinc-200">
                   Both parents live in the same home as the child (excludes the CIM)
                 </span>
               </label>
@@ -1188,13 +1192,13 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
           </div>
 
           {/* Per-child relief history */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-zinc-800 dark:bg-zinc-900/60">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-zinc-400">
                   Child relief history (Art. 122 / 123bis) — optional, overrides the counts above
                 </span>
-                <p className="mt-0.5 text-[11px] text-slate-500">
+                <p className="mt-0.5 text-[11px] text-slate-500 dark:text-zinc-400">
                   Per child: still moderated this year, or the year moderation ended, and bonifications already granted (max 2).
                 </p>
               </div>
@@ -1214,7 +1218,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     ],
                   })
                 }
-                className="inline-flex items-center gap-1 rounded-xl bg-zinc-950 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-zinc-800"
+                className="inline-flex items-center gap-1 rounded-xl bg-zinc-950 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
               >
                 <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>Add child</span>
@@ -1226,38 +1230,40 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 {(answers.childReliefHistory ?? []).map((child, index) => (
                   <div
                     key={index}
-                    className="grid gap-2.5 rounded-xl border border-zinc-200 bg-white p-3 sm:grid-cols-6"
+                    className="grid gap-2.5 rounded-xl border border-zinc-200 bg-white p-3 sm:grid-cols-6 dark:border-zinc-800 dark:bg-[#161920]"
                   >
-                    <label className="text-[11px] font-semibold text-zinc-600">
+                    <label className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">
                       Label
                       <input
                         type="text"
                         value={child.childId ?? ''}
                         onChange={(e) => updateChildRelief(index, { childId: e.target.value })}
-                        className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-950 focus:border-zinc-950 focus:outline-none"
+                        className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-950 focus:border-zinc-950 focus:outline-none dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400"
                       />
                     </label>
-                    <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
+                    <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-zinc-300">
                       <input
                         type="checkbox"
                         checked={child.moderationThisYear === true}
                         onChange={(e) =>
                           updateChildRelief(index, { moderationThisYear: e.target.checked })
                         }
+                        className={checkboxClass}
                       />
                       Moderated this year
                     </label>
-                    <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
+                    <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-zinc-300">
                       <input
                         type="checkbox"
                         checked={child.benefitReceived === true}
                         onChange={(e) =>
                           updateChildRelief(index, { benefitReceived: e.target.checked })
                         }
+                        className={checkboxClass}
                       />
                       Allowance / CEDIES / SNJ paid
                     </label>
-                    <label className="text-[11px] font-semibold text-zinc-600">
+                    <label className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">
                       Moderation ended (year)
                       <input
                         type="number"
@@ -1270,12 +1276,12 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                               : undefined,
                           })
                         }
-                        className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-base text-zinc-950 focus:border-zinc-950 focus:outline-none sm:text-xs"
+                        className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-base text-zinc-950 focus:border-zinc-950 focus:outline-none sm:text-xs dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-400"
                         min={1900}
                         max={2100}
                       />
                     </label>
-                    <label className="text-[11px] font-semibold text-zinc-600">
+                    <label className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-400">
                       Bonifications granted
                       <input
                         type="number"
@@ -1288,7 +1294,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                               : undefined,
                           })
                         }
-                        className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-base text-zinc-950 focus:border-zinc-950 focus:outline-none sm:text-xs"
+                        className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-base text-zinc-950 focus:border-zinc-950 focus:outline-none sm:text-xs dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-400"
                         min={0}
                         max={2}
                       />
@@ -1297,14 +1303,14 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                       <button
                         type="button"
                         onClick={() => removeChildRelief(index)}
-                        className="inline-flex w-full items-center justify-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-50"
+                        className="inline-flex w-full items-center justify-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 dark:border-rose-800/70 dark:text-rose-400 dark:hover:bg-rose-950/45"
                       >
                         <Trash2 className="h-3 w-3" aria-hidden="true" />
                         <span>Remove</span>
                       </button>
                     </div>
-                    <div className="grid gap-2 border-t border-slate-100 pt-2 sm:col-span-6 sm:grid-cols-3">
-                      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
+                    <div className="grid gap-2 border-t border-slate-100 pt-2 sm:col-span-6 sm:grid-cols-3 dark:border-zinc-800">
+                      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-zinc-300">
                         <input
                           type="checkbox"
                           checked={child.inHousehold === false}
@@ -1313,20 +1319,22 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                               inHousehold: e.target.checked ? false : undefined,
                             })
                           }
+                          className={checkboxClass}
                         />
                         Lives outside this household
                       </label>
-                      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
+                      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-zinc-300">
                         <input
                           type="checkbox"
                           checked={child.residenceAlternee === true}
                           onChange={(e) =>
                             updateChildRelief(index, { residenceAlternee: e.target.checked })
                           }
+                          className={checkboxClass}
                         />
                         Résidence alternée (2025–2026 only)
                       </label>
-                      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
+                      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-zinc-300">
                         <input
                           type="checkbox"
                           checked={
@@ -1339,6 +1347,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                               familyAllowanceReceived: e.target.checked,
                             })
                           }
+                          className={checkboxClass}
                         />
                         Joint parental authority + allowance here
                       </label>
@@ -1351,23 +1360,23 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
         </div>
 
         {/* Section 6 (Collapsible): Special Reliefs, ASRD, Invalidity & Assimilation */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xs">
+        <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xs dark:border-zinc-800 dark:bg-[#161920] dark:shadow-none">
           <button
             type="button"
             onClick={() => setShowSpecialProfile((prev) => !prev)}
             aria-expanded={showSpecialProfile}
-            className="flex w-full items-center justify-between px-6 py-4 text-left transition hover:bg-slate-50"
+            className="flex w-full items-center justify-between px-6 py-4 text-left transition hover:bg-slate-50 dark:hover:bg-zinc-800/40"
           >
             <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300">
                 6. Special Reliefs, Age Limits, ASRD &amp; Non-Resident Assimilation
               </h4>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
                 Optional: ASRD single premium, invalidity rate, prime jeune salarié, start-up investment, or cross-border assimilation.
               </p>
             </div>
             <ChevronDown
-              className={`h-4 w-4 shrink-0 text-slate-500 transition-transform duration-150 ${
+              className={`h-4 w-4 shrink-0 text-slate-500 transition-transform duration-150 dark:text-zinc-400 ${
                 showSpecialProfile ? 'rotate-180' : ''
               }`}
               aria-hidden="true"
@@ -1375,10 +1384,10 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
           </button>
 
           {showSpecialProfile && (
-            <div className="space-y-4 border-t border-slate-100 p-6">
+            <div className="space-y-4 border-t border-slate-100 p-6 dark:border-zinc-800">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
-                  <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                  <span className={fieldLabelClass}>
                     Reduced working capacity (0–1, invalidity forfait) <HelpTip id="invalidity" />
                   </span>
                   <input
@@ -1401,7 +1410,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 </div>
 
                 <div>
-                  <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                  <span className={fieldLabelClass}>
                     Épargne-logement subscriber age on 1 January <HelpTip id="savingsHousing" />
                   </span>
                   <input
@@ -1423,7 +1432,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 </div>
 
                 <div>
-                  <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                  <span className={fieldLabelClass}>
                     111bis souscripteurs (1 or 2)
                   </span>
                   <input
@@ -1445,7 +1454,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 </div>
 
                 <div>
-                  <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                  <span className={fieldLabelClass}>
                     Prime jeune salarié received (€, Art. 115 n° 13d)
                   </span>
                   <input
@@ -1465,7 +1474,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 </div>
 
                 <div>
-                  <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                  <span className={fieldLabelClass}>
                     Prime jeune salarié conditions met?
                   </span>
                   <select
@@ -1484,7 +1493,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 </div>
 
                 <div>
-                  <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                  <span className={fieldLabelClass}>
                     ASRD single premium (€, Art. 111 al. 3/4) <HelpTip id="asrd" />
                   </span>
                   <input
@@ -1504,7 +1513,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 </div>
 
                 <div>
-                  <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                  <span className={fieldLabelClass}>
                     Your age when the ASRD was taken out
                   </span>
                   <input
@@ -1524,7 +1533,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 </div>
 
                 <div>
-                  <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                  <span className={fieldLabelClass}>
                     Start-up investment (2026, € — 20 % credit, cap €100,000){' '}
                     <HelpTip id="startupInvestment" />
                   </span>
@@ -1545,7 +1554,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                 </div>
               </div>
 
-              <div className="space-y-2.5 border-t border-slate-100 pt-3">
+              <div className="space-y-2.5 border-t border-slate-100 pt-3 dark:border-zinc-800">
                 <label className="flex cursor-pointer items-center gap-2.5">
                   <input
                     type="checkbox"
@@ -1553,9 +1562,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     onChange={(e) =>
                       patchAnswers({ ...answers, amvpEligible: e.target.checked })
                     }
-                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    className={checkboxClass}
                   />
-                  <span className="text-xs font-medium text-slate-800">
+                  <span className="text-xs font-medium text-slate-800 dark:text-zinc-200">
                     I keep working after becoming eligible for an early pension — AMVP €9,000 (2026 only)
                   </span>
                 </label>
@@ -1567,17 +1576,17 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     onChange={(e) =>
                       patchAnswers({ ...answers, nonResidentAssimilation: e.target.checked })
                     }
-                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    className={checkboxClass}
                   />
-                  <span className="text-xs font-medium text-slate-800">
+                  <span className="text-xs font-medium text-slate-800 dark:text-zinc-200">
                     I am a non-resident asking for assimilation (≥ 90 % of worldwide income in Luxembourg, or foreign net &lt; €13,000)
                   </span>
                 </label>
 
                 {answers.nonResidentAssimilation && (
-                  <div className="mt-2 grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+                  <div className="mt-2 grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 dark:border-zinc-800 dark:bg-zinc-900/60">
                     <div>
-                      <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                      <span className={fieldLabelClass}>
                         Worldwide income (€)
                       </span>
                       <input
@@ -1597,7 +1606,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                       />
                     </div>
                     <div>
-                      <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                      <span className={fieldLabelClass}>
                         Luxembourg professional income (€)
                       </span>
                       <input
@@ -1624,23 +1633,23 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
         </div>
 
         {/* Section 7 (Collapsible): Capital, Rental, Gains & Foreign Income */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xs">
+        <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xs dark:border-zinc-800 dark:bg-[#161920] dark:shadow-none">
           <button
             type="button"
             onClick={() => setShowInvestmentsAndForeign((prev) => !prev)}
             aria-expanded={showInvestmentsAndForeign}
-            className="flex w-full items-center justify-between px-6 py-4 text-left transition hover:bg-slate-50"
+            className="flex w-full items-center justify-between px-6 py-4 text-left transition hover:bg-slate-50 dark:hover:bg-zinc-800/40"
           >
             <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300">
                 7. Capital, Rental, Capital Gains &amp; Foreign Income
               </h4>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
                 Optional: securities dividends, RELIBI withholding, Luxembourg rental property, capital gains, or treaty foreign income.
               </p>
             </div>
             <ChevronDown
-              className={`h-4 w-4 shrink-0 text-slate-500 transition-transform duration-150 ${
+              className={`h-4 w-4 shrink-0 text-slate-500 transition-transform duration-150 dark:text-zinc-400 ${
                 showInvestmentsAndForeign ? 'rotate-180' : ''
               }`}
               aria-hidden="true"
@@ -1648,16 +1657,16 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
           </button>
 
           {showInvestmentsAndForeign && (
-            <div className="space-y-6 border-t border-slate-100 p-6">
+            <div className="space-y-6 border-t border-slate-100 p-6 dark:border-zinc-800">
               {/* Capital and Rental */}
               <div>
-                <p className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-700">
+                <p className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300">
                   <span>Capital and rental (one row each)</span>
                   <HelpTip id="capitalIncome" />
                 </p>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Securities income €
                     </span>
                     <input
@@ -1677,7 +1686,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Qualifying dividend?
                     </span>
                     <select
@@ -1695,7 +1704,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     </select>
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Foreign tax on it €
                     </span>
                     <input
@@ -1715,7 +1724,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       RELIBI 20 % withheld €
                     </span>
                     <input
@@ -1735,7 +1744,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Rent received €
                     </span>
                     <input
@@ -1753,7 +1762,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Rental charges €
                     </span>
                     <input
@@ -1771,7 +1780,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Purchase price €
                     </span>
                     <input
@@ -1791,7 +1800,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Completion year
                     </span>
                     <input
@@ -1811,7 +1820,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Energy renovation €
                     </span>
                     <input
@@ -1831,7 +1840,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Loan interest on it €
                     </span>
                     <input
@@ -1859,9 +1868,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                         onChange={(e) =>
                           patchAnswers({ ...answers, rentalForfaitEligible: e.target.checked })
                         }
-                        className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                        className={checkboxClass}
                       />
-                      <span className="text-xs font-medium text-slate-800">
+                      <span className="text-xs font-medium text-slate-800 dark:text-zinc-200">
                         Rental property: private patrimoine completed ≥ 15 years ago — 35 % forfait (max €2,700)
                       </span>
                     </label>
@@ -1875,9 +1884,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                       onChange={(e) =>
                         patchAnswers({ ...answers, rentalSocial: e.target.checked })
                       }
-                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                      className={checkboxClass}
                     />
-                    <span className="text-xs font-medium text-slate-800">
+                    <span className="text-xs font-medium text-slate-800 dark:text-zinc-200">
                       Rental managed through a conventioned social agency — 90 % exempt (Art. 115 n° 22a)
                     </span>
                   </label>
@@ -1889,9 +1898,9 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                       onChange={(e) =>
                         patchAnswers({ ...answers, relibiFinalElective: e.target.checked })
                       }
-                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                      className={checkboxClass}
                     />
-                    <span className="text-xs font-medium text-slate-800">
+                    <span className="text-xs font-medium text-slate-800 dark:text-zinc-200">
                       Treat the 20 % RELIBI withholding as final (interest excluded from the base)
                     </span>
                   </label>
@@ -1899,13 +1908,13 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
               </div>
 
               {/* Gains and Foreign Income */}
-              <div className="border-t border-slate-100 pt-5">
-                <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-700">
+              <div className="border-t border-slate-100 pt-5 dark:border-zinc-800">
+                <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300">
                   Gains and foreign income (one row each)
                 </p>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Movable: proceeds €
                     </span>
                     <input
@@ -1925,7 +1934,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Movable: cost €
                     </span>
                     <input
@@ -1943,7 +1952,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Held (months)
                     </span>
                     <input
@@ -1962,7 +1971,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Participation %
                     </span>
                     <input
@@ -1983,7 +1992,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Real estate: proceeds €
                     </span>
                     <input
@@ -2003,7 +2012,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Real estate: cost €
                     </span>
                     <input
@@ -2023,7 +2032,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Held (years)
                     </span>
                     <input
@@ -2042,7 +2051,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Principal residence?
                     </span>
                     <select
@@ -2060,7 +2069,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     </select>
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Foreign country (ISO)
                     </span>
                     <input
@@ -2075,7 +2084,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Foreign amount €
                     </span>
                     <input
@@ -2093,7 +2102,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
                     />
                   </div>
                   <div>
-                    <span className="mb-1 block text-[11px] font-semibold text-slate-600">
+                    <span className={fieldLabelClass}>
                       Foreign tax paid €
                     </span>
                     <input
@@ -2117,10 +2126,10 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
         </div>
 
         {/* Sticky Save Footer Bar (clears mobile bottom dock on < 768px) */}
-        <div className="sticky bottom-20 z-20 flex flex-col justify-between gap-3 rounded-2xl border border-zinc-200/90 bg-white/95 px-5 py-3.5 shadow-lg backdrop-blur-md sm:flex-row sm:items-center sm:px-6 sm:py-4 md:bottom-4">
-          <div className="text-xs text-zinc-600">
+        <div className="sticky bottom-20 z-20 flex flex-col justify-between gap-3 rounded-2xl border border-zinc-200/90 bg-white/95 px-5 py-3.5 shadow-lg backdrop-blur-md sm:flex-row sm:items-center sm:px-6 sm:py-4 md:bottom-4 dark:border-zinc-800 dark:bg-[#161920]/95 dark:shadow-none">
+          <div className="text-xs text-zinc-600 dark:text-zinc-400">
             {isDirty ? (
-              <span className="font-semibold text-amber-800">
+              <span className="font-semibold text-amber-800 dark:text-amber-300">
                 You have unsaved questionnaire updates. Save to recalculate readiness.
               </span>
             ) : (
@@ -2130,7 +2139,7 @@ export function QuestionnaireView({ workspaceId, onProfileUpdated }: Questionnai
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-zinc-950 px-6 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-zinc-950 px-6 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
           >
             {saving ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />

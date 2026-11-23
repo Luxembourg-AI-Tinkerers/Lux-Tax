@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Calculator, FileCheck2, Landmark, ShieldCheck, Users } from 'lucide-react';
+import { ThemeSwitcher } from './ThemeSwitcher';
 
 interface AuthShellProps {
   children: React.ReactNode;
@@ -28,15 +29,15 @@ const HIGHLIGHTS = [
 export function BrandLogo({ compact = false }: { compact?: boolean }) {
   return (
     <div className="inline-flex items-center gap-2.5">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-950 text-white shadow-xs ring-1 ring-zinc-800">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-950 text-white shadow-xs ring-1 ring-zinc-800 dark:bg-zinc-900 dark:ring-zinc-700">
         <Landmark className="h-4.5 w-4.5 text-sky-400" strokeWidth={1.9} aria-hidden="true" />
       </div>
       {!compact && (
         <div className="text-left">
-          <span className="block text-sm font-bold tracking-tight text-zinc-950">
+          <span className="block text-sm font-bold tracking-tight text-zinc-950 dark:text-zinc-50">
             Luxembourg Tax
           </span>
-          <span className="block text-[11px] font-medium text-zinc-500">
+          <span className="block text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
             Personal &amp; Joint Workspace
           </span>
         </div>
@@ -49,7 +50,7 @@ export function AuthShell({ children }: AuthShellProps) {
   return (
     <div className="grid min-h-dvh lg:grid-cols-12">
       {/* Left obsidian editorial context panel */}
-      <aside className="relative hidden flex-col justify-between overflow-hidden bg-zinc-950 px-10 py-12 text-white lg:col-span-5 lg:flex xl:px-12">
+      <aside className="relative hidden flex-col justify-between overflow-hidden bg-zinc-950 px-10 py-12 text-white lg:col-span-5 lg:flex lg:border-r lg:border-zinc-800/80 xl:px-12">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 opacity-[0.055]"
@@ -121,7 +122,10 @@ export function AuthShell({ children }: AuthShellProps) {
       </aside>
 
       {/* Right form stage */}
-      <main className="flex items-center justify-center bg-[#f6f7f9] px-4 py-8 sm:px-8 lg:col-span-7">
+      <main className="relative flex flex-col items-center justify-center bg-[#f6f7f9] px-4 py-8 sm:px-8 lg:col-span-7 dark:bg-[#0e1014]">
+        <div className="mb-4 flex w-full max-w-md justify-end sm:mb-6">
+          <ThemeSwitcher variant="segmented" />
+        </div>
         <div className="w-full max-w-md">{children}</div>
       </main>
     </div>

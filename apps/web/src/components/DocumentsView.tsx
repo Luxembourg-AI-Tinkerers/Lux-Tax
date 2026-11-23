@@ -408,32 +408,32 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
         onDrop={handleDrop}
         className={`rounded-2xl border-2 border-dashed p-7 text-center transition-colors ${
           isDragging
-            ? 'border-sky-500 bg-sky-50/70'
-            : 'border-slate-300 bg-white hover:border-sky-400'
+            ? 'border-sky-500 bg-sky-50/70 dark:bg-sky-950/35'
+            : 'border-slate-300 bg-white hover:border-sky-400 dark:border-zinc-700 dark:bg-[#161920] dark:hover:border-sky-500'
         }`}
       >
-        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-sky-700 ring-1 ring-sky-200/70">
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-sky-700 ring-1 ring-sky-200/70 dark:bg-sky-950/45 dark:text-sky-300 dark:ring-sky-800/60">
           {uploading ? (
             <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
           ) : (
             <UploadCloud className="h-5 w-5" aria-hidden="true" />
           )}
         </div>
-        <h3 className="text-sm font-bold text-slate-900">Upload or Scan Tax Evidence</h3>
-        <p className="mx-auto mt-1 mb-4 max-w-lg text-xs text-slate-500 text-pretty">
+        <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-50">Upload or Scan Tax Evidence</h3>
+        <p className="mx-auto mt-1 mb-4 max-w-lg text-xs text-slate-500 text-pretty dark:text-zinc-400">
           Drag and drop a file here, scan receipts (crèche, domestic help, donations), or upload official certificates (PDF, JPG, PNG, TXT).
         </p>
 
         {members.length > 0 && (
-          <div className="mb-4 inline-flex items-center gap-2 rounded-xl border border-zinc-200/80 bg-zinc-50/80 px-3 py-1.5 text-xs">
-            <label htmlFor="doc-upload-owner" className="font-semibold text-zinc-600">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-xl border border-zinc-200/80 bg-zinc-50/80 px-3 py-1.5 text-xs dark:border-zinc-800 dark:bg-zinc-900/60">
+            <label htmlFor="doc-upload-owner" className="font-semibold text-zinc-600 dark:text-zinc-300">
               Attribute to Spouse:
             </label>
             <select
               id="doc-upload-owner"
               value={uploadOwnerId}
               onChange={(e) => setUploadOwnerId(e.target.value)}
-              className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-950 focus:border-zinc-950 focus:outline-none"
+              className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-950 focus:border-zinc-950 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400"
             >
               <option value="">Household / Primary</option>
               {members.map((m) => (
@@ -450,13 +450,13 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
             type="button"
             onClick={() => setIsCameraModalOpen(true)}
             disabled={uploading}
-            className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-zinc-200/90 bg-white px-4 py-2.5 text-xs font-semibold text-zinc-800 shadow-2xs transition hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.98] disabled:opacity-50"
+            className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-zinc-200/90 bg-white px-4 py-2.5 text-xs font-semibold text-zinc-800 shadow-2xs transition hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.98] disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
           >
-            <Camera className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+            <Camera className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
             <span>Scan with Camera</span>
           </button>
 
-          <label className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98]">
+          <label className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200">
             <UploadCloud className="h-3.5 w-3.5" aria-hidden="true" />
             <span>{uploading ? 'Processing & Extracting...' : 'Select Local File'}</span>
             <input
@@ -472,9 +472,9 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
             type="button"
             onClick={handleUploadSampleSalarySlip}
             disabled={uploading}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200/90 bg-white px-4 py-2.5 text-xs font-semibold text-zinc-800 shadow-2xs transition hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.98] disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200/90 bg-white px-4 py-2.5 text-xs font-semibold text-zinc-800 shadow-2xs transition hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.98] disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
           >
-            <Sparkles className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+            <Sparkles className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" aria-hidden="true" />
             <span>Upload Sample 2025 Salary Slip</span>
           </button>
         </div>
@@ -482,17 +482,17 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
 
       {/* Extracted Facts Awaiting Confirmation */}
       {unconfirmedFacts.length > 0 && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5 shadow-2xs">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5 shadow-2xs dark:border-amber-800/70 dark:bg-amber-950/35">
           <div className="mb-3.5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h4 className="flex items-center gap-1.5 text-sm font-bold text-amber-950">
+              <h4 className="flex items-center gap-1.5 text-sm font-bold text-amber-950 dark:text-amber-100">
                 <span>Extracted Figures Awaiting Your Confirmation</span>
                 <HelpTip id="factConfidence" />
-                <span className="tabular-nums rounded-full bg-amber-200/70 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+                <span className="tabular-nums rounded-full bg-amber-200/70 px-2 py-0.5 text-[11px] font-bold text-amber-900 dark:bg-amber-900/60 dark:text-amber-200">
                   {unconfirmedFacts.length}
                 </span>
               </h4>
-              <p className="mt-0.5 text-xs text-amber-800">
+              <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-200/90">
                 These numbers were read from your documents. Confirm them to include them in your tax calculation.
               </p>
             </div>
@@ -500,14 +500,14 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
               type="button"
               onClick={handleConfirmAll}
               disabled={bulkConfirming}
-              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50"
+              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
             >
-              <CheckCheck className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+              <CheckCheck className="h-3.5 w-3.5 text-emerald-400 dark:text-emerald-600" aria-hidden="true" />
               <span>{bulkConfirming ? 'Confirming…' : `Confirm all ${unconfirmedFacts.length}`}</span>
             </button>
           </div>
 
-          <div className="divide-y divide-amber-200/70 overflow-hidden rounded-xl border border-amber-200 bg-white">
+          <div className="divide-y divide-amber-200/70 overflow-hidden rounded-xl border border-amber-200 bg-white dark:divide-amber-800/50 dark:border-amber-800/60 dark:bg-[#161920]">
             {unconfirmedFacts.map((fact) => (
               <div
                 key={fact.id}
@@ -515,10 +515,10 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-md bg-zinc-100 px-2 py-0.5 font-mono text-xs font-bold text-zinc-950">
+                    <span className="rounded-md bg-zinc-100 px-2 py-0.5 font-mono text-xs font-bold text-zinc-950 dark:bg-zinc-800 dark:text-zinc-100">
                       {fact.fieldName}
                     </span>
-                    <span className="tabular-nums text-sm font-extrabold text-zinc-950">
+                    <span className="tabular-nums text-sm font-extrabold text-zinc-950 dark:text-zinc-50">
                       {formatEuro(fact.fieldValue)}
                     </span>
                     <StatusBadge tone="info">
@@ -526,7 +526,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                     </StatusBadge>
                   </div>
                   {fact.sourceSnippet && (
-                    <span className="mt-1.5 block truncate font-mono text-[11px] text-zinc-500">
+                    <span className="mt-1.5 block truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
                       Source: &quot;{fact.sourceSnippet}&quot;
                     </span>
                   )}
@@ -536,9 +536,9 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                   type="button"
                   onClick={() => handleConfirmExtractedFact(fact)}
                   disabled={confirmingId === fact.id}
-                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50"
+                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
                 >
-                  <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+                  <Check className="h-3.5 w-3.5 text-emerald-400 dark:text-emerald-600" aria-hidden="true" />
                   <span>{confirmingId === fact.id ? 'Confirming...' : 'Confirm Figure into Return'}</span>
                 </button>
               </div>
@@ -548,17 +548,17 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
       )}
 
       {/* Uploaded Documents Table */}
-      <div className="overflow-hidden rounded-2xl border border-zinc-200/85 bg-white shadow-[0_1px_2px_rgba(9,9,11,0.03)]">
-        <div className="flex flex-col justify-between gap-4 border-b border-zinc-200 px-6 py-4 lg:flex-row lg:items-center">
+      <div className="overflow-hidden rounded-2xl border border-zinc-200/85 bg-white shadow-[0_1px_2px_rgba(9,9,11,0.03)] dark:border-zinc-800 dark:bg-[#161920] dark:shadow-none">
+        <div className="flex flex-col justify-between gap-4 border-b border-zinc-200 px-6 py-4 lg:flex-row lg:items-center dark:border-zinc-800">
           <div>
-            <h3 className="flex items-center gap-1.5 text-sm font-bold text-zinc-950">
+            <h3 className="flex items-center gap-1.5 text-sm font-bold text-zinc-950 dark:text-zinc-50">
               <span>Document Vault</span>
               <HelpTip id="documentVault" />
-              <span className="tabular-nums rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-semibold text-zinc-700">
+              <span className="tabular-nums rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
                 {documents.length}
               </span>
             </h3>
-            <p className="mt-0.5 text-xs text-zinc-500">
+            <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
               Click a visibility badge to cycle between Private Draft, Shared for Discussion, and Included in Return.
             </p>
           </div>
@@ -566,7 +566,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
           <div className="flex flex-wrap items-center gap-2.5">
             <div className="relative">
               <Search
-                className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400"
+                className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400 dark:text-zinc-500"
                 aria-hidden="true"
               />
               <input
@@ -575,7 +575,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                 placeholder="Search files..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-44 rounded-xl border border-zinc-200 bg-white py-1.5 pr-3 pl-8 text-xs text-zinc-950 placeholder:text-zinc-400 focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
+                className="w-44 rounded-xl border border-zinc-200 bg-white py-1.5 pr-3 pl-8 text-xs text-zinc-950 placeholder:text-zinc-400 focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-400 dark:focus:ring-zinc-400/20"
               />
             </div>
 
@@ -583,7 +583,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
               aria-label="Filter by visibility"
               value={visibilityFilter}
               onChange={(e) => setVisibilityFilter(e.target.value)}
-              className="rounded-xl border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-800 focus:border-zinc-950 focus:outline-none"
+              className="rounded-xl border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-800 focus:border-zinc-950 focus:outline-none dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400"
             >
               <option value="ALL">All Visibilities</option>
               <option value={DocumentVisibility.INCLUDED_IN_RETURN}>Included in Return</option>
@@ -596,7 +596,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                 aria-label="Filter by spouse"
                 value={selectedOwnerFilter}
                 onChange={(e) => setSelectedOwnerFilter(e.target.value)}
-                className="rounded-xl border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-800 focus:border-zinc-950 focus:outline-none"
+                className="rounded-xl border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-800 focus:border-zinc-950 focus:outline-none dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400"
               >
                 <option value="ALL">All Spouses</option>
                 {members.map((m) => (
@@ -611,7 +611,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
               type="button"
               onClick={refresh}
               aria-label="Refresh documents"
-              className="inline-flex items-center gap-1 rounded-xl border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950"
+              className="inline-flex items-center gap-1 rounded-xl border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
             >
               <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
               <span>Refresh</span>
@@ -631,9 +631,9 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                 type="button"
                 onClick={handleUploadSampleSalarySlip}
                 disabled={uploading}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
               >
-                <Sparkles className="h-3.5 w-3.5 text-sky-400" aria-hidden="true" />
+                <Sparkles className="h-3.5 w-3.5 text-sky-400 dark:text-sky-600" aria-hidden="true" />
                 <span>Upload Sample 2025 Salary Slip</span>
               </button>
             }
@@ -651,7 +651,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                   setVisibilityFilter('ALL');
                   setSelectedOwnerFilter('ALL');
                 }}
-                className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
               >
                 Clear filters
               </button>
@@ -660,19 +660,19 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
         ) : (
           <>
             {/* Mobile Card List (< 768px) */}
-            <div className="divide-y divide-zinc-100 md:hidden">
+            <div className="divide-y divide-zinc-100 md:hidden dark:divide-zinc-800">
               {filteredDocuments.map((doc) => {
                 const owner = members.find((m) => m.userId === doc.ownerId);
                 return (
                   <div key={doc.id} className="space-y-3 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-start gap-2.5">
-                        <FileText className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
+                        <FileText className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400 dark:text-zinc-500" aria-hidden="true" />
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-zinc-950">
+                          <p className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-100">
                             {doc.originalName}
                           </p>
-                          <p className="mt-0.5 text-[11px] text-zinc-500">
+                          <p className="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
                             {doc.ownerEmail || owner?.user?.email || 'Household'} ·{' '}
                             <span className="tabular-nums">
                               {new Date(doc.createdAt).toLocaleDateString()}
@@ -680,7 +680,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                           </p>
                         </div>
                       </div>
-                      <span className="shrink-0 rounded-md bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-700">
+                      <span className="shrink-0 rounded-md bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
                         {doc.documentType.replace(/_/g, ' ')}
                       </span>
                     </div>
@@ -691,10 +691,10 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                         onClick={() => handleToggleVisibility(doc)}
                         className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition active:scale-[0.98] ${
                           doc.visibility === DocumentVisibility.INCLUDED_IN_RETURN
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800/70 dark:bg-emerald-950/45 dark:text-emerald-300 dark:hover:bg-emerald-950/65'
                             : doc.visibility === DocumentVisibility.SHARED_FOR_DISCUSSION
-                            ? 'border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100'
-                            : 'border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                            ? 'border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100 dark:border-sky-800/70 dark:bg-sky-950/45 dark:text-sky-300 dark:hover:bg-sky-950/65'
+                            : 'border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
                         }`}
                       >
                         <span>{doc.visibility.replace(/_/g, ' ')}</span>
@@ -706,7 +706,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                           type="button"
                           onClick={() => handleReextract(doc.id)}
                           disabled={reextractingId === doc.id}
-                          className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
+                          className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
                         >
                           <RefreshCw
                             className={`h-3 w-3 ${reextractingId === doc.id ? 'animate-spin' : ''}`}
@@ -717,7 +717,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                         <button
                           type="button"
                           onClick={() => setPendingDeleteDoc(doc)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 dark:border-rose-800/70 dark:bg-rose-950/45 dark:text-rose-300 dark:hover:bg-rose-950/65"
                         >
                           <Trash2 className="h-3 w-3" aria-hidden="true" />
                           <span>Delete</span>
@@ -732,7 +732,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
             {/* Desktop / Tablet Table (>= 768px) */}
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-zinc-200 bg-zinc-50/90 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                <thead className="border-b border-zinc-200 bg-zinc-50/90 text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-400">
                   <tr>
                     <th className="px-6 py-3">File Name</th>
                     <th className="px-6 py-3">Spouse</th>
@@ -744,15 +744,15 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                     <th className="px-6 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-100">
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                   {filteredDocuments.map((doc) => {
                     const owner = members.find((m) => m.userId === doc.ownerId);
                     return (
-                      <tr key={doc.id} className="transition-colors hover:bg-zinc-50/70">
+                      <tr key={doc.id} className="transition-colors hover:bg-zinc-50/70 dark:hover:bg-zinc-800/40">
                         <td className="px-6 py-3.5">
                           <div className="flex items-center gap-2.5">
-                            <FileText className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
-                            <span className="font-semibold text-zinc-950">{doc.originalName}</span>
+                            <FileText className="h-4 w-4 shrink-0 text-zinc-400 dark:text-zinc-500" aria-hidden="true" />
+                            <span className="font-semibold text-zinc-950 dark:text-zinc-100">{doc.originalName}</span>
                           </div>
                         </td>
                         <td className="px-6 py-3.5">
@@ -761,7 +761,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                           </StatusBadge>
                         </td>
                         <td className="px-6 py-3.5">
-                          <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-700">
+                          <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
                             {doc.documentType.replace(/_/g, ' ')}
                           </span>
                           {doc.ocrRequired && (
@@ -777,10 +777,10 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                             onClick={() => handleToggleVisibility(doc)}
                             className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition active:scale-[0.98] ${
                               doc.visibility === DocumentVisibility.INCLUDED_IN_RETURN
-                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800/70 dark:bg-emerald-950/45 dark:text-emerald-300 dark:hover:bg-emerald-950/65'
                                 : doc.visibility === DocumentVisibility.SHARED_FOR_DISCUSSION
-                                ? 'border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100'
-                                : 'border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                                ? 'border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100 dark:border-sky-800/70 dark:bg-sky-950/45 dark:text-sky-300 dark:hover:bg-sky-950/65'
+                                : 'border-zinc-200 bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
                             }`}
                             title="Click to cycle visibility"
                           >
@@ -788,7 +788,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                             <RotateCw className="h-3 w-3 opacity-70" aria-hidden="true" />
                           </button>
                         </td>
-                        <td className="tabular-nums px-6 py-3.5 text-xs text-zinc-500">
+                        <td className="tabular-nums px-6 py-3.5 text-xs text-zinc-500 dark:text-zinc-400">
                           {new Date(doc.createdAt).toLocaleDateString()}
                         </td>
                         <td className="whitespace-nowrap px-6 py-3.5 text-right">
@@ -797,7 +797,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                               type="button"
                               onClick={() => handleReextract(doc.id)}
                               disabled={reextractingId === doc.id}
-                              className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 transition hover:text-sky-800 disabled:opacity-50"
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 transition hover:text-sky-800 disabled:opacity-50 dark:text-sky-400 dark:hover:text-sky-300"
                             >
                               <RefreshCw
                                 className={`h-3 w-3 ${reextractingId === doc.id ? 'animate-spin' : ''}`}
@@ -808,7 +808,7 @@ Salarie: Resident Taxpayer (Matricule: 1985010199999)
                             <button
                               type="button"
                               onClick={() => setPendingDeleteDoc(doc)}
-                              className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 transition hover:text-rose-700"
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 transition hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
                             >
                               <Trash2 className="h-3 w-3" aria-hidden="true" />
                               <span>Delete</span>

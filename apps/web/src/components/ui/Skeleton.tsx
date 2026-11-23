@@ -7,7 +7,7 @@ export function Skeleton({ className }: { className?: string }) {
   return (
     <div
       aria-hidden="true"
-      className={cn('animate-pulse rounded-lg bg-zinc-200/75', className)}
+      className={cn('animate-pulse rounded-lg bg-zinc-200/75 dark:bg-zinc-800/80', className)}
     />
   );
 }
@@ -18,7 +18,7 @@ export function CardGridSkeleton({ count = 3 }: { count?: number }) {
       {Array.from({ length: count }).map((_, idx) => (
         <div
           key={idx}
-          className="rounded-2xl border border-zinc-200/80 bg-white p-6 shadow-[0_1px_2px_rgba(9,9,11,0.03)] space-y-3"
+          className="rounded-2xl border border-zinc-200/80 bg-white p-6 shadow-[0_1px_2px_rgba(9,9,11,0.03)] space-y-3 dark:border-zinc-800/90 dark:bg-[#161920] dark:shadow-none"
         >
           <Skeleton className="h-3 w-28" />
           <Skeleton className="h-8 w-36" />
@@ -32,7 +32,7 @@ export function CardGridSkeleton({ count = 3 }: { count?: number }) {
 
 export function TableSkeleton({ rows = 4 }: { rows?: number }) {
   return (
-    <div className="divide-y divide-slate-100 p-6" aria-busy="true">
+    <div className="divide-y divide-slate-100 p-6 dark:divide-zinc-800/80" aria-busy="true">
       {Array.from({ length: rows }).map((_, idx) => (
         <div key={idx} className="flex items-center justify-between gap-4 py-3.5 first:pt-0 last:pb-0">
           <div className="space-y-2 flex-1">

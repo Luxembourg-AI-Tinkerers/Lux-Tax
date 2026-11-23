@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 :root {
   color-scheme: light;
@@ -9,6 +10,8 @@
   --foreground: #09090b;
   --muted-foreground: #52525b;
   --border-subtle: rgba(15, 23, 42, 0.08);
+  --input-bg: #ffffff;
+  --input-fg: #09090b;
   --accent: #0284c7;
   --accent-strong: #0369a1;
   --ease-out-snappy: cubic-bezier(0.23, 1, 0.32, 1);
@@ -22,12 +25,27 @@ html {
   overscroll-behavior: none;
 }
 
-/* Guarantee crisp light form fields and prevent browser autofill/UA dark overrides */
+html.dark {
+  color-scheme: dark;
+  --background: #0e1014;
+  --surface: #161920;
+  --surface-muted: #12151b;
+  --rail-surface: #12141a;
+  --foreground: #f4f4f5;
+  --muted-foreground: #a1a1aa;
+  --border-subtle: rgba(255, 255, 255, 0.09);
+  --input-bg: #12151b;
+  --input-fg: #f4f4f5;
+  --accent: #38bdf8;
+  --accent-strong: #0ea5e9;
+}
+
+/* Guarantee themed form fields and prevent browser autofill/UA overrides */
 input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
 select,
 textarea {
-  background-color: #ffffff;
-  color: #09090b;
+  background-color: var(--input-bg);
+  color: var(--input-fg);
 }
 
 input:-webkit-autofill,
@@ -35,9 +53,9 @@ input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
 select:-webkit-autofill,
 textarea:-webkit-autofill {
-  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
-  -webkit-text-fill-color: #09090b !important;
-  caret-color: #09090b;
+  -webkit-box-shadow: 0 0 0 1000px var(--input-bg) inset !important;
+  -webkit-text-fill-color: var(--input-fg) !important;
+  caret-color: var(--input-fg);
 }
 
 body {
@@ -142,6 +160,14 @@ body {
   background-color: rgba(100, 116, 139, 0.7);
 }
 
+html.dark .scrollbar-subtle::-webkit-scrollbar-thumb {
+  background-color: rgba(113, 113, 122, 0.55);
+}
+
+html.dark .scrollbar-subtle::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(161, 161, 170, 0.75);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -155,7 +181,10 @@ body {
 
 /* Clean print formatting for Form 100 boxes and ACD preparation annexes */
 @media print {
+  html,
+  html.dark,
   body {
+    color-scheme: light !important;
     background: #ffffff !important;
     color: #09090b !important;
   }

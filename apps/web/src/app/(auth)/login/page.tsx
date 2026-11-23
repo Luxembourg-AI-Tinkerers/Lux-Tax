@@ -58,15 +58,15 @@ export default function LoginPage() {
 
   return (
     <AuthShell>
-      <div className="rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_3px_rgba(9,9,11,0.05)] sm:p-8">
+      <div className="rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_3px_rgba(9,9,11,0.05)] sm:p-8 dark:border-zinc-800/90 dark:bg-[#161920] dark:shadow-none">
         <div className="mb-7">
           <div className="mb-5 lg:hidden">
             <BrandLogo />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-950 text-balance">
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-950 text-balance dark:text-zinc-50">
             Sign in to your workspace
           </h1>
-          <p className="mt-1.5 text-sm text-zinc-500 text-pretty">
+          <p className="mt-1.5 text-sm text-zinc-500 text-pretty dark:text-zinc-400">
             Access your personal or joint Luxembourg tax return.
           </p>
         </div>
@@ -74,9 +74,9 @@ export default function LoginPage() {
         {error && (
           <div
             role="alert"
-            className="mb-5 flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800"
+            className="mb-5 flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 dark:border-rose-800/70 dark:bg-rose-950/55 dark:text-rose-200"
           >
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" aria-hidden="true" />
             <span>{error}</span>
           </div>
         )}
@@ -85,7 +85,7 @@ export default function LoginPage() {
           <div>
             <label
               htmlFor="login-email"
-              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
+              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
             >
               Email Address
             </label>
@@ -97,14 +97,14 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="e.g. spouse@example.lu"
-              className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
+              className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm dark:border-zinc-700/80 dark:bg-[#12151b] dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
             />
           </div>
 
           <div>
             <label
               htmlFor="login-password"
-              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
+              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
             >
               Password
             </label>
@@ -117,13 +117,13 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
-                className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 pl-3.5 pr-11 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
+                className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 pl-3.5 pr-11 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm dark:border-zinc-700/80 dark:bg-[#12151b] dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((prev) => !prev)}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
-                className="absolute inset-y-0 right-1.5 my-auto flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
+                className="absolute inset-y-0 right-1.5 my-auto flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
               >
                 {showPassword ? (
                   <EyeOff className="h-4 w-4" aria-hidden="true" />
@@ -137,7 +137,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 focus-visible:ring-offset-2 disabled:opacity-60"
+            className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 focus-visible:ring-offset-2 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white dark:focus-visible:ring-offset-[#161920]"
           >
             {loading ? (
               <>
@@ -153,11 +153,11 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-7 border-t border-zinc-100 pt-5 text-center text-sm text-zinc-500">
+        <div className="mt-7 border-t border-zinc-100 pt-5 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
           Don&apos;t have an account yet?{' '}
           <Link
             href="/register"
-            className="font-semibold text-zinc-950 transition hover:text-sky-700 hover:underline"
+            className="font-semibold text-zinc-950 transition hover:text-sky-700 hover:underline dark:text-zinc-100 dark:hover:text-sky-400"
           >
             Create account
           </Link>

@@ -20,23 +20,42 @@ interface ToastBannerProps {
 
 const TONE_MAP: Record<ToastType, { container: string; icon: React.ReactNode; role: 'alert' | 'status' }> = {
   success: {
-    container: 'border-emerald-200/90 bg-emerald-50 text-emerald-900',
-    icon: <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />,
+    container:
+      'border-emerald-200/90 bg-emerald-50 text-emerald-900 dark:border-emerald-800/70 dark:bg-emerald-950/55 dark:text-emerald-200',
+    icon: (
+      <CheckCircle2
+        className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+        aria-hidden="true"
+      />
+    ),
     role: 'status',
   },
   error: {
-    container: 'border-rose-200/90 bg-rose-50 text-rose-900',
-    icon: <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />,
+    container:
+      'border-rose-200/90 bg-rose-50 text-rose-900 dark:border-rose-800/70 dark:bg-rose-950/55 dark:text-rose-200',
+    icon: (
+      <AlertCircle
+        className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400"
+        aria-hidden="true"
+      />
+    ),
     role: 'alert',
   },
   warning: {
-    container: 'border-amber-200/90 bg-amber-50 text-amber-900',
-    icon: <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />,
+    container:
+      'border-amber-200/90 bg-amber-50 text-amber-900 dark:border-amber-800/70 dark:bg-amber-950/55 dark:text-amber-200',
+    icon: (
+      <AlertTriangle
+        className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+        aria-hidden="true"
+      />
+    ),
     role: 'status',
   },
   info: {
-    container: 'border-sky-200/90 bg-sky-50 text-sky-900',
-    icon: <Info className="h-4 w-4 shrink-0 text-sky-600" aria-hidden="true" />,
+    container:
+      'border-sky-200/90 bg-sky-50 text-sky-900 dark:border-sky-800/70 dark:bg-sky-950/55 dark:text-sky-200',
+    icon: <Info className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden="true" />,
     role: 'status',
   },
 };

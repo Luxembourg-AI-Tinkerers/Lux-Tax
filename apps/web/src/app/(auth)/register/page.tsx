@@ -74,15 +74,15 @@ export default function RegisterPage() {
 
   return (
     <AuthShell>
-      <div className="rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_3px_rgba(9,9,11,0.05)] sm:p-8">
+      <div className="rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_3px_rgba(9,9,11,0.05)] sm:p-8 dark:border-zinc-800/90 dark:bg-[#161920] dark:shadow-none">
         <div className="mb-6">
           <div className="mb-5 lg:hidden">
             <BrandLogo />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-950 text-balance">
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-950 text-balance dark:text-zinc-50">
             Create Tax Account
           </h1>
-          <p className="mt-1.5 text-sm text-zinc-500 text-pretty">
+          <p className="mt-1.5 text-sm text-zinc-500 text-pretty dark:text-zinc-400">
             Set up your Luxembourg personal or joint workspace.
           </p>
         </div>
@@ -90,9 +90,9 @@ export default function RegisterPage() {
         {error && (
           <div
             role="alert"
-            className="mb-5 flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800"
+            className="mb-5 flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 dark:border-rose-800/70 dark:bg-rose-950/55 dark:text-rose-200"
           >
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" aria-hidden="true" />
             <span>{error}</span>
           </div>
         )}
@@ -102,7 +102,7 @@ export default function RegisterPage() {
             <div>
               <label
                 htmlFor="register-first-name"
-                className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
+                className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
               >
                 First Name
               </label>
@@ -113,13 +113,13 @@ export default function RegisterPage() {
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
                 placeholder="Jean"
-                className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
+                className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm dark:border-zinc-700/80 dark:bg-[#12151b] dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
               />
             </div>
             <div>
               <label
                 htmlFor="register-last-name"
-                className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
+                className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
               >
                 Last Name
               </label>
@@ -130,7 +130,7 @@ export default function RegisterPage() {
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
                 placeholder="Dupont"
-                className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
+                className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm dark:border-zinc-700/80 dark:bg-[#12151b] dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
               />
             </div>
           </div>
@@ -138,9 +138,9 @@ export default function RegisterPage() {
           <div>
             <label
               htmlFor="register-household-name"
-              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
+              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
             >
-              Household Name <span className="font-normal normal-case text-zinc-400">(optional)</span>
+              Household Name <span className="font-normal normal-case text-zinc-400 dark:text-zinc-500">(optional)</span>
             </label>
             <input
               id="register-household-name"
@@ -148,14 +148,14 @@ export default function RegisterPage() {
               value={householdName}
               onChange={(e) => setHouseholdName(e.target.value)}
               placeholder="e.g. Dupont-Muller Household"
-              className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
+              className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm dark:border-zinc-700/80 dark:bg-[#12151b] dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
             />
           </div>
 
           <div>
             <label
               htmlFor="register-email"
-              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
+              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
             >
               Email Address
             </label>
@@ -167,14 +167,14 @@ export default function RegisterPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="jean.dupont@example.lu"
-              className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
+              className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm dark:border-zinc-700/80 dark:bg-[#12151b] dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
             />
           </div>
 
           <div>
             <label
               htmlFor="register-password"
-              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600"
+              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
             >
               Password
             </label>
@@ -187,13 +187,13 @@ export default function RegisterPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Create a strong password"
-                className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 pl-3.5 pr-11 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm"
+                className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 pl-3.5 pr-11 text-base text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:text-sm dark:border-zinc-700/80 dark:bg-[#12151b] dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((prev) => !prev)}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
-                className="absolute inset-y-0 right-1.5 my-auto flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
+                className="absolute inset-y-0 right-1.5 my-auto flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
               >
                 {showPassword ? (
                   <EyeOff className="h-4 w-4" aria-hidden="true" />
@@ -211,7 +211,9 @@ export default function RegisterPage() {
                 <span
                   key={rule.label}
                   className={`inline-flex items-center gap-1 transition-colors ${
-                    rule.ok ? 'font-semibold text-emerald-700' : 'text-zinc-400'
+                    rule.ok
+                      ? 'font-semibold text-emerald-700 dark:text-emerald-400'
+                      : 'text-zinc-400 dark:text-zinc-500'
                   }`}
                 >
                   <Check className="h-3 w-3" aria-hidden="true" />
@@ -224,7 +226,7 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 focus-visible:ring-offset-2 disabled:opacity-60"
+            className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 focus-visible:ring-offset-2 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white dark:focus-visible:ring-offset-[#161920]"
           >
             {loading ? (
               <>
@@ -240,11 +242,11 @@ export default function RegisterPage() {
           </button>
         </form>
 
-        <div className="mt-7 border-t border-zinc-100 pt-5 text-center text-sm text-zinc-500">
+        <div className="mt-7 border-t border-zinc-100 pt-5 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
           Already have an account?{' '}
           <Link
             href="/login"
-            className="font-semibold text-zinc-950 transition hover:text-sky-700 hover:underline"
+            className="font-semibold text-zinc-950 transition hover:text-sky-700 hover:underline dark:text-zinc-100 dark:hover:text-sky-400"
           >
             Sign in
           </Link>

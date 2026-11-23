@@ -26,6 +26,7 @@ import { HelpTip } from './HelpTip';
 import { NotificationCenter } from './NotificationCenter';
 import { StatusBadge, type BadgeTone } from './ui/StatusBadge';
 import { Modal } from './ui/Modal';
+import { ThemeSwitcher } from './ui/ThemeSwitcher';
 
 export type TabKey =
   | 'overview'
@@ -262,20 +263,20 @@ export function WorkspaceShell({
     <div className="flex h-full flex-col">
       {/* Brand Header */}
       <div
-        className={`flex h-15 shrink-0 items-center border-b border-zinc-200/80 px-3.5 ${
+        className={`flex h-15 shrink-0 items-center border-b border-zinc-200/80 px-3.5 dark:border-zinc-800/80 ${
           isRailOnly ? 'justify-center' : 'justify-between gap-2'
         }`}
       >
         {!isRailOnly ? (
           <div className="flex min-w-0 items-center gap-2.5">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-950 text-white shadow-xs">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-950 text-white shadow-xs dark:bg-zinc-900 dark:ring-1 dark:ring-zinc-700/80">
               <Landmark className="h-4.5 w-4.5 text-sky-400" strokeWidth={1.9} aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-xs font-bold tracking-tight text-zinc-950">
+              <p className="truncate text-xs font-bold tracking-tight text-zinc-950 dark:text-zinc-50">
                 {householdName}
               </p>
-              <p className="truncate text-[10px] font-medium text-zinc-500">
+              <p className="truncate text-[10px] font-medium text-zinc-500 dark:text-zinc-400">
                 Luxembourg Tax · {selectedYear}
               </p>
             </div>
@@ -286,7 +287,7 @@ export function WorkspaceShell({
             onClick={() => handleNavigate('overview')}
             title="Go to Overview"
             aria-label="Go to Overview"
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-950 text-sky-400 shadow-xs transition hover:bg-zinc-800"
+            className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-950 text-sky-400 shadow-xs transition hover:bg-zinc-800 dark:bg-zinc-900 dark:ring-1 dark:ring-zinc-700/80 dark:hover:bg-zinc-800"
           >
             <Landmark className="h-4.5 w-4.5" strokeWidth={1.9} aria-hidden="true" />
           </button>
@@ -297,7 +298,7 @@ export function WorkspaceShell({
             type="button"
             onClick={onCloseDrawer}
             aria-label="Close sidebar navigation"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -307,7 +308,7 @@ export function WorkspaceShell({
             onClick={toggleCollapsed}
             aria-label="Collapse sidebar"
             title="Collapse sidebar"
-            className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-800 lg:inline-flex"
+            className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-800 lg:inline-flex dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
           >
             <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -316,14 +317,14 @@ export function WorkspaceShell({
 
       {/* Year & Quick Search Controls */}
       {!isRailOnly ? (
-        <div className="space-y-2.5 border-b border-zinc-200/70 px-3.5 py-3">
+        <div className="space-y-2.5 border-b border-zinc-200/70 px-3.5 py-3 dark:border-zinc-800/70">
           <div className="flex items-center justify-between gap-2">
             {workspaces.length > 1 ? (
               <select
                 aria-label="Select tax year"
                 value={selectedYear}
                 onChange={(e) => onSelectYear(Number(e.target.value))}
-                className="tabular-nums w-full cursor-pointer rounded-xl border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-bold text-zinc-900 shadow-2xs transition hover:border-zinc-300 focus:border-zinc-950 focus:outline-none"
+                className="tabular-nums w-full cursor-pointer rounded-xl border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-bold text-zinc-900 shadow-2xs transition hover:border-zinc-300 focus:border-zinc-950 focus:outline-none dark:border-zinc-700/80 dark:bg-[#12151b] dark:text-zinc-100 dark:hover:border-zinc-600 dark:focus:border-sky-400"
               >
                 {workspaces.map((w) => (
                   <option key={w.id} value={w.taxYear}>
@@ -332,8 +333,8 @@ export function WorkspaceShell({
                 ))}
               </select>
             ) : (
-              <div className="flex w-full items-center justify-between rounded-xl border border-zinc-200/90 bg-white px-2.5 py-1.5 shadow-2xs">
-                <span className="tabular-nums text-xs font-bold text-zinc-900">
+              <div className="flex w-full items-center justify-between rounded-xl border border-zinc-200/90 bg-white px-2.5 py-1.5 shadow-2xs dark:border-zinc-800 dark:bg-[#161920]">
+                <span className="tabular-nums text-xs font-bold text-zinc-900 dark:text-zinc-100">
                   Tax Year {selectedYear}
                 </span>
                 {workspace?.status && (
@@ -351,25 +352,25 @@ export function WorkspaceShell({
               setDrawerOpen(false);
               setCommandOpen(true);
             }}
-            className="flex w-full items-center justify-between rounded-xl border border-zinc-200/90 bg-white px-2.5 py-1.5 text-xs text-zinc-500 shadow-2xs transition hover:border-zinc-300 hover:text-zinc-900"
+            className="flex w-full items-center justify-between rounded-xl border border-zinc-200/90 bg-white px-2.5 py-1.5 text-xs text-zinc-500 shadow-2xs transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-800 dark:bg-[#161920] dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:text-zinc-100"
           >
             <span className="inline-flex items-center gap-2">
-              <Search className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
+              <Search className="h-3.5 w-3.5 text-zinc-400 dark:text-zinc-500" aria-hidden="true" />
               <span>Quick Jump…</span>
             </span>
-            <kbd className="rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-zinc-500">
+            <kbd className="rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
               ⌘K
             </kbd>
           </button>
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-2 border-b border-zinc-200/70 py-3">
+        <div className="flex flex-col items-center gap-2 border-b border-zinc-200/70 py-3 dark:border-zinc-800/70">
           <button
             type="button"
             onClick={onCloseDrawer ? onCloseDrawer : () => setDrawerOpen(true)}
             title="Open navigation drawer"
             aria-label="Open navigation drawer"
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200/80 bg-white text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-950 md:flex lg:hidden"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200/80 bg-white text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-950 md:flex lg:hidden dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
           >
             <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -378,7 +379,7 @@ export function WorkspaceShell({
             onClick={toggleCollapsed}
             title="Expand sidebar"
             aria-label="Expand sidebar"
-            className="hidden h-9 w-9 items-center justify-center rounded-xl border border-zinc-200/80 bg-white text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-950 lg:flex"
+            className="hidden h-9 w-9 items-center justify-center rounded-xl border border-zinc-200/80 bg-white text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-950 lg:flex dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
           >
             <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -387,7 +388,7 @@ export function WorkspaceShell({
             onClick={() => setCommandOpen(true)}
             title="Quick Jump (⌘K)"
             aria-label="Quick Jump"
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200/80 bg-white text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200/80 bg-white text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950 dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
           >
             <Search className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -402,7 +403,7 @@ export function WorkspaceShell({
         {groupedNav.map((group) => (
           <div key={group.title}>
             {!isRailOnly && (
-              <p className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+              <p className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 {group.title}
               </p>
             )}
@@ -423,8 +424,8 @@ export function WorkspaceShell({
                         : 'justify-between gap-2.5 px-2.5 py-2'
                     } ${
                       isActive
-                        ? 'bg-zinc-950 text-white shadow-xs'
-                        : 'text-zinc-600 hover:bg-zinc-100/90 hover:text-zinc-950'
+                        ? 'bg-zinc-950 text-white shadow-xs dark:bg-zinc-800/95 dark:text-zinc-50 dark:ring-1 dark:ring-zinc-700/80'
+                        : 'text-zinc-600 hover:bg-zinc-100/90 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-100'
                     }`}
                   >
                     <span className="flex min-w-0 items-center gap-2.5">
@@ -432,7 +433,7 @@ export function WorkspaceShell({
                         className={`h-4 w-4 shrink-0 ${
                           isActive
                             ? 'text-sky-400'
-                            : 'text-zinc-400 group-hover:text-zinc-700'
+                            : 'text-zinc-400 group-hover:text-zinc-700 dark:text-zinc-500 dark:group-hover:text-zinc-200'
                         }`}
                         aria-hidden="true"
                       />
@@ -455,29 +456,29 @@ export function WorkspaceShell({
       </nav>
 
       {/* Sidebar Footer */}
-      <div className="shrink-0 border-t border-zinc-200/80 p-3 space-y-2.5">
+      <div className="shrink-0 border-t border-zinc-200/80 p-3 space-y-2.5 dark:border-zinc-800/80">
         {!isRailOnly ? (
           <>
             {workspace && (
-              <div className="rounded-xl border border-zinc-200/80 bg-white p-2.5 shadow-2xs">
+              <div className="rounded-xl border border-zinc-200/80 bg-white p-2.5 shadow-2xs dark:border-zinc-800 dark:bg-[#161920]">
                 <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-semibold text-zinc-600">Return readiness</span>
-                  <span className="tabular-nums font-bold text-zinc-950">{completionScore}%</span>
+                  <span className="font-semibold text-zinc-600 dark:text-zinc-400">Return readiness</span>
+                  <span className="tabular-nums font-bold text-zinc-950 dark:text-zinc-50">{completionScore}%</span>
                 </div>
-                <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-100">
+                <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
                   <div
                     className={`h-1.5 rounded-full transition-all duration-500 ${
                       completionScore >= 80
                         ? 'bg-emerald-500'
                         : completionScore >= 40
-                        ? 'bg-sky-600'
+                        ? 'bg-sky-600 dark:bg-sky-500'
                         : 'bg-amber-500'
                     }`}
                     style={{ width: `${completionScore}%` }}
                   />
                 </div>
                 {workspace.taxClass && (
-                  <p className="mt-1.5 text-[10px] font-medium text-zinc-400">
+                  <p className="mt-1.5 text-[10px] font-medium text-zinc-400 dark:text-zinc-500">
                     Class: {workspace.taxClass.replace(/_/g, ' ')}
                   </p>
                 )}
@@ -491,24 +492,26 @@ export function WorkspaceShell({
                   setDrawerOpen(false);
                   onOpenInvite();
                 }}
-                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-950"
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
               >
-                <UserPlus className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+                <UserPlus className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" aria-hidden="true" />
                 <span>Invite Spouse Co-Filer</span>
               </button>
             )}
 
-            <div className="flex items-center justify-between gap-2 rounded-xl bg-zinc-100/80 px-2.5 py-2">
+            <ThemeSwitcher variant="segmented" className="w-full" />
+
+            <div className="flex items-center justify-between gap-2 rounded-xl bg-zinc-100/80 px-2.5 py-2 dark:bg-zinc-900">
               <div className="flex min-w-0 items-center gap-2">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-[11px] font-bold text-white">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-[11px] font-bold text-white dark:bg-zinc-800 dark:text-zinc-100">
                   {userInitials}
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold text-zinc-950 leading-tight">
+                  <p className="truncate text-xs font-semibold text-zinc-950 leading-tight dark:text-zinc-50">
                     {userDisplayName || userEmail || 'Taxpayer'}
                   </p>
                   {userEmail && userDisplayName !== userEmail && (
-                    <p className="truncate text-[10px] text-zinc-500">{userEmail}</p>
+                    <p className="truncate text-[10px] text-zinc-500 dark:text-zinc-400">{userEmail}</p>
                   )}
                 </div>
               </div>
@@ -517,7 +520,7 @@ export function WorkspaceShell({
                 onClick={onLogout}
                 title="Sign Out"
                 aria-label="Sign Out"
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white hover:text-rose-600"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white hover:text-rose-600 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-rose-400"
               >
                 <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
@@ -525,13 +528,14 @@ export function WorkspaceShell({
           </>
         ) : (
           <div className="flex flex-col items-center gap-2">
+            <ThemeSwitcher variant="icon" />
             {!hasCoFiler && (
               <button
                 type="button"
                 onClick={onOpenInvite}
                 title="Invite Spouse Co-Filer"
                 aria-label="Invite Spouse Co-Filer"
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-sky-600 transition hover:bg-zinc-100"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-sky-600 transition hover:bg-zinc-100 dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-sky-400 dark:hover:bg-zinc-800"
               >
                 <UserPlus className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -541,7 +545,7 @@ export function WorkspaceShell({
               onClick={onLogout}
               title="Sign Out"
               aria-label="Sign Out"
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-500 transition hover:bg-rose-50 hover:text-rose-600"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-500 transition hover:bg-rose-50 hover:text-rose-600 dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-rose-950/60 dark:hover:text-rose-400"
             >
               <LogOut className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -552,10 +556,10 @@ export function WorkspaceShell({
   );
 
   return (
-    <div className="flex min-h-dvh bg-[#f6f7f9] text-zinc-950">
+    <div className="flex min-h-dvh bg-[#f6f7f9] text-zinc-950 dark:bg-[#0e1014] dark:text-zinc-100">
       {/* Permanent Desktop Sidebar (lg: expandable/collapsible) */}
       <aside
-        className={`no-print hidden shrink-0 border-r border-zinc-200/85 bg-[#fcfcfd] transition-[width] duration-200 lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col ${
+        className={`no-print hidden shrink-0 border-r border-zinc-200/85 bg-[#fcfcfd] transition-[width] duration-200 lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col dark:border-zinc-800/80 dark:bg-[#12141a] ${
           collapsed ? 'lg:w-[72px]' : 'lg:w-[264px]'
         }`}
       >
@@ -563,7 +567,7 @@ export function WorkspaceShell({
       </aside>
 
       {/* Permanent Tablet Icon Rail (md only) */}
-      <aside className="no-print hidden w-[72px] shrink-0 border-r border-zinc-200/85 bg-[#fcfcfd] md:sticky md:top-0 md:flex md:h-dvh md:flex-col lg:hidden">
+      <aside className="no-print hidden w-[72px] shrink-0 border-r border-zinc-200/85 bg-[#fcfcfd] md:sticky md:top-0 md:flex md:h-dvh md:flex-col lg:hidden dark:border-zinc-800/80 dark:bg-[#12141a]">
         {renderSidebarBody(true)}
       </aside>
 
@@ -574,9 +578,9 @@ export function WorkspaceShell({
             type="button"
             aria-label="Close navigation menu"
             onClick={() => setDrawerOpen(false)}
-            className="fixed inset-0 bg-zinc-950/45 backdrop-blur-[2px]"
+            className="fixed inset-0 bg-zinc-950/45 backdrop-blur-[2px] dark:bg-black/70"
           />
-          <aside className="animate-drawer-in relative z-10 flex h-dvh w-[280px] max-w-[85vw] flex-col border-r border-zinc-200 bg-[#fcfcfd] shadow-2xl">
+          <aside className="animate-drawer-in relative z-10 flex h-dvh w-[280px] max-w-[85vw] flex-col border-r border-zinc-200 bg-[#fcfcfd] shadow-2xl dark:border-zinc-800 dark:bg-[#12141a]">
             {renderSidebarBody(false, () => setDrawerOpen(false))}
           </aside>
         </div>
@@ -585,21 +589,21 @@ export function WorkspaceShell({
       {/* Main App Column */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Clean Context Header (Zero Navigation Tabs) */}
-        <header className="no-print pt-safe sticky top-0 z-20 border-b border-zinc-200/80 bg-[#f6f7f9]/90 backdrop-blur-md">
+        <header className="no-print pt-safe sticky top-0 z-20 border-b border-zinc-200/80 bg-[#f6f7f9]/90 backdrop-blur-md dark:border-zinc-800/80 dark:bg-[#0e1014]/90">
           <div className="mx-auto flex h-15 max-w-[1360px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
                 onClick={() => setDrawerOpen(true)}
                 aria-label="Open navigation menu"
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-200/90 bg-white text-zinc-700 shadow-2xs transition hover:bg-zinc-50 active:scale-[0.97] lg:hidden"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-200/90 bg-white text-zinc-700 shadow-2xs transition hover:bg-zinc-50 active:scale-[0.97] lg:hidden dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
               >
                 <Menu className="h-4.5 w-4.5" aria-hidden="true" />
               </button>
 
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h1 className="truncate text-sm font-bold tracking-tight text-zinc-950 sm:text-base">
+                  <h1 className="truncate text-sm font-bold tracking-tight text-zinc-950 sm:text-base dark:text-zinc-50">
                     {activeItem.label}
                   </h1>
                   {workspace?.status && (
@@ -608,11 +612,11 @@ export function WorkspaceShell({
                     </StatusBadge>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
                   <span className="truncate">{householdName}</span>
                   <span aria-hidden="true">·</span>
                   <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                    <span className="tabular-nums font-semibold text-zinc-700">
+                    <span className="tabular-nums font-semibold text-zinc-700 dark:text-zinc-300">
                       Tax Year {selectedYear}
                     </span>
                     <HelpTip id="taxYearWorkspace" />
@@ -627,16 +631,16 @@ export function WorkspaceShell({
                 type="button"
                 onClick={() => handleNavigate('calculator')}
                 title="Estimated Tax Outcome"
-                className="hidden items-center gap-2 rounded-xl border border-zinc-200/90 bg-white px-3 py-1.5 text-xs shadow-2xs transition hover:border-zinc-300 lg:inline-flex"
+                className="hidden items-center gap-2 rounded-xl border border-zinc-200/90 bg-white px-3 py-1.5 text-xs shadow-2xs transition hover:border-zinc-300 lg:inline-flex dark:border-zinc-700/80 dark:bg-zinc-900 dark:hover:border-zinc-600"
               >
-                <span className="text-[11px] font-medium text-zinc-500">Outcome</span>
+                <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">Outcome</span>
                 <span
                   className={`tabular-nums font-bold ${
                     !hasBalance
-                      ? 'text-zinc-400'
+                      ? 'text-zinc-400 dark:text-zinc-500'
                       : isRefund
-                      ? 'text-emerald-700'
-                      : 'text-zinc-950'
+                      ? 'text-emerald-700 dark:text-emerald-400'
+                      : 'text-zinc-950 dark:text-zinc-50'
                   }`}
                 >
                   {balanceLabel}
@@ -648,7 +652,7 @@ export function WorkspaceShell({
                 type="button"
                 onClick={() => setCommandOpen(true)}
                 aria-label="Quick navigation search"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200/90 bg-white text-zinc-600 shadow-2xs transition hover:bg-zinc-50 lg:hidden"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200/90 bg-white text-zinc-600 shadow-2xs transition hover:bg-zinc-50 lg:hidden dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
               >
                 <Search className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -657,12 +661,14 @@ export function WorkspaceShell({
                 <button
                   type="button"
                   onClick={onOpenInvite}
-                  className="hidden items-center gap-1.5 rounded-xl border border-zinc-200/90 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 shadow-2xs transition hover:bg-zinc-50 lg:inline-flex"
+                  className="hidden items-center gap-1.5 rounded-xl border border-zinc-200/90 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 shadow-2xs transition hover:bg-zinc-50 lg:inline-flex dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
-                  <UserPlus className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+                  <UserPlus className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" aria-hidden="true" />
                   <span>Invite Spouse</span>
                 </button>
               )}
+
+              <ThemeSwitcher variant="icon" />
 
               {workspace && <NotificationCenter workspaceId={workspace.id} />}
             </div>
@@ -678,7 +684,7 @@ export function WorkspaceShell({
       {/* Mobile Native-Style Bottom Navigation Dock (< 768px) */}
       <nav
         aria-label="Mobile navigation dock"
-        className="no-print pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-zinc-200/90 bg-white/95 backdrop-blur-xl md:hidden"
+        className="no-print pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-zinc-200/90 bg-white/95 backdrop-blur-xl md:hidden dark:border-zinc-800/90 dark:bg-[#12141a]/95"
       >
         <div className="grid grid-cols-5 items-stretch">
           {mobilePrimaryKeys.map((key) => {
@@ -692,17 +698,23 @@ export function WorkspaceShell({
                 onClick={() => handleNavigate(key)}
                 aria-current={isActive ? 'page' : undefined}
                 className={`relative flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-semibold transition active:scale-95 ${
-                  isActive ? 'text-zinc-950' : 'text-zinc-500'
+                  isActive
+                    ? 'text-zinc-950 dark:text-zinc-50'
+                    : 'text-zinc-500 dark:text-zinc-400'
                 }`}
               >
                 {isActive && (
                   <span
                     aria-hidden="true"
-                    className="absolute top-0 h-0.5 w-8 rounded-b-full bg-zinc-950"
+                    className="absolute top-0 h-0.5 w-8 rounded-b-full bg-zinc-950 dark:bg-sky-400"
                   />
                 )}
                 <Icon
-                  className={`h-4.5 w-4.5 ${isActive ? 'text-sky-600' : 'text-zinc-400'}`}
+                  className={`h-4.5 w-4.5 ${
+                    isActive
+                      ? 'text-sky-600 dark:text-sky-400'
+                      : 'text-zinc-400 dark:text-zinc-500'
+                  }`}
                   aria-hidden="true"
                 />
                 <span>{item.shortLabel}</span>
@@ -715,17 +727,23 @@ export function WorkspaceShell({
             onClick={() => setDrawerOpen(true)}
             aria-label="More workspace sections"
             className={`relative flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-semibold transition active:scale-95 ${
-              isOverflowTabActive ? 'text-zinc-950' : 'text-zinc-500'
+              isOverflowTabActive
+                ? 'text-zinc-950 dark:text-zinc-50'
+                : 'text-zinc-500 dark:text-zinc-400'
             }`}
           >
             {isOverflowTabActive && (
               <span
                 aria-hidden="true"
-                className="absolute top-0 h-0.5 w-8 rounded-b-full bg-zinc-950"
+                className="absolute top-0 h-0.5 w-8 rounded-b-full bg-zinc-950 dark:bg-sky-400"
               />
             )}
             <Menu
-              className={`h-4.5 w-4.5 ${isOverflowTabActive ? 'text-sky-600' : 'text-zinc-400'}`}
+              className={`h-4.5 w-4.5 ${
+                isOverflowTabActive
+                  ? 'text-sky-600 dark:text-sky-400'
+                  : 'text-zinc-400 dark:text-zinc-500'
+              }`}
               aria-hidden="true"
             />
             <span>More</span>
@@ -750,7 +768,7 @@ export function WorkspaceShell({
         <div className="space-y-4">
           <div className="relative">
             <Search
-              className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-zinc-400"
+              className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-zinc-400 dark:text-zinc-500"
               aria-hidden="true"
             />
             <input
@@ -766,7 +784,7 @@ export function WorkspaceShell({
                   handleNavigate(filteredCommandItems[0].key);
                 }
               }}
-              className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 pr-3.5 pl-10 text-base text-zinc-950 placeholder:text-zinc-400 focus:border-zinc-950 focus:outline-none sm:text-sm"
+              className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 pr-3.5 pl-10 text-base text-zinc-950 placeholder:text-zinc-400 focus:border-zinc-950 focus:outline-none sm:text-sm dark:border-zinc-700/80 dark:bg-[#12151b] dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-sky-400"
             />
           </div>
 
@@ -781,14 +799,14 @@ export function WorkspaceShell({
                   onClick={() => handleNavigate(item.key)}
                   className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition ${
                     isActive
-                      ? 'bg-zinc-950 text-white'
-                      : 'text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950'
+                      ? 'bg-zinc-950 text-white dark:bg-zinc-800 dark:text-zinc-50 dark:ring-1 dark:ring-zinc-700'
+                      : 'text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-800/70 dark:hover:text-zinc-100'
                   }`}
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <Icon
                       className={`h-4 w-4 shrink-0 ${
-                        isActive ? 'text-sky-400' : 'text-zinc-400'
+                        isActive ? 'text-sky-400' : 'text-zinc-400 dark:text-zinc-500'
                       }`}
                       aria-hidden="true"
                     />
@@ -796,7 +814,7 @@ export function WorkspaceShell({
                       <p className="truncate text-xs font-bold">{item.label}</p>
                       <p
                         className={`truncate text-[11px] ${
-                          isActive ? 'text-zinc-300' : 'text-zinc-500'
+                          isActive ? 'text-zinc-300' : 'text-zinc-500 dark:text-zinc-400'
                         }`}
                       >
                         {item.description}
@@ -805,7 +823,9 @@ export function WorkspaceShell({
                   </div>
                   <span
                     className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-                      isActive ? 'bg-white/10 text-zinc-200' : 'bg-zinc-100 text-zinc-500'
+                      isActive
+                        ? 'bg-white/10 text-zinc-200'
+                        : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'
                     }`}
                   >
                     {item.group}
@@ -814,7 +834,7 @@ export function WorkspaceShell({
               );
             })}
             {filteredCommandItems.length === 0 && (
-              <p className="py-6 text-center text-xs text-zinc-500">
+              <p className="py-6 text-center text-xs text-zinc-500 dark:text-zinc-400">
                 No sections matching &ldquo;{commandQuery}&rdquo;
               </p>
             )}

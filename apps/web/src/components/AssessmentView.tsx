@@ -227,16 +227,16 @@ export function AssessmentView({
   const deadlineStatus = !isFinal ? getDeadlineStatus(objectionDeadline) : null;
 
   const inputClass =
-    'w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base font-medium text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:py-2 sm:text-sm';
+    'w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-base font-medium text-zinc-950 placeholder:text-zinc-400 transition focus:border-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 sm:py-2 sm:text-sm dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-400 dark:focus:ring-zinc-400/20';
 
   return (
     <div className="space-y-6">
       <ToastBanner feedback={feedback} onDismiss={() => setFeedback(null)} />
 
       {/* Filing Record & Freeze Card */}
-      <div className="rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_2px_rgba(9,9,11,0.03)]">
+      <div className="rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_2px_rgba(9,9,11,0.03)] dark:border-zinc-800 dark:bg-[#161920] dark:shadow-none">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-base font-bold text-zinc-950">Filing record &amp; freeze</h3>
+          <h3 className="text-base font-bold text-zinc-950 dark:text-zinc-50">Filing record &amp; freeze</h3>
           {filingRecord && (
             <StatusBadge tone="indigo">
               <Lock className="h-3 w-3" aria-hidden="true" />
@@ -244,22 +244,22 @@ export function AssessmentView({
             </StatusBadge>
           )}
         </div>
-        <p className="mt-1 text-xs text-zinc-500">
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
           Record the submission once the declaration has reached the ACD. Recording freezes the
           matching return version, so a later correction must start an amendment instead of editing
           this snapshot.
         </p>
 
         {!filingRecord && !isApprovalReadyToFreeze && (
-          <div className="mt-4 flex flex-col justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-xs text-amber-950 sm:flex-row sm:items-center">
+          <div className="mt-4 flex flex-col justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-xs text-amber-950 sm:flex-row sm:items-center dark:border-amber-800/70 dark:bg-amber-950/35 dark:text-amber-100">
             <div className="flex items-start gap-2.5">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" aria-hidden="true" />
               <div>
                 <p className="font-bold">
                   Approval required before filing (Current status:{' '}
                   {workspace.status.replace(/_/g, ' ')})
                 </p>
-                <p className="mt-0.5 text-amber-900/90">
+                <p className="mt-0.5 text-amber-900/90 dark:text-amber-200/90">
                   A return version must be approved by all required filers before it can be recorded as filed. If you made material edits recently, re-approve the new draft first.
                 </p>
               </div>
@@ -268,7 +268,7 @@ export function AssessmentView({
               <button
                 type="button"
                 onClick={onNavigateToFiling}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-zinc-950 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98]"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-zinc-950 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
               >
                 <span>Go to Approvals</span>
                 <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
@@ -279,36 +279,36 @@ export function AssessmentView({
 
         {filingRecord ? (
           <div className="mt-5 space-y-4">
-            <dl className="grid gap-4 rounded-xl border border-slate-200/80 bg-slate-50/60 p-4 sm:grid-cols-2">
+            <dl className="grid gap-4 rounded-xl border border-slate-200/80 bg-slate-50/60 p-4 sm:grid-cols-2 dark:border-zinc-800 dark:bg-zinc-900/60">
               <div>
-                <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
                   Filed on
                 </dt>
-                <dd className="tabular-nums mt-0.5 text-xs font-bold text-slate-900">
+                <dd className="tabular-nums mt-0.5 text-xs font-bold text-slate-900 dark:text-zinc-100">
                   {filingRecord.filedAt}
                 </dd>
               </div>
               <div>
-                <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
                   Filing route
                 </dt>
-                <dd className="mt-0.5 text-xs font-bold text-slate-900">
+                <dd className="mt-0.5 text-xs font-bold text-slate-900 dark:text-zinc-100">
                   {FILING_ROUTE_LABELS[filingRecord.route] ?? filingRecord.route}
                 </dd>
               </div>
               <div>
-                <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
                   Confirmation reference
                 </dt>
-                <dd className="mt-0.5 font-mono text-xs font-bold text-slate-900">
+                <dd className="mt-0.5 font-mono text-xs font-bold text-slate-900 dark:text-zinc-100">
                   {filingRecord.confirmationReference || 'Not provided'}
                 </dd>
               </div>
               <div>
-                <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
                   Filed return version
                 </dt>
-                <dd className="mt-0.5 text-xs font-bold text-slate-900">
+                <dd className="mt-0.5 text-xs font-bold text-slate-900 dark:text-zinc-100">
                   {typeof filingRecord.versionNumber === 'number'
                     ? `Version ${filingRecord.versionNumber}`
                     : `Snapshot ${filingRecord.returnVersionId.slice(0, 8)}`}
@@ -316,17 +316,17 @@ export function AssessmentView({
               </div>
               {filingRecord.notes && (
                 <div className="sm:col-span-2">
-                  <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
                     Notes
                   </dt>
-                  <dd className="mt-0.5 whitespace-pre-line text-xs font-medium text-slate-700">
+                  <dd className="mt-0.5 whitespace-pre-line text-xs font-medium text-slate-700 dark:text-zinc-300">
                     {filingRecord.notes}
                   </dd>
                 </div>
               )}
             </dl>
 
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 p-3.5 text-xs font-medium text-zinc-700">
+            <p className="rounded-xl border border-zinc-200 bg-zinc-50 p-3.5 text-xs font-medium text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300">
               The filed version snapshot is immutable: its facts, calculation and approvals are kept
               exactly as filed. A material change requires an amendment rather than an edit of this
               version.
@@ -337,7 +337,7 @@ export function AssessmentView({
             <div>
               <label
                 htmlFor="filing-filed-at"
-                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-600"
+                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-zinc-400"
               >
                 Filed on
               </label>
@@ -354,7 +354,7 @@ export function AssessmentView({
             <div>
               <label
                 htmlFor="filing-route"
-                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-600"
+                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-zinc-400"
               >
                 Filing route <HelpTip id="filingRoute" />
               </label>
@@ -373,7 +373,7 @@ export function AssessmentView({
             <div>
               <label
                 htmlFor="filing-confirmation-reference"
-                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-600"
+                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-zinc-400"
               >
                 Confirmation reference (optional)
               </label>
@@ -391,7 +391,7 @@ export function AssessmentView({
             <div>
               <label
                 htmlFor="filing-notes"
-                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-600"
+                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-zinc-400"
               >
                 Notes (optional)
               </label>
@@ -407,14 +407,14 @@ export function AssessmentView({
             </div>
 
             <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-slate-500 dark:text-zinc-400">
                 Only an approved return version can be recorded as filed, and only once: the API
                 rejects a second record.
               </p>
               <button
                 type="submit"
                 disabled={recording || !filedAt}
-                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-5 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50"
+                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-5 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
               >
                 {recording ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
@@ -429,15 +429,15 @@ export function AssessmentView({
       </div>
 
       {/* Annual Rollover Card */}
-      <div className="rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_2px_rgba(9,9,11,0.03)]">
+      <div className="rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_2px_rgba(9,9,11,0.03)] dark:border-zinc-800 dark:bg-[#161920] dark:shadow-none">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <StatusBadge tone="info">Tax Year Transition</StatusBadge>
-            <h3 className="mt-2 flex items-center gap-1.5 text-base font-bold text-zinc-950">
+            <h3 className="mt-2 flex items-center gap-1.5 text-base font-bold text-zinc-950 dark:text-zinc-50">
               <span>Roll Over to Next Tax Year ({workspace.taxYear + 1})</span>
               <HelpTip id="rollover" />
             </h3>
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
               Copy reusable household data, dependants, and employer details into the {workspace.taxYear + 1} workspace. All figures require reconfirmation.
             </p>
           </div>
@@ -446,7 +446,7 @@ export function AssessmentView({
             type="button"
             onClick={() => setShowRolloverConfirm(true)}
             disabled={rollingOver}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
           >
             <CalendarPlus className="h-3.5 w-3.5" aria-hidden="true" />
             <span>{rollingOver ? 'Rolling Over...' : `Start ${workspace.taxYear + 1} Workspace`}</span>
@@ -455,11 +455,11 @@ export function AssessmentView({
       </div>
 
       {/* Import Assessment Form */}
-      <div className="rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_2px_rgba(9,9,11,0.03)]">
-        <h3 className="text-base font-bold text-zinc-950">
+      <div className="rounded-2xl border border-zinc-200/85 bg-white p-6 shadow-[0_1px_2px_rgba(9,9,11,0.03)] dark:border-zinc-800 dark:bg-[#161920] dark:shadow-none">
+        <h3 className="text-base font-bold text-zinc-950 dark:text-zinc-50">
           Import ACD Tax Assessment Notice (Bulletin d&apos;imposition)
         </h3>
-        <p className="mt-1 mb-6 text-xs text-zinc-500">
+        <p className="mt-1 mb-6 text-xs text-zinc-500 dark:text-zinc-400">
           Compare the official tax assessment received from the Administration des contributions directes against your filed declaration.
         </p>
 
@@ -467,7 +467,7 @@ export function AssessmentView({
           <div>
             <label
               htmlFor="assessment-bulletin-date"
-              className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-600"
+              className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
             >
               Bulletin Notice Date
             </label>
@@ -484,7 +484,7 @@ export function AssessmentView({
           <div>
             <label
               htmlFor="assessment-income"
-              className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-600"
+              className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
             >
               Assessed Taxable Income (€) <HelpTip id="assessmentVariance" />
             </label>
@@ -503,7 +503,7 @@ export function AssessmentView({
           <div>
             <label
               htmlFor="assessment-tax-due"
-              className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-600"
+              className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
             >
               Official Tax Due (€)
             </label>
@@ -523,7 +523,7 @@ export function AssessmentView({
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 px-5 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 px-5 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
             >
               {submitting ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
@@ -538,13 +538,13 @@ export function AssessmentView({
 
       {/* Discrepancy Breakdown Section */}
       {assessment && (
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
-          <div className="mb-4 flex flex-col justify-between gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center">
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs dark:border-zinc-800 dark:bg-[#161920] dark:shadow-none">
+          <div className="mb-4 flex flex-col justify-between gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center dark:border-zinc-800">
             <div>
-              <span className="tabular-nums text-xs font-bold uppercase tracking-wider text-slate-500">
+              <span className="tabular-nums text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
                 Bulletin Notice Date: {new Date(assessment.bulletinDate).toLocaleDateString()}
               </span>
-              <h4 className="tabular-nums mt-0.5 text-lg font-bold text-slate-900">
+              <h4 className="tabular-nums mt-0.5 text-lg font-bold text-slate-900 dark:text-zinc-50">
                 Assessment Variance: {formatEuro(Math.abs(assessment.differenceWithDeclared))}{' '}
                 {assessment.differenceWithDeclared > 0
                   ? '(ACD Tax Due Higher)'
@@ -571,27 +571,27 @@ export function AssessmentView({
 
           {assessment.discrepancies.length > 0 && (
             <div className="space-y-3">
-              <h5 className="text-xs font-bold uppercase tracking-wider text-slate-600">
+              <h5 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-zinc-400">
                 Discrepancy Line-Items
               </h5>
-              <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
+              <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 dark:divide-zinc-800 dark:border-zinc-800">
                 {assessment.discrepancies.map((d, i) => (
                   <div
                     key={i}
                     className="flex flex-col justify-between gap-2 p-4 text-xs sm:flex-row sm:items-center"
                   >
                     <div>
-                      <p className="font-bold text-slate-900">{d.field}</p>
-                      <span className="text-slate-500">{d.notes}</span>
+                      <p className="font-bold text-slate-900 dark:text-zinc-100">{d.field}</p>
+                      <span className="text-slate-500 dark:text-zinc-400">{d.notes}</span>
                     </div>
                     <div className="space-y-0.5 sm:text-right">
-                      <div className="tabular-nums">
-                        <span className="text-slate-400">Declared:</span> {formatEuro(d.declaredValue)} |{' '}
-                        <span className="text-slate-400">ACD:</span> {formatEuro(d.assessedValue)}
+                      <div className="tabular-nums text-slate-700 dark:text-zinc-300">
+                        <span className="text-slate-400 dark:text-zinc-500">Declared:</span> {formatEuro(d.declaredValue)} |{' '}
+                        <span className="text-slate-400 dark:text-zinc-500">ACD:</span> {formatEuro(d.assessedValue)}
                       </div>
                       <span
                         className={`tabular-nums inline-block font-bold ${
-                          d.difference > 0 ? 'text-rose-600' : 'text-emerald-700'
+                          d.difference > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'
                         }`}
                       >
                         Variance: {d.difference > 0 ? '+' : ''}
@@ -608,9 +608,9 @@ export function AssessmentView({
 
       {/* Post-Filing Follow-Up Card */}
       {assessment && (
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs">
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs dark:border-zinc-800 dark:bg-[#161920] dark:shadow-none">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-base font-bold text-slate-900">Post-filing follow-up</h3>
+            <h3 className="text-base font-bold text-slate-900 dark:text-zinc-50">Post-filing follow-up</h3>
             {assessment.isFinal && <StatusBadge tone="neutral">Final assessment</StatusBadge>}
             {deadlineStatus && (
               <StatusBadge tone={deadlineStatus.tone}>
@@ -619,7 +619,7 @@ export function AssessmentView({
               </StatusBadge>
             )}
           </div>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
             Objection window and internal follow-up of this assessment. Both dates are the values
             the API returned when the notice was imported (objection: +3 months, follow-up: +30
             days from the bulletin date); an empty field is not sent and leaves the stored date
@@ -630,7 +630,7 @@ export function AssessmentView({
             <div>
               <label
                 htmlFor="objection-deadline"
-                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-600"
+                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-zinc-400"
               >
                 Objection deadline <HelpTip id="objectionDeadline" />
               </label>
@@ -646,7 +646,7 @@ export function AssessmentView({
             <div>
               <label
                 htmlFor="assessment-follow-up-at"
-                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-600"
+                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-zinc-400"
               >
                 Follow-up date <HelpTip id="followUpDate" />
               </label>
@@ -662,14 +662,14 @@ export function AssessmentView({
             <div className="flex items-end pb-1">
               <label
                 htmlFor="assessment-is-final"
-                className="flex cursor-pointer items-center gap-2.5 text-xs font-bold text-slate-700"
+                className="flex cursor-pointer items-center gap-2.5 text-xs font-bold text-slate-700 dark:text-zinc-300"
               >
                 <input
                   id="assessment-is-final"
                   type="checkbox"
                   checked={isFinal}
                   onChange={(e) => setIsFinal(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-indigo-400"
                 />
                 <span>Assessment is final</span>
               </label>
@@ -679,7 +679,7 @@ export function AssessmentView({
               <button
                 type="submit"
                 disabled={savingFollowUp}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 px-5 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 px-5 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
               >
                 {savingFollowUp ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
